@@ -58,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(pdf): Read a two-up sheet as two pages, left then right.**
+  Two pages printed side by side on one landscape sheet were read across both pages line by line when one page set
+  code beside its explanation, since that page left too few prose lines for the two-column check. A sheet whose
+  gutter sits near its middle, with an empty corridor at least one inch wide that no text crosses and whose sides
+  share no row grid the way a table's columns do, is now split at the gutter and each half is ordered as its own
+  page. (#2227)
+
 - **(html): Read a page that is not UTF-8 in the encoding its byte order mark or `<meta>` declares.**
   Every non-UTF-8 page was decoded as UTF-8, so a `<meta charset>` or `<meta http-equiv>` declaration was ignored
   and each non-ASCII character of a windows-1252, Latin-1 or Shift_JIS page became U+FFFD, with a lossy-decode
