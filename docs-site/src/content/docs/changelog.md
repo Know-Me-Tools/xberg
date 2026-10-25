@@ -60,6 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(djot): Keep apostrophes, quotes, dashes and ellipses, and read table captions.**
+  jotdown reports smart punctuation as events of their own, which the extractor skipped in every block, so
+  `Don't` came out as `Dont`, `"fine"` as `fine` and `1--2` as `12`. They now come out as the characters
+  jotdown's HTML renderer writes (`’`, `“`, `”`, `–`, `—`, `…`). The `^ caption` line of a table was dropped and
+  is now a paragraph after the table, linked to it as its caption. A hard line break in a caption, list item,
+  heading or definition no longer joins its two lines (`first\nsecond` read `firstsecond`), and an image in a
+  caption or table cell keeps its alt text as the image's text and URI label. A footnote reference in a caption
+  follows the caption instead of coming before the table. (#2224)
 - **(email): Decode a base64 body or attachment that holds a character outside the base64 alphabet.**
   `mail-parser` gives up on such a part, for example one with a stray `>`, and keeps the encoded text, which
   then came out as the body or as the text of the attachment (`JVBERi0x…` for a PDF). The part is now decoded
