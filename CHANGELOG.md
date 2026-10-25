@@ -58,6 +58,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(email): Decode a base64 body or attachment that holds a character outside the base64 alphabet.**
+  `mail-parser` gives up on such a part, for example one with a stray `>`, and keeps the encoded text, which
+  then came out as the body or as the text of the attachment (`JVBERi0x…` for a PDF). The part is now decoded
+  without those characters, as RFC 2045 asks. A part that holds plain text despite its base64 label keeps
+  that text. (#2223)
 - **(email, epub): Skip a run of unclosed `<script>`, `<style>`, `<title>`, `<video>`, `<audio>` or `<math>` elements in linear time.**
   The HTML structure walker searched the rest of the document for the closing tag again at every such opener,
   so 20,000 of them in an email body took seconds. A closing tag that is missing is now searched for once.
