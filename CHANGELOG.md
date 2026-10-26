@@ -66,6 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Carriage returns follow display columns, combining marks stay with their base, and 8-bit CSI sequences are removed.
   Grid-path regressions also verify that combining marks do not leak across lines. (#2245, #2288)
 
+- **(djot): Keep line breaks inside footnote definitions and image alt text.**
+  Soft breaks become spaces and hard breaks remain newlines without leaking image-alt breaks into footnote text. (#2247)
+
 - **(html): Preserve superscript and subscript markers in Markdown when HTML options are unset.**
   Default conversion keeps `10^9^` and `H~2~O`; explicitly supplied conversion options retain their script symbols. (#2275)
 

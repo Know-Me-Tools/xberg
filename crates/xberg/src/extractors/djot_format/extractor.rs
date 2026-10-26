@@ -634,6 +634,10 @@ impl DjotExtractor {
                 Event::Softbreak => {
                     if in_code_block {
                         code_text.push('\n');
+                    } else if in_image {
+                        image_alt.push(' ');
+                    } else if in_footnote {
+                        footnote_text.push(' ');
                     } else if in_heading {
                         heading_text.push(' ');
                     } else if in_list_item > 0 {
@@ -649,6 +653,10 @@ impl DjotExtractor {
                 Event::Hardbreak => {
                     if in_code_block {
                         code_text.push('\n');
+                    } else if in_image {
+                        image_alt.push('\n');
+                    } else if in_footnote {
+                        footnote_text.push('\n');
                     } else if in_paragraph {
                         paragraph_text.push('\n');
                     }
@@ -1108,5 +1116,58 @@ mod tests {
             !stray_paragraph,
             "trailing list-item text must not be emitted as a bare Paragraph element"
         );
+    }
+
+    /// A soft break in a footnote definition is a space and a hard break is a newline.
+    #[tokio::test]
+    async fn should_keep_line_breaks_in_a_footnote_definition_djot() {
+        let cases: [(&[u8], &str); 2] = [
+            (b"Text[^a].\n\n[^a]: first\n    second\n", "first second"),
+            (b"Text[^a].\n\n[^a]: first\\\n    second\n", "first\nsecond"),
+        ];
+        for (content, expected) in cases {
+            let doc = DjotExtractor::new()
+                .extract_content(content, "text/djot", &ExtractionConfig::default())
+                .await
+                .expect("djot with a two-line footnote should extract");
+            let definition = doc
+                .elements
+                .iter()
+                .find(|e| e.kind == ElementKind::FootnoteDefinition)
+                .expect("the footnote definition is extracted");
+            assert_eq!(definition.text, expected, "got {:?}", doc.elements);
+        }
+    }
+
+    #[tokio::test]
+    async fn should_keep_an_image_alt_break_out_of_the_footnote_text_djot() {
+        let cases: [(&[u8], &str); 2] = [
+            (
+                b"Text[^a].\n\n[^a]: see ![first\n    second](x.png) end\n",
+                "first second",
+            ),
+            (
+                b"Text[^a].\n\n[^a]: see ![first\\\n    second](x.png) end\n",
+                "first\nsecond",
+            ),
+        ];
+        for (content, expected_alt) in cases {
+            let doc = DjotExtractor::new()
+                .extract_content(content, "text/djot", &ExtractionConfig::default())
+                .await
+                .expect("djot with an image in a footnote should extract");
+            let definition = doc
+                .elements
+                .iter()
+                .find(|e| e.kind == ElementKind::FootnoteDefinition)
+                .expect("the footnote definition is extracted");
+            assert_eq!(definition.text, "see  end", "got {:?}", doc.elements);
+            let image = doc
+                .elements
+                .iter()
+                .find(|e| matches!(e.kind, ElementKind::Image { .. }))
+                .expect("the image is extracted");
+            assert_eq!(image.text, expected_alt, "got {:?}", doc.elements);
+        }
     }
 }
