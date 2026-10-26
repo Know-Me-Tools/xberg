@@ -6,12 +6,18 @@ use crate::extractors::doc::DocExtractor;
 use crate::plugins::InternalDocumentExtractor;
 use std::io::{Cursor, Read, Write};
 
-pub(crate) fn picture_doc(text: &str, referenced: bool) -> (Vec<u8>, Vec<u8>) {
+pub(super) const WHITE: [u8; 3] = [255, 255, 255];
+
+pub(super) fn png(color: [u8; 3]) -> Vec<u8> {
     let mut output = Cursor::new(Vec::new());
-    image::RgbImage::from_pixel(1, 1, image::Rgb([255, 255, 255]))
+    image::RgbImage::from_pixel(1, 1, image::Rgb(color))
         .write_to(&mut output, image::ImageFormat::Png)
         .expect("PNG pixel");
-    let png = output.into_inner();
+    output.into_inner()
+}
+
+pub(crate) fn picture_doc(text: &str, referenced: bool) -> (Vec<u8>, Vec<u8>) {
+    let png = png(WHITE);
     (picture_doc_with_png(text, referenced, &png), png)
 }
 
@@ -156,12 +162,12 @@ async fn should_reject_doc_picture_when_content_budget_is_exceeded() {
     assert!(matches!(result, Err(crate::XbergError::Validation { .. })));
 }
 
-fn image_config() -> ExtractionConfig {
+pub(super) fn image_config() -> ExtractionConfig {
     serde_json::from_value(serde_json::json!({"images": {"extract_images": true}, "use_cache": false}))
         .expect("image config")
 }
 
-fn change_stream(bytes: Vec<u8>, path: &str, change: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+pub(super) fn change_stream(bytes: Vec<u8>, path: &str, change: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
     let mut comp = cfb::CompoundFile::open(Cursor::new(bytes)).expect("CFB");
     let mut stream = Vec::new();
     comp.open_stream(path)
@@ -197,34 +203,18 @@ async fn should_keep_unicode_and_spaces_around_same_paragraph_picture() {
 }
 
 #[tokio::test]
-async fn should_warn_about_floating_doc_pictures_only_when_requested() {
-    let (bytes, _) = picture_doc("BEFORE\r\x08\rAFTER\r", false);
-    for requested in [false, true] {
-        let config = if requested {
-            image_config()
-        } else {
-            ExtractionConfig::default()
-        };
-        let doc = DocExtractor::new()
-            .extract_content(&bytes, "application/msword", &config)
-            .await
-            .expect("DOC");
-        assert_eq!(doc.images.len(), 0);
-        assert_eq!(
-            doc.processing_warnings
-                .iter()
-                .filter(|warning| warning.message.contains("Floating pictures"))
-                .count(),
-            usize::from(requested)
-        );
-        assert_eq!(
-            doc.elements
-                .iter()
-                .map(|element| element.text.as_str())
-                .collect::<Vec<_>>(),
-            ["BEFORE", "AFTER"]
-        );
-    }
+async fn should_warn_that_an_inline_picture_without_a_blip_holds_no_image_data() {
+    let (bytes, _) = picture_doc("BEFORE\r\x01\rAFTER\r", true);
+    let bytes = change_stream(bytes, "/Data", |stream| {
+        stream[78..80].copy_from_slice(&0xf00du16.to_le_bytes())
+    });
+    let doc = DocExtractor::new()
+        .extract_content(&bytes, "application/msword", &image_config())
+        .await
+        .expect("partial DOC");
+    assert_eq!(doc.images.len(), 0);
+    assert_eq!(doc.processing_warnings.len(), 1);
+    assert!(doc.processing_warnings[0].message.contains("no image data"));
 }
 
 #[tokio::test]
@@ -418,29 +408,38 @@ async fn should_warn_and_preserve_native_text_for_unsupported_dib_picture() {
 
 #[tokio::test]
 async fn should_warn_about_subdocument_pictures_without_losing_native_text() {
-    let bytes = super::tests::build_synthetic_doc(&super::tests::SyntheticDoc {
-        body: "BEFORE\r",
-        footnotes: &["NOTE\x01\r"],
-        header_stories: &[],
-        comments: &[],
-        plcf_hdd: super::tests::PlcKind::Valid,
-        note_plcs: super::tests::PlcKind::Valid,
-    });
-    let doc = DocExtractor::new()
-        .extract_content(&bytes, "application/msword", &image_config())
-        .await
-        .expect("partial DOC");
-    assert_eq!(doc.images.len(), 0);
-    assert!(
-        doc.processing_warnings
-            .iter()
-            .any(|warning| warning.message.contains("pictures in DOC subdocuments"))
-    );
-    assert!(doc.elements.iter().any(|element| element.text == "BEFORE"));
-    assert!(doc.elements.iter().any(|element| element.text.contains("NOTE")));
+    // An inline picture and a floating shape anchor. ~keep
+    for footnote in ["NOTE\x01\r", "NOTE\x08\r"] {
+        let bytes = super::tests::build_synthetic_doc(&super::tests::SyntheticDoc {
+            body: "BEFORE\r",
+            footnotes: &[footnote],
+            header_stories: &[],
+            comments: &[],
+            plcf_hdd: super::tests::PlcKind::Valid,
+            note_plcs: super::tests::PlcKind::Valid,
+        });
+        let doc = DocExtractor::new()
+            .extract_content(&bytes, "application/msword", &image_config())
+            .await
+            .expect("partial DOC");
+        assert_eq!(doc.images.len(), 0, "{footnote:?}");
+        assert!(
+            doc.processing_warnings
+                .iter()
+                .any(|warning| warning.message.contains("pictures in DOC subdocuments")),
+            "{footnote:?}"
+        );
+        assert!(doc.elements.iter().any(|element| element.text == "BEFORE"));
+        assert!(doc.elements.iter().any(|element| element.text.contains("NOTE")));
+    }
 }
 
-fn with_paragraph_property(bytes: Vec<u8>, text: &str, property: &[u8]) -> Vec<u8> {
+/// `sprmPFInTable` and `sprmPIlfo`: paragraph properties that put a paragraph in a table
+/// cell or an automatic list.
+pub(super) const IN_TABLE: [u8; 3] = [0x16, 0x24, 1];
+pub(super) const IN_LIST: [u8; 4] = [0x0b, 0x46, 1, 0];
+
+pub(super) fn with_paragraph_property(bytes: Vec<u8>, text: &str, property: &[u8]) -> Vec<u8> {
     let mut table_offset = 0;
     let end = 1024 + text.encode_utf16().count() as u32 * 2;
     let bytes = change_stream(bytes, "/1Table", |table| {
@@ -465,12 +464,10 @@ fn with_paragraph_property(bytes: Vec<u8>, text: &str, property: &[u8]) -> Vec<u
 
 #[tokio::test]
 async fn should_warn_for_table_and_list_pictures_including_an_empty_list_item() {
-    let table = [0x16, 0x24, 1];
-    let list = [0x0b, 0x46, 1, 0];
     for (text, property) in [
-        ("BEFORE\x01\r", table.as_slice()),
-        ("BEFORE\x01\r", list.as_slice()),
-        ("\x01\r", list.as_slice()),
+        ("BEFORE\x01\r", IN_TABLE.as_slice()),
+        ("BEFORE\x01\r", IN_LIST.as_slice()),
+        ("\x01\r", IN_LIST.as_slice()),
     ] {
         let (bytes, _) = picture_doc(text, true);
         let bytes = with_paragraph_property(bytes, text, property);
