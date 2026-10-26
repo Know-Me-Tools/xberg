@@ -52,6 +52,10 @@ includes:
     taskfile: ./.task/tools/general.yml
     flatten: true
 
+vars:
+  AI_RULEZ: "ai-rulez"
+  AI_RULEZ_VERSION: "5.7.0"
+
 tasks:
   ffi:verify:declarations:
     desc: "Test the FFI parity checker and compare C# and Java against the C header"
@@ -276,15 +280,32 @@ tasks:
       - task: format:check
       - task: lint:check
 
+  governance:test:
+    desc: "Test governance runtime version enforcement"
+    cmds:
+      - python3 scripts/tests/test_governance_runtime.py
+
+  governance:runtime:
+    internal: true
+    cmds:
+      - |
+        installed_version="$("{{.AI_RULEZ}}" --version)"
+        if [ "$installed_version" != "ai-rulez version {{.AI_RULEZ_VERSION}}" ]; then
+          printf '%s\n' "This checkout requires ai-rulez {{.AI_RULEZ_VERSION}}; found $installed_version" >&2
+          exit 1
+        fi
+
   governance:generate:
     desc: "Generate local AI governance files with the reviewed ai-rulez CLI"
+    deps: [governance:runtime]
     cmds:
-      - ai-rulez generate
+      - '"{{.AI_RULEZ}}" generate'
 
   governance:validate:
     desc: "Validate the root AI governance configuration"
+    deps: [governance:runtime]
     cmds:
-      - ai-rulez validate
+      - '"{{.AI_RULEZ}}" validate'
 
   governance:verify:
     desc: "Validate that AI governance inputs resolve and render without modifying the checkout"
@@ -298,7 +319,7 @@ tasks:
         cp -R .ai-rulez "$governance_verify_root/.ai-rulez"
         (
           cd "$governance_verify_root"
-          ai-rulez generate --no-self-mcp --quiet
+          "{{.AI_RULEZ}}" generate --no-self-mcp --quiet
         )
 
   check:android:
@@ -736,6 +757,7 @@ tasks:
 
   governance:hooks:install:
     desc: Provision machine preferences and install reviewed AI governance hooks
+    deps: [governance:runtime]
     cmds:
       - |
         python3 - <<'PYTHON'
@@ -763,8 +785,9 @@ tasks:
 
   governance:check:
     desc: Check materialized local governance outputs against shared sources
+    deps: [governance:runtime]
     cmds:
-      - ai-rulez generate --check --no-local --strict-config
+      - '"{{.AI_RULEZ}}" generate --check --no-local --strict-config'
 
   plugin:skills:test:
     desc: Verify public skill ownership and resource freshness
