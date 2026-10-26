@@ -22,6 +22,7 @@ use parking_lot::Mutex;
 
 use crate::Result;
 use crate::engine::structured::rasterize::{PageImage, RasterizeError, render_all_pages};
+use crate::extractors::security::SecurityLimits;
 
 /// MIME type reported for PDF documents.
 const PDF_MIME: &str = "application/pdf";
@@ -35,6 +36,7 @@ pub struct ParsedDocument {
     mime_type: String,
     page_count: u32,
     source: Arc<[u8]>,
+    security_limits: SecurityLimits,
     /// Memoized `(dpi, pages)` from the last render. A render at a different DPI
     /// replaces it (a single operation renders at one DPI).
     rendered: Mutex<Option<(u32, Vec<PageImage>)>>,
@@ -49,6 +51,19 @@ impl ParsedDocument {
     ///
     /// Propagates MIME-detection and PDF page-count failures.
     pub fn from_bytes(source: Arc<[u8]>) -> Result<Self> {
+        Self::from_bytes_with_security_limits(source, &SecurityLimits::default())
+    }
+
+    /// Build a memo with caller-selected image decoding and PNG encoding limits.
+    ///
+    /// The limits are captured for this operation and its render cache. Only
+    /// `max_content_size` applies to images; PDF rendering keeps its existing
+    /// behavior and does not enforce these page or memory limits.
+    ///
+    /// # Errors
+    ///
+    /// Propagates MIME-detection and PDF page-count failures.
+    pub fn from_bytes_with_security_limits(source: Arc<[u8]>, security_limits: &SecurityLimits) -> Result<Self> {
         let mime_type = crate::core::mime::detect_mime_type_from_bytes(&source)?;
         let page_count = if mime_type.eq_ignore_ascii_case(PDF_MIME) {
             crate::pdf::render::pdf_page_count(&source, None)? as u32
@@ -59,6 +74,7 @@ impl ParsedDocument {
             mime_type,
             page_count,
             source,
+            security_limits: security_limits.clone(),
             rendered: Mutex::new(None),
         })
     }
@@ -91,7 +107,7 @@ impl ParsedDocument {
         {
             return Ok(pages.clone());
         }
-        let pages = render_all_pages(&self.source, &self.mime_type, dpi)?;
+        let pages = render_all_pages(&self.source, &self.mime_type, dpi, &self.security_limits)?;
         *guard = Some((dpi, pages.clone()));
         Ok(pages)
     }
@@ -148,7 +164,8 @@ mod tests {
             "second call returns the memoized PNG"
         );
 
-        let direct = render_all_pages(&png, "image/png", DPI).expect("direct rasterize succeeds");
+        let direct =
+            render_all_pages(&png, "image/png", DPI, &SecurityLimits::default()).expect("direct rasterize succeeds");
         assert_eq!(direct.len(), 1, "direct render yields one page");
         assert_eq!(
             first[0].png_bytes, direct[0].png_bytes,

@@ -13,6 +13,7 @@ use std::io::Cursor;
 
 use thiserror::Error;
 
+use crate::extractors::security::SecurityLimits;
 use crate::heuristics::StructuredCallMode;
 
 /// A rendered page ready for inline-base64 transport to the vision model.
@@ -51,6 +52,21 @@ pub async fn pages_for_call(
     mode: StructuredCallMode,
     dpi: u32,
 ) -> Result<Vec<PageImage>, RasterizeError> {
+    pages_for_call_with_security_limits(bytes, mime, mode, dpi, &SecurityLimits::default()).await
+}
+
+/// Render pages with caller-selected image decoding and PNG encoding limits.
+///
+/// Only `max_content_size` applies to image inputs. PDF rendering retains its
+/// existing behavior; this method does not enforce PDF page or memory limits.
+/// Nonvision call modes return without decoding, regardless of the limits.
+pub async fn pages_for_call_with_security_limits(
+    bytes: &[u8],
+    mime: &str,
+    mode: StructuredCallMode,
+    dpi: u32,
+    security_limits: &SecurityLimits,
+) -> Result<Vec<PageImage>, RasterizeError> {
     let pages = match mode {
         StructuredCallMode::Skip | StructuredCallMode::TextOnly | StructuredCallMode::TextOnlyWithVisionFallback => {
             Vec::new()
@@ -58,15 +74,16 @@ pub async fn pages_for_call(
         StructuredCallMode::VisionOnly | StructuredCallMode::TextPlusVision => {
             let bytes = bytes.to_vec();
             let mime = mime.to_string();
+            let security_limits = security_limits.clone();
             #[cfg(feature = "tokio-runtime")]
             {
-                tokio::task::spawn_blocking(move || render_all_pages(&bytes, &mime, dpi))
+                tokio::task::spawn_blocking(move || render_all_pages(&bytes, &mime, dpi, &security_limits))
                     .await
                     .map_err(|e| RasterizeError::Pdf(format!("rasterization task failed: {e}")))??
             }
             #[cfg(not(feature = "tokio-runtime"))]
             {
-                render_all_pages(&bytes, &mime, dpi)?
+                render_all_pages(&bytes, &mime, dpi, &security_limits)?
             }
         }
     };
@@ -80,12 +97,17 @@ pub async fn pages_for_call(
 ///
 /// This is the rendering primitive behind both [`pages_for_call`] and the
 /// [`ParsedDocument`](crate::engine::parsed::ParsedDocument) render memo.
-pub(crate) fn render_all_pages(bytes: &[u8], mime: &str, dpi: u32) -> Result<Vec<PageImage>, RasterizeError> {
+pub(crate) fn render_all_pages(
+    bytes: &[u8],
+    mime: &str,
+    dpi: u32,
+    security_limits: &SecurityLimits,
+) -> Result<Vec<PageImage>, RasterizeError> {
     let mime_lc = mime.to_ascii_lowercase();
     if mime_lc == "application/pdf" {
         render_pdf(bytes, dpi)
     } else if mime_lc.starts_with("image/") {
-        render_image(bytes)
+        render_image(bytes, security_limits)
     } else {
         Err(RasterizeError::UnsupportedMime(mime.into()))
     }
@@ -113,17 +135,14 @@ fn render_pdf(bytes: &[u8], dpi: u32) -> Result<Vec<PageImage>, RasterizeError> 
     Ok(pages)
 }
 
-fn render_image(bytes: &[u8]) -> Result<Vec<PageImage>, RasterizeError> {
-    let img = crate::extraction::image_decode::decode_standard_image_with_security_limits(
-        bytes,
-        &crate::extractors::security::SecurityLimits::default(),
-    )
-    .map_err(|error| RasterizeError::Image(format!("failed to decode image: {error}")))?;
+fn render_image(bytes: &[u8], security_limits: &SecurityLimits) -> Result<Vec<PageImage>, RasterizeError> {
+    let img = crate::extraction::image_decode::decode_standard_image_with_security_limits(bytes, security_limits)
+        .map_err(|error| RasterizeError::Image(format!("failed to decode image: {error}")))?;
     const PNG_ENCODE_BYTES_PER_PIXEL: u64 = 4;
     const PNG_ENCODE_FIXED_OVERHEAD_BYTES: u64 = 256 * 1024;
     crate::extraction::image_decode::validate_dynamic_image_additional_live_bytes(
         &img,
-        &crate::extractors::security::SecurityLimits::default(),
+        security_limits,
         PNG_ENCODE_BYTES_PER_PIXEL,
         PNG_ENCODE_FIXED_OVERHEAD_BYTES,
     )
@@ -183,7 +202,7 @@ mod tests {
     fn image_rasterization_rejects_oversized_declared_dimensions_before_decode() {
         let bytes = crate::extraction::image_decode::bmp_with_declared_dimensions(6000, 6000);
 
-        let error = render_all_pages(&bytes, "image/bmp", 200)
+        let error = render_all_pages(&bytes, "image/bmp", 200, &SecurityLimits::default())
             .expect_err("structured image rasterization must use the default decode budget");
 
         assert!(matches!(error, RasterizeError::Image(_)));
@@ -216,7 +235,8 @@ mod tests {
         const DPI: u32 = 200;
         let pdf = crate::pdf::render::build_minimal_pdf_with_mediabox(612.0, 792.0);
 
-        let pages = render_all_pages(&pdf, "application/pdf", DPI).expect("render_all_pages should succeed");
+        let pages = render_all_pages(&pdf, "application/pdf", DPI, &SecurityLimits::default())
+            .expect("render_all_pages should succeed");
         assert_eq!(pages.len(), 1, "single-page PDF must yield exactly one page");
         assert_eq!(pages[0].page_number, 1, "page numbering must be 1-based");
         assert!(pages[0].png_bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]), "PNG magic");
@@ -229,3 +249,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "rasterize_security_tests.rs"]
+mod security_tests;

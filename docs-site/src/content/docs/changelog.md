@@ -64,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(structured): Rust callers can select image rasterization security limits for trusted large photos.**
+  `pages_for_call_with_security_limits` and `ParsedDocument::from_bytes_with_security_limits` retain caller budgets
+  through image decoding, PNG encoding and per-operation render caches; existing APIs keep their default limits. (#2283)
 - **(pdf): Preserve superscript exponents and subscripts in native PDF prose Markdown.**
   Explicit text rise and positioned scripts retain inline annotations; confirmed numeric footnotes remain separated. (#2275)
 
