@@ -150,6 +150,11 @@ tasks:
       - cmd: bash scripts/ci/rust/run-unit-tests.sh
         platforms: [linux, darwin]
 
+  test:email:
+    desc: "Run library tests with only the email feature enabled"
+    cmds:
+      - cargo test --locked -p xberg --no-default-features --features email --lib
+
   test:mime:
     desc: "Verify MIME declaration handling without tree-sitter"
     cmds:
@@ -172,6 +177,11 @@ tasks:
     cmds:
       - cargo fmt --all
       - cargo clippy --workspace --fix --allow-dirty --allow-staged --exclude xberg-php --exclude xberg-node --exclude xberg-wasm
+
+  lint:email:
+    desc: "Lint all targets with only the email feature enabled"
+    cmds:
+      - cargo clippy --locked -p xberg --no-default-features --features email --all-targets -- -D warnings
 
   lint:check:
     desc: "Lint Rust code WITHOUT auto-fix (check-only)"

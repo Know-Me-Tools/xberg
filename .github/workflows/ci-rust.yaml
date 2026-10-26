@@ -554,9 +554,8 @@ jobs:
   # own real, independent result.
   #
   # No install-system-deps / setup-onnx-runtime / setup-tesseract-cache: none of these
-  # three feature sets pull ORT, Tesseract, or libheif, so this job stays cheap --
-  # `cargo check` (not build/test/clippy) against three feature closures that mostly
-  # reuse each other's dependency graph, on cached sccache artifacts.
+  # feature sets pull ORT, Tesseract, or libheif. The email leg lints test targets
+  # without Tokio so fixture constants gated wider than their callers fail CI (#2281). ~keep
   narrow-feature-legs:
     name: Narrow feature leg (${{ matrix.name }})
     if: github.repository == 'xberg-io/xberg' && github.actor != 'dependabot[bot]' && github.event.pull_request.draft != true
@@ -572,6 +571,8 @@ jobs:
             features: no-ort-target
           - name: formats-no-heic
             features: formats-no-heic
+          - name: email
+            features: email
     steps:
       - uses: actions/checkout@v7
         with:
@@ -584,7 +585,17 @@ jobs:
           use-sccache: "true"
 
       - name: cargo check -p xberg --no-default-features --features ${{ matrix.name }} --all-targets
+        if: matrix.name != 'email'
         run: cargo check --locked -p xberg --no-default-features --features "${{ matrix.features }}" --all-targets
+        shell: bash
+
+      - name: Install Task
+        if: matrix.name == 'email'
+        uses: xberg-io/actions/install-task@v1
+
+      - name: Clippy email without Tokio
+        if: matrix.name == 'email'
+        run: task rust:lint:email
         shell: bash
 
   # GH#2085: chunking cost must stay linear in document size. The `chunking_pipeline` tests

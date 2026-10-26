@@ -743,6 +743,7 @@ Subject: Nested\r\n\
 Nested body\r\n\
 --digest--\r\n";
 
+    #[cfg(feature = "tokio-runtime")]
     const IMPLICIT_NESTED_MESSAGE_EML: &[u8] = b"From: digest@example.com\r\n\
 Subject: Digest\r\n\
 MIME-Version: 1.0\r\n\
@@ -756,6 +757,7 @@ Subject: Implicit Nested\r\n\
 Implicit nested body\r\n\
 --digest--\r\n";
 
+    #[cfg(feature = "tokio-runtime")]
     const TEXT_ATTACHMENT_EML: &[u8] = b"From: Alice <alice@example.com>\r\n\
 Subject: Attachment\r\n\
 MIME-Version: 1.0\r\n\
