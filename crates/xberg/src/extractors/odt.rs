@@ -473,6 +473,130 @@ fn extract_frame_description(frame: roxmltree::Node) -> Option<String> {
     None
 }
 
+/// The trimmed LaTeX of the embedded formula object a `draw:frame` holds, if it has one. A formula
+/// whose LaTeX is only whitespace is `Some("")`: it adds nothing, and its frame's replacement image
+/// is not a picture.
+fn frame_formula<'a>(frame: roxmltree::Node, formula_data: &'a AHashMap<String, String>) -> Option<&'a str> {
+    frame
+        .children()
+        .filter(|child| child.tag_name().name() == "object")
+        .filter_map(|object| {
+            object
+                .attribute(("http://www.w3.org/1999/xlink", "href"))
+                .or_else(|| object.attribute("xlink:href"))
+        })
+        .find_map(|href| formula_data.get(href.trim_start_matches("./")))
+        .map(|latex| latex.trim())
+}
+
+/// The LaTeX of a formula frame anchored as a character, which sits in its line of text.
+fn inline_frame_formula<'a>(node: roxmltree::Node, formula_data: &'a AHashMap<String, String>) -> Option<&'a str> {
+    let anchor = node
+        .attribute(("urn:oasis:names:tc:opendocument:xmlns:text:1.0", "anchor-type"))
+        .or_else(|| node.attribute("text:anchor-type"));
+    if node.tag_name().name() == "frame" && anchor == Some("as-char") {
+        frame_formula(node, formula_data)
+    } else {
+        None
+    }
+}
+
+/// What a paragraph or heading holds in its own line, outside its notes, comments, text boxes and dropped fields
+/// (`is_odf_dropped_field`), whose text is written elsewhere or not at all.
+#[derive(Default)]
+struct OwnLine<'a, 'input> {
+    /// Whether the line has a character that is not whitespace, punctuation or part of an equation number.
+    worded: bool,
+    /// The line's other characters, kept until it is `worded`.
+    marks: String,
+    /// The frames outside notes, comments and dropped fields, each flagged when it sits in the line itself.
+    frames: Vec<(roxmltree::Node<'a, 'input>, bool)>,
+}
+
+impl OwnLine<'_, '_> {
+    fn read(&mut self, text: &str) {
+        for c in text.chars().filter(|c| !c.is_whitespace()) {
+            if self.worded {
+                return;
+            }
+            if matches!(c, '0'..='9' | '.' | ',' | ';' | ':' | '(' | ')' | '[' | ']') {
+                self.marks.push(c);
+            } else {
+                self.worded = true;
+            }
+        }
+    }
+
+    /// Whether the line has text of its own beside its frames. LibreOffice anchors a formula alone in its
+    /// paragraph as a character too, and that one is a display equation, as is one beside only its number or
+    /// the punctuation typed after it: a numbered equation is written
+    /// `<text:tab/>{formula}<text:tab/>(<text:sequence>1</text:sequence>)`.
+    fn has_text(&self) -> bool {
+        let marks = self.marks.trim_matches(|c| matches!(c, '.' | ',' | ';' | ':'));
+        self.worded || !(marks.is_empty() || is_equation_number(marks))
+    }
+}
+
+/// Walk a paragraph or heading's line once, spending a nesting level per element level as `collect_inline_run`
+/// does, so a line too deep for the budget stops here as it would there rather than being walked whole. Notes,
+/// comments and dropped fields are not entered: neither walk writes them into the line.
+fn walk_own_line<'a, 'input>(
+    node: roxmltree::Node<'a, 'input>,
+    in_line: bool,
+    line: &mut OwnLine<'a, 'input>,
+    budget: &mut SecurityBudget,
+) -> crate::error::Result<()> {
+    for child in node.children() {
+        let name = child.tag_name().name();
+        if child.is_text() {
+            if in_line {
+                line.read(child.text().unwrap_or_default());
+            }
+            continue;
+        }
+        if matches!(name, "note" | "annotation") || is_odf_dropped_field(name) {
+            continue;
+        }
+        if name == "frame" {
+            // Punctuation before a formula separates it from what came before, so it is the line's own text;
+            // only the punctuation after the last formula belongs to the equation. ~keep
+            line.worded |= in_line && line.marks.contains([',', ';', ':']);
+            line.frames.push((child, in_line));
+        }
+        let child_in_line = in_line && !matches!(name, "frame" | "text-box");
+        if child.children().all(|grandchild| grandchild.is_text()) {
+            if child_in_line {
+                for grandchild in child.children() {
+                    line.read(grandchild.text().unwrap_or_default());
+                }
+            }
+        } else {
+            with_nested_budget(budget, |budget| walk_own_line(child, child_in_line, line, budget))?;
+        }
+    }
+    Ok(())
+}
+
+fn own_line<'a, 'input>(
+    node: roxmltree::Node<'a, 'input>,
+    budget: &mut SecurityBudget,
+) -> crate::error::Result<OwnLine<'a, 'input>> {
+    let mut line = OwnLine::default();
+    walk_own_line(node, true, &mut line, budget)?;
+    Ok(line)
+}
+
+/// Whether `text` is an equation number such as `(1)`, `(2.3)` or `[4]`: digits and dots in brackets.
+fn is_equation_number(text: &str) -> bool {
+    let inner = text
+        .strip_prefix('(')
+        .and_then(|rest| rest.strip_suffix(')'))
+        .or_else(|| text.strip_prefix('[').and_then(|rest| rest.strip_suffix(']')));
+    inner.is_some_and(|inner| {
+        inner.starts_with(|c: char| c.is_ascii_digit()) && inner.chars().all(|c| c.is_ascii_digit() || c == '.')
+    })
+}
+
 /// Process a single `draw:frame`: an embedded formula object takes priority,
 /// otherwise any `draw:image` inside is resolved against the pre-extracted
 /// image map (or emitted as a text placeholder when unresolvable).
@@ -488,24 +612,10 @@ fn handle_odt_frame(
 ) {
     use crate::types::internal::{ElementKind, InternalElement};
 
-    let mut is_formula = false;
-    for frame_child in frame.children() {
-        if frame_child.tag_name().name() == "object" {
-            let obj_href = frame_child
-                .attribute(("http://www.w3.org/1999/xlink", "href"))
-                .or_else(|| frame_child.attribute("xlink:href"));
-            if let Some(href) = obj_href {
-                let normalized = href.trim_start_matches("./");
-                if let Some(formula_text) = formula_data.get(normalized) {
-                    builder.push_formula(formula_text, None, None);
-                    is_formula = true;
-                    break;
-                }
-            }
+    if let Some(formula_text) = frame_formula(frame, formula_data) {
+        if !formula_text.is_empty() {
+            builder.push_formula(formula_text, None, None);
         }
-    }
-
-    if is_formula {
         return;
     }
 
@@ -814,19 +924,7 @@ pub(crate) fn build_internal_elements(
             }
             "change-end" => {}
             "h" => {
-                let (text, _annotations, uris) = collect_odt_annotations(node, style_map, budget)?;
-                for uri in uris {
-                    builder.push_uri(uri);
-                }
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    budget.account_text(trimmed.len())?;
-                    let level = node
-                        .attribute(("urn:oasis:names:tc:opendocument:xmlns:text:1.0", "outline-level"))
-                        .and_then(|v| v.parse::<u8>().ok())
-                        .unwrap_or(1);
-                    builder.push_heading(level, trimmed, None, None);
-                }
+                push_odt_heading(node, builder, style_map, formula_data, budget)?;
                 paragraph_index += 1;
             }
             "frame" => {
@@ -851,10 +949,24 @@ pub(crate) fn build_internal_elements(
             }
             "p" => {
                 let mut footnote_markers: Vec<(String, String)> = Vec::new();
+                let line = own_line(node, budget)?;
+                let inline_formulas = line.has_text().then_some(formula_data);
+                let in_line: ahash::AHashSet<roxmltree::NodeId> = line
+                    .frames
+                    .iter()
+                    .filter(|(_, in_line)| *in_line)
+                    .map(|(frame, _)| frame.id())
+                    .collect();
 
                 for desc in node.descendants() {
-                    if desc.tag_name().name() == "frame" {
-                        handle_odt_frame(desc, image_data, formula_data, builder);
+                    if desc.tag_name().name() != "frame" {
+                        continue;
+                    }
+                    let inline = inline_formulas.filter(|_| in_line.contains(&desc.id()));
+                    match inline.and_then(|formulas| inline_frame_formula(desc, formulas)) {
+                        // `formulas` lists these after the formula blocks (`derive_formulas`), not by position. ~keep
+                        Some(latex) => builder.record_formula(latex, None),
+                        None => handle_odt_frame(desc, image_data, formula_data, builder),
                     }
                 }
 
@@ -941,7 +1053,7 @@ pub(crate) fn build_internal_elements(
                     builder.set_layer(def_idx, ContentLayer::Footnote);
                 }
 
-                let (mut text, annotations, uris) = collect_odt_annotations(node, style_map, budget)?;
+                let (mut text, annotations, uris) = collect_odt_annotations(node, style_map, inline_formulas, budget)?;
                 for uri in uris {
                     builder.push_uri(uri);
                 }
@@ -949,7 +1061,8 @@ pub(crate) fn build_internal_elements(
                 for frame in node.children().filter(|n| n.tag_name().name() == "frame") {
                     for text_box in frame.children().filter(|n| n.tag_name().name() == "text-box") {
                         for nested_p in text_box.children().filter(|n| n.tag_name().name() == "p") {
-                            let (caption, _, caption_uris) = collect_odt_annotations(nested_p, style_map, budget)?;
+                            let (caption, _, caption_uris) =
+                                collect_odt_annotations(nested_p, style_map, None, budget)?;
                             for uri in caption_uris {
                                 builder.push_uri(uri);
                             }
@@ -964,7 +1077,7 @@ pub(crate) fn build_internal_elements(
                     }
                 }
 
-                let trimmed = text.trim();
+                let (trimmed, annotations) = crate::types::builder::trim_text_and_annotations(&text, annotations);
                 if !trimmed.is_empty() {
                     budget.account_text(trimmed.len())?;
                     builder.push_paragraph(trimmed, annotations, None, None);
@@ -1030,6 +1143,53 @@ pub(crate) fn build_internal_elements(
                 }
             }
             _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Push a `text:h` heading. A heading with text of its own keeps an as-char formula in that text, as a
+/// paragraph does; any other formula in its line follows it as a block, so the equation stays in the heading's
+/// section. A heading's notes and comments are not written, so a formula inside one is left out with them.
+fn push_odt_heading(
+    node: roxmltree::Node,
+    builder: &mut InternalDocumentBuilder,
+    style_map: &AHashMap<String, OdtStyleProps>,
+    formula_data: &AHashMap<String, String>,
+    budget: &mut SecurityBudget,
+) -> crate::error::Result<()> {
+    let line = own_line(node, budget)?;
+    let inline_formulas = line.has_text().then_some(formula_data);
+    let (text, annotations, uris) = collect_odt_annotations(node, style_map, inline_formulas, budget)?;
+    for uri in uris {
+        builder.push_uri(uri);
+    }
+    let (trimmed, mut annotations) = crate::types::builder::trim_text_and_annotations(&text, annotations);
+    if !trimmed.is_empty() {
+        budget.account_text(trimmed.len())?;
+        let level = node
+            .attribute(("urn:oasis:names:tc:opendocument:xmlns:text:1.0", "outline-level"))
+            .and_then(|v| v.parse::<u8>().ok())
+            .unwrap_or(1);
+        let index = builder.push_heading(level, trimmed, None, None);
+        // Only the math: ODT headings carry no span-style or link annotations. ~keep
+        annotations.retain(|span| span.kind.math_display().is_some());
+        if !annotations.is_empty() {
+            builder.set_annotations(index, annotations);
+        }
+    }
+    for &(frame, in_line) in &line.frames {
+        match inline_formulas
+            .filter(|_| in_line)
+            .and_then(|formulas| inline_frame_formula(frame, formulas))
+        {
+            Some(latex) => builder.record_formula(latex, None),
+            None => {
+                let latex = frame_formula(frame, formula_data).unwrap_or_default();
+                if !latex.is_empty() {
+                    builder.push_formula(latex, None, None);
+                }
+            }
         }
     }
     Ok(())
@@ -1200,13 +1360,18 @@ fn extract_odt_internal_headers_footers(
 fn collect_odt_annotations(
     node: roxmltree::Node,
     style_map: &AHashMap<String, OdtStyleProps>,
+    inline_formulas: Option<&AHashMap<String, String>>,
     budget: &mut SecurityBudget,
 ) -> crate::error::Result<(String, Vec<crate::types::TextAnnotation>, Vec<ExtractedUri>)> {
     let mut text = String::new();
     let mut annotations = Vec::new();
     let mut uris = Vec::new();
+    let sources = InlineSources {
+        style_map,
+        inline_formulas,
+    };
 
-    collect_inline_run(node, style_map, &mut text, &mut annotations, &mut uris, budget)?;
+    collect_inline_run(node, sources, &mut text, &mut annotations, &mut uris, budget)?;
 
     if text.is_empty()
         && let Some(t) = node.text()
@@ -1215,6 +1380,14 @@ fn collect_odt_annotations(
     }
 
     Ok((text, annotations, uris))
+}
+
+/// What an inline walk reads: the span styles, and the formulas written into the text where their as-char
+/// frame sits, or `None` where every formula frame is a block of its own.
+#[derive(Clone, Copy)]
+struct InlineSources<'a> {
+    style_map: &'a AHashMap<String, OdtStyleProps>,
+    inline_formulas: Option<&'a AHashMap<String, String>>,
 }
 
 /// Recursively walk the inline children of a paragraph/heading/span/anchor
@@ -1227,7 +1400,7 @@ fn collect_odt_annotations(
 /// before this fix (#93, #94).
 fn collect_inline_run(
     node: roxmltree::Node,
-    style_map: &AHashMap<String, OdtStyleProps>,
+    sources: InlineSources,
     text: &mut String,
     annotations: &mut Vec<crate::types::TextAnnotation>,
     uris: &mut Vec<ExtractedUri>,
@@ -1237,11 +1410,28 @@ fn collect_inline_run(
     use crate::types::document_structure::{AnnotationKind, TextAnnotation};
 
     for child in node.children() {
+        if let Some(latex) = sources
+            .inline_formulas
+            .and_then(|formulas| inline_frame_formula(child, formulas))
+        {
+            if !latex.is_empty() {
+                let start = text.len() as u32;
+                text.push('$');
+                text.push_str(latex);
+                text.push('$');
+                annotations.push(TextAnnotation {
+                    start,
+                    end: text.len() as u32,
+                    kind: AnnotationKind::math(false),
+                });
+            }
+            continue;
+        }
         match child.tag_name().name() {
             "span" => {
                 let start = text.len() as u32;
                 with_nested_budget(budget, |budget| {
-                    collect_inline_run(child, style_map, text, annotations, uris, budget)
+                    collect_inline_run(child, sources, text, annotations, uris, budget)
                 })?;
                 let end = text.len() as u32;
                 if end == start {
@@ -1252,7 +1442,7 @@ fn collect_inline_run(
                     .attribute(("urn:oasis:names:tc:opendocument:xmlns:text:1.0", "style-name"))
                     .or_else(|| child.attribute("text:style-name"));
                 if let Some(name) = style_name
-                    && let Some(props) = style_map.get(name)
+                    && let Some(props) = sources.style_map.get(name)
                 {
                     if props.bold {
                         annotations.push(builder::bold(start, end));
@@ -1313,7 +1503,7 @@ fn collect_inline_run(
             "a" => {
                 let start = text.len() as u32;
                 with_nested_budget(budget, |budget| {
-                    collect_inline_run(child, style_map, text, annotations, uris, budget)
+                    collect_inline_run(child, sources, text, annotations, uris, budget)
                 })?;
                 let end = text.len() as u32;
                 if end == start {
@@ -1356,8 +1546,16 @@ fn collect_inline_run(
                     // `text:bookmark-ref`): recurse rather than keep only its
                     // first text node, which drops everything after a nested
                     // element.
+                    // A formula in a text box inside the paragraph is a block of its own (`walk_own_line`). ~keep
+                    let sources = match child.tag_name().name() {
+                        "frame" | "text-box" => InlineSources {
+                            inline_formulas: None,
+                            ..sources
+                        },
+                        _ => sources,
+                    };
                     with_nested_budget(budget, |budget| {
-                        collect_inline_run(child, style_map, text, annotations, uris, budget)
+                        collect_inline_run(child, sources, text, annotations, uris, budget)
                     })?;
                 }
             }
@@ -1904,6 +2102,318 @@ mod tests {
         );
     }
 
+    fn extract_formula_odt(body: &str) -> InternalDocument {
+        try_extract_formula_odt(body).expect("extracts")
+    }
+
+    fn try_extract_formula_odt(body: &str) -> crate::error::Result<InternalDocument> {
+        let content = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content {CONTENT_XML_NAMESPACES}><office:body><office:text>{body}</office:text></office:body></office:document-content>"#
+        );
+        let mut archive = build_odt_zip(&[
+            ("content.xml", &content),
+            (
+                "Object 1/content.xml",
+                r#"<math xmlns="http://www.w3.org/1998/Math/MathML"><msup><mi>a</mi><mn>2</mn></msup></math>"#,
+            ),
+            (
+                "Object 2/content.xml",
+                r#"<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>y</mi></math>"#,
+            ),
+            (
+                "Object 3/content.xml",
+                r#"<math xmlns="http://www.w3.org/1998/Math/MathML"><mspace/></math>"#,
+            ),
+            (
+                "Object 4/content.xml",
+                r#"<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>&#x3B1;</mi></math>"#,
+            ),
+        ]);
+        let mut budget = SecurityBudget::with_defaults();
+        build_internal_document(&mut archive, &mut budget)
+    }
+
+    fn formula_frame(anchor: &str, object: u8) -> String {
+        format!(r#"<draw:frame text:anchor-type="{anchor}"><draw:object xlink:href="./Object {object}"/></draw:frame>"#)
+    }
+
+    fn formula_blocks(doc: &InternalDocument) -> Vec<(&'static str, &str)> {
+        use crate::types::internal::ElementKind;
+        doc.elements
+            .iter()
+            .filter_map(|element| {
+                let kind = match element.kind {
+                    ElementKind::Heading { .. } => "heading",
+                    ElementKind::Paragraph => "paragraph",
+                    ElementKind::Formula => "formula",
+                    ElementKind::ListItem { .. } => "list_item",
+                    _ => return None,
+                };
+                Some((kind, element.text.as_str()))
+            })
+            .collect()
+    }
+
+    fn math_spans(doc: &InternalDocument) -> Vec<&str> {
+        doc.elements
+            .iter()
+            .flat_map(|element| {
+                element
+                    .annotations
+                    .iter()
+                    .filter(|annotation| annotation.kind.math_display() == Some(false))
+                    .map(|annotation| {
+                        element
+                            .text
+                            .get(annotation.start as usize..annotation.end as usize)
+                            .expect("a math annotation on char boundaries")
+                    })
+            })
+            .collect()
+    }
+
+    fn recorded_latex(doc: &InternalDocument) -> Vec<&str> {
+        doc.recorded_formulas
+            .iter()
+            .map(|formula| formula.latex.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn test_inline_formula_stays_in_its_sentence() {
+        let doc = extract_formula_odt(&format!(
+            r#"<text:p>For a right triangle, {} holds.</text:p><text:p>{}</text:p>"#,
+            formula_frame("as-char", 1),
+            formula_frame("as-char", 2),
+        ));
+
+        assert_eq!(
+            formula_blocks(&doc),
+            [("paragraph", "For a right triangle, $a^{2}$ holds."), ("formula", "y")]
+        );
+        assert_eq!(math_spans(&doc), ["$a^{2}$"]);
+        assert_eq!(recorded_latex(&doc), ["a^{2}"]);
+        let markdown = crate::rendering::render_markdown(&doc);
+        assert!(
+            markdown.contains("For a right triangle, $`a^{2}`$ holds."),
+            "{markdown}"
+        );
+    }
+
+    #[test]
+    fn test_only_as_char_formulas_stay_in_the_sentence() {
+        for anchor in ["paragraph", "char", "frame", "page"] {
+            let doc = extract_formula_odt(&format!(r#"<text:p>Let {} be.</text:p>"#, formula_frame(anchor, 2)));
+            assert_eq!(
+                formula_blocks(&doc),
+                [("formula", "y"), ("paragraph", "Let  be.")],
+                "{anchor}"
+            );
+            assert!(doc.recorded_formulas.is_empty(), "{anchor}");
+        }
+    }
+
+    #[test]
+    fn test_several_inline_formulas_keep_their_places_in_spans_and_links() {
+        let doc = extract_formula_odt(&format!(
+            r#"<text:p>  <text:span text:style-name="B">Both {} and</text:span> {}, also <text:a xlink:href="https://example.com">{}</text:a>.</text:p>"#,
+            formula_frame("as-char", 1),
+            formula_frame("as-char", 2),
+            formula_frame("as-char", 1),
+        ));
+
+        assert_eq!(
+            formula_blocks(&doc),
+            [("paragraph", "Both $a^{2}$ and $y$, also $a^{2}$.")]
+        );
+        assert_eq!(math_spans(&doc), ["$a^{2}$", "$y$", "$a^{2}$"]);
+        assert_eq!(recorded_latex(&doc), ["a^{2}", "y", "a^{2}"]);
+    }
+
+    #[test]
+    fn test_formula_outside_the_sentence_stays_a_block() {
+        let in_note = extract_formula_odt(&format!(
+            r#"<text:p>See<text:note text:id="n1" text:note-class="footnote"><text:note-citation>1</text:note-citation><text:note-body><text:p>where {} is small</text:p></text:note-body></text:note>.</text:p>"#,
+            formula_frame("as-char", 2),
+        ));
+        assert_eq!(formula_blocks(&in_note)[0], ("formula", "y"));
+        assert!(math_spans(&in_note).is_empty());
+        assert!(in_note.recorded_formulas.is_empty());
+
+        let in_caption = extract_formula_odt(&format!(
+            r#"<text:p>Figure <draw:frame text:anchor-type="as-char"><draw:text-box><text:p>where {} is small</text:p></draw:text-box></draw:frame> here.</text:p>"#,
+            formula_frame("as-char", 2),
+        ));
+        assert_eq!(formula_blocks(&in_caption)[0], ("formula", "y"));
+        assert!(math_spans(&in_caption).is_empty());
+        assert!(in_caption.recorded_formulas.is_empty());
+
+        let in_list = extract_formula_odt(&format!(
+            r#"<text:list><text:list-item><text:p>Item {} here</text:p></text:list-item></text:list>"#,
+            formula_frame("as-char", 2),
+        ));
+        assert_eq!(
+            formula_blocks(&in_list),
+            [("list_item", "Item  here"), ("formula", "y")]
+        );
+    }
+
+    #[test]
+    fn test_formula_in_a_heading_sentence_stays_inline_and_others_follow_it() {
+        let doc = extract_formula_odt(&format!(
+            r#"<text:h text:outline-level="2">Solving {} for x</text:h><text:h text:outline-level="2">{}</text:h>
+            <text:h text:outline-level="2">Area {}</text:h>"#,
+            formula_frame("as-char", 1),
+            formula_frame("as-char", 2),
+            formula_frame("paragraph", 2),
+        ));
+        assert_eq!(
+            formula_blocks(&doc),
+            [
+                ("heading", "Solving $a^{2}$ for x"),
+                ("formula", "y"),
+                ("heading", "Area"),
+                ("formula", "y")
+            ]
+        );
+        assert_eq!(math_spans(&doc), ["$a^{2}$"]);
+        assert_eq!(recorded_latex(&doc), ["a^{2}"]);
+    }
+
+    #[test]
+    fn test_formula_in_a_heading_note_or_comment_is_left_out_with_it() {
+        let doc = extract_formula_odt(&format!(
+            r#"<text:h text:outline-level="1">Area<text:note text:id="n1" text:note-class="footnote"><text:note-citation>1</text:note-citation><text:note-body><text:p>where {} is small</text:p></text:note-body></text:note></text:h>
+            <text:h text:outline-level="1">Base<office:annotation><text:p>see {}</text:p></office:annotation></text:h>"#,
+            formula_frame("as-char", 1),
+            formula_frame("as-char", 2),
+        ));
+        assert_eq!(formula_blocks(&doc), [("heading", "Area"), ("heading", "Base")]);
+        assert!(doc.recorded_formulas.is_empty());
+    }
+
+    #[test]
+    fn test_cached_field_text_is_not_text_beside_a_formula() {
+        let doc = extract_formula_odt(&format!(
+            r#"<text:p><text:page-number>3</text:page-number>{}<text:page-count>9</text:page-count></text:p>"#,
+            formula_frame("as-char", 2),
+        ));
+        assert_eq!(formula_blocks(&doc), [("formula", "y")]);
+        assert!(math_spans(&doc).is_empty());
+        assert!(doc.recorded_formulas.is_empty());
+    }
+
+    #[test]
+    fn test_numbered_equation_stays_a_block() {
+        let numbered = extract_formula_odt(&format!(
+            r#"<text:p><text:tab/>{}<text:tab/>(<text:sequence text:ref-name="refText0" text:name="Text" text:formula="ooow:Text+1" style:num-format="1">1</text:sequence>)</text:p>"#,
+            formula_frame("as-char", 2),
+        ));
+        assert_eq!(formula_blocks(&numbered), [("formula", "y"), ("paragraph", "(1)")]);
+        assert!(numbered.recorded_formulas.is_empty());
+
+        for label in ["(1)", "(2.3)", "[4]"] {
+            let plain = extract_formula_odt(&format!(r#"<text:p>{} {label}</text:p>"#, formula_frame("as-char", 2)));
+            assert_eq!(
+                formula_blocks(&plain),
+                [("formula", "y"), ("paragraph", label)],
+                "{label}"
+            );
+        }
+
+        let sentence = extract_formula_odt(&format!(r#"<text:p>{} (1a)</text:p>"#, formula_frame("as-char", 2)));
+        assert_eq!(formula_blocks(&sentence), [("paragraph", "$y$ (1a)")]);
+    }
+
+    #[test]
+    fn test_display_formula_keeps_the_punctuation_typed_after_it() {
+        for tail in [".", ",", ", (1)"] {
+            let doc = extract_formula_odt(&format!(r#"<text:p>{}{tail}</text:p>"#, formula_frame("as-char", 2)));
+            assert_eq!(formula_blocks(&doc), [("formula", "y"), ("paragraph", tail)], "{tail}");
+            assert!(doc.recorded_formulas.is_empty(), "{tail}");
+        }
+    }
+
+    #[test]
+    fn test_punctuation_between_formulas_keeps_them_inline() {
+        for separator in [",", ";", ":"] {
+            let doc = extract_formula_odt(&format!(
+                "<text:p>{}{separator} {}</text:p>",
+                formula_frame("as-char", 1),
+                formula_frame("as-char", 2)
+            ));
+            assert_eq!(math_spans(&doc), ["$a^{2}$", "$y$"], "{separator}");
+        }
+    }
+
+    /// `collect_inline_run` fails a line nested past the depth cap; the own-line walk must stop there too, not
+    /// walk every level first (an ancestor scan per text node ran quadratic here).
+    #[test]
+    fn test_line_nested_past_the_depth_cap_fails_fast() {
+        // A small cap keeps the walk within a test thread's stack.
+        let limits = crate::extractors::security::SecurityLimits {
+            max_nesting_depth: 16,
+            max_xml_depth: 16,
+            ..Default::default()
+        };
+        let xml = format!(
+            r#"<text:p xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">{}1{}</text:p>"#,
+            "<text:span>".repeat(40),
+            "</text:span>".repeat(40),
+        );
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let error = own_line(doc.root_element(), &mut SecurityBudget::from_limits(&limits))
+            .err()
+            .expect("nested past the cap");
+        assert!(error.to_string().contains("Nesting too deep"), "{error}");
+    }
+
+    #[test]
+    fn test_page_anchored_text_box_paragraph_keeps_its_inline_formula() {
+        let doc = extract_formula_odt(&format!(
+            r#"<draw:frame text:anchor-type="page"><draw:text-box><text:p>where {} is small</text:p></draw:text-box></draw:frame>"#,
+            formula_frame("as-char", 2),
+        ));
+        assert_eq!(formula_blocks(&doc), [("paragraph", "where $y$ is small")]);
+    }
+
+    #[test]
+    fn test_block_formula_is_trimmed() {
+        let doc = extract_formula_odt(&format!(
+            r#"<text:p>{}</text:p><text:p>Angle {} here.</text:p>"#,
+            formula_frame("as-char", 4),
+            formula_frame("as-char", 4),
+        ));
+        assert_eq!(
+            formula_blocks(&doc),
+            [("formula", "\\alpha"), ("paragraph", "Angle $\\alpha$ here.")]
+        );
+    }
+
+    #[test]
+    fn test_blank_formula_adds_nothing() {
+        use crate::types::internal::ElementKind;
+        // LibreOffice writes a replacement image beside each formula object, outside Pictures/. ~keep
+        let blank = concat!(
+            r#"<draw:frame text:anchor-type="as-char"><draw:object xlink:href="./Object 3"/>"#,
+            r#"<draw:image xlink:href="./ObjectReplacements/Object 3"/></draw:frame>"#
+        );
+        let doc = extract_formula_odt(&format!(
+            r#"<text:p>Let {blank} be.</text:p><text:p>{blank}</text:p>
+            <text:h text:outline-level="1">Title {blank}</text:h>"#
+        ));
+        assert_eq!(formula_blocks(&doc), [("paragraph", "Let  be."), ("heading", "Title")]);
+        assert!(math_spans(&doc).is_empty());
+        assert!(doc.recorded_formulas.is_empty());
+        let kinds: Vec<_> = doc.elements.iter().map(|element| &element.kind).collect();
+        assert!(
+            !kinds.iter().any(|kind| matches!(kind, ElementKind::Image { .. })),
+            "{kinds:?}"
+        );
+        assert!(odt_warnings(&doc).is_empty(), "{:?}", odt_warnings(&doc));
+    }
+
     #[test]
     fn test_extract_node_text_simple() {
         let xml = r#"<p xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">Hello world</p>"#;
@@ -2153,6 +2663,7 @@ mod tests {
         xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
         xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
         xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+        xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
         xmlns:xlink="http://www.w3.org/1999/xlink""#;
 
     fn odt_warnings(doc: &InternalDocument) -> Vec<String> {

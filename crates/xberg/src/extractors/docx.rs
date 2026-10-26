@@ -147,6 +147,14 @@ fn build_internal_document(
                         || lower.contains("quote")
                 });
 
+                // A heading's display equations follow its note and comment refs, which attach to the block they
+                // follow, so the refs stay on the heading and the equations in the heading's section. ~keep
+                let formulas_after_refs: &[String] = if heading_level.is_some() && !text.trim().is_empty() {
+                    &math_formulas
+                } else {
+                    &[]
+                };
+
                 let element_idx: Option<u32> = if let Some(level) = heading_level {
                     if current_list_numbering_id.is_some() {
                         for _ in 0..open_list_count {
@@ -155,16 +163,14 @@ fn build_internal_document(
                         current_list_numbering_id = None;
                         open_list_count = 0;
                     }
-                    let heading_text = if text.is_empty() {
-                        paragraph.runs_to_markdown()
-                    } else {
-                        text.clone()
-                    };
-                    let idx = builder.push_heading(level, &heading_text, Some(current_page), None);
-                    if !annotations.is_empty() {
-                        builder.set_annotations(idx, annotations.clone());
-                    }
-                    Some(idx)
+                    let heading_idx = (!text.trim().is_empty()).then(|| {
+                        let idx = builder.push_heading(level, &text, Some(current_page), None);
+                        if !annotations.is_empty() {
+                            builder.set_annotations(idx, annotations.clone());
+                        }
+                        idx
+                    });
+                    heading_idx.or_else(|| push_formulas(&mut builder, &math_formulas, current_page))
                 } else if is_quote_style {
                     if current_list_numbering_id.is_some() {
                         for _ in 0..open_list_count {
@@ -174,13 +180,14 @@ fn build_internal_document(
                         open_list_count = 0;
                     }
                     builder.push_quote_start();
-                    let para_idx = builder.push_paragraph(&text, annotations.clone(), Some(current_page), None);
+                    // Before the quote text, where a plain paragraph puts its equations too. ~keep
+                    let formula_idx = push_formulas(&mut builder, &math_formulas, current_page);
+                    let para_idx = (!text.trim().is_empty())
+                        .then(|| builder.push_paragraph(&text, annotations.clone(), Some(current_page), None));
                     builder.push_quote_end();
-                    Some(para_idx)
+                    para_idx.or(formula_idx)
                 } else if let Some(nid) = paragraph.numbering_id {
-                    for formula in &math_formulas {
-                        builder.push_formula(formula, Some(current_page), None);
-                    }
+                    let formula_idx = push_formulas(&mut builder, &math_formulas, current_page);
                     if !text.is_empty() {
                         let nlvl = paragraph.numbering_level.unwrap_or(0);
                         let is_ordered = paragraph
@@ -223,7 +230,7 @@ fn build_internal_document(
                         );
                         Some(li_idx)
                     } else {
-                        None
+                        formula_idx
                     }
                 } else {
                     if current_list_numbering_id.is_some() {
@@ -233,14 +240,12 @@ fn build_internal_document(
                         current_list_numbering_id = None;
                         open_list_count = 0;
                     }
-                    for formula in &math_formulas {
-                        builder.push_formula(formula, Some(current_page), None);
-                    }
+                    let formula_idx = push_formulas(&mut builder, &math_formulas, current_page);
                     if !text.is_empty() {
                         let para_idx = builder.push_paragraph(&text, annotations.clone(), Some(current_page), None);
                         Some(para_idx)
                     } else {
-                        None
+                        formula_idx
                     }
                 };
 
@@ -304,6 +309,7 @@ fn build_internal_document(
                 } else {
                     push_note_refs(&mut builder, doc.note_refs_by_paragraph.get(idx), current_page);
                 }
+                push_formulas(&mut builder, formulas_after_refs, current_page);
             }
             crate::extraction::docx::parser::DocumentElement::Table(idx) => {
                 if current_list_numbering_id.is_some() {
@@ -543,6 +549,17 @@ fn markdown_cell_grid(
         cells.push(texts);
     }
     (cells, annotations)
+}
+
+/// Push a paragraph's display equations as formula elements, returning the first one's index. A paragraph
+/// that holds nothing else is that element, so its bookmarks and links resolve to the equation.
+fn push_formulas(builder: &mut InternalDocumentBuilder, formulas: &[String], page: u32) -> Option<u32> {
+    let mut first = None;
+    for formula in formulas {
+        let idx = builder.push_formula(formula, Some(page), None);
+        first.get_or_insert(idx);
+    }
+    first
 }
 
 /// Collect plain text, annotations, and math formulas from a slice of Runs.
@@ -4825,6 +4842,101 @@ mod tests {
             "error should mention the default limit ({default_limit}), got: {err_msg}"
         );
     }
+
+    #[tokio::test]
+    async fn should_trim_inline_and_display_equations() {
+        let (elements, result) = extract_math_docx(
+            r#"<w:p><w:r><w:t xml:space="preserve">Angle </w:t></w:r><m:oMath><m:r><m:t>&#x3B1;</m:t></m:r></m:oMath>
+            <w:r><w:t xml:space="preserve"> and </w:t></w:r><m:oMath><m:r><m:t xml:space="preserve"> </m:t></m:r></m:oMath>
+            <w:r><w:t>end</w:t></w:r></w:p>
+            <w:p><m:oMathPara><m:oMath><m:r><m:t>&#x3B2;</m:t></m:r></m:oMath><m:oMath><m:r><m:t>&#x3B3;</m:t></m:r></m:oMath></m:oMathPara></w:p>"#,
+        )
+        .await;
+        assert_eq!(
+            math_blocks(&elements),
+            [
+                ("paragraph", "Angle $\\alpha$ and end"),
+                ("formula", "\\beta \\\\ \\gamma")
+            ]
+        );
+        assert_eq!(formula_latex(&result), ["\\alpha", "\\beta \\\\ \\gamma"]);
+    }
+
+    fn docx_plain_text(body: &str) -> String {
+        let document_xml = format!(
+            r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>{body}</w:body></w:document>"#
+        );
+        let limits = crate::extractors::security::SecurityLimits::default();
+        let mut budget = SecurityBudget::from_limits(&limits);
+        crate::extraction::docx::parser::parse_document(&build_test_docx(&document_xml), &mut budget, &limits)
+            .unwrap()
+            .to_plain_text()
+    }
+
+    #[test]
+    fn should_keep_trimmed_equations_apart_from_following_letters_in_plain_text() {
+        let alpha = "<m:oMath><m:r><m:t>&#x3B1;</m:t></m:r></m:oMath>";
+        let x = "<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>";
+        let display = "<m:oMathPara><m:oMath><m:r><m:t>&#x3B1;</m:t></m:r></m:oMath></m:oMathPara>";
+        let text = |t: &str| format!(r#"<w:r><w:t xml:space="preserve">{t}</w:t></w:r>"#);
+        let paragraphs = [
+            format!("{alpha}{}", text("b")),
+            format!("{alpha}{}", text("2")),
+            format!("{alpha}{}", text(" c")),
+            format!("{alpha}{}", text(".")),
+            format!("{alpha}{x}"),
+            format!("{x}{}", text("d")),
+            format!("{display}{}", text("then")),
+        ];
+        let body: String = paragraphs.iter().map(|p| format!("<w:p>{p}</w:p>")).collect();
+        let plain = docx_plain_text(&body);
+        let lines: Vec<&str> = plain.lines().filter(|line| !line.is_empty()).collect();
+        assert_eq!(
+            lines,
+            [
+                "\\alpha b",
+                "\\alpha2",
+                "\\alpha c",
+                "\\alpha.",
+                "\\alpha x",
+                "xd",
+                "\\alpha then"
+            ]
+        );
+    }
+
+    /// Plain, Json and Custom output keep each page's plain text as its content, so the space shows there.
+    #[tokio::test]
+    async fn should_keep_an_equation_apart_from_a_following_letter_in_plain_page_content() {
+        let xml = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body><w:p>
+            <w:r><w:t xml:space="preserve">Let </w:t></w:r><m:oMath><m:r><m:t>&#x3B1;</m:t></m:r></m:oMath>
+            <w:r><w:t>b hold.</w:t></w:r></w:p></w:body></w:document>"#;
+        let config = ExtractionConfig {
+            output_format: crate::core::config::OutputFormat::Plain,
+            pages: Some(crate::core::config::PageConfig {
+                extract_pages: true,
+                ..Default::default()
+            }),
+            use_cache: false,
+            ..Default::default()
+        };
+        let result = crate::core::extractor::extract_bytes(
+            &build_test_docx(xml),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            &config,
+        )
+        .await
+        .unwrap();
+        let pages = result.pages.expect("pages requested");
+        assert!(
+            pages[0].content.contains("Let \\alpha b hold."),
+            "{:?}",
+            pages[0].content
+        );
+    }
+
     #[tokio::test]
     async fn should_keep_issue_2123_inline_math_in_its_docx_sentence() {
         let xml = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -4846,7 +4958,7 @@ mod tests {
             .filter(|element| element.kind == crate::types::internal::ElementKind::Paragraph)
             .collect();
         assert_eq!(paragraphs.len(), 1);
-        assert_eq!(paragraphs[0].text, "Équation $\\alpha $ holds.");
+        assert_eq!(paragraphs[0].text, "Équation $\\alpha$ holds.");
         let annotation = paragraphs[0]
             .annotations
             .iter()
@@ -4857,7 +4969,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             &paragraphs[0].text[annotation.start as usize..annotation.end as usize],
-            "$\\alpha $"
+            "$\\alpha$"
         );
         assert_eq!(annotation.start as usize, "Équation ".len());
         let result = crate::extraction::derive::derive_extraction_result(
@@ -4865,7 +4977,7 @@ mod tests {
             true,
             crate::core::config::OutputFormat::Markdown,
         );
-        assert_eq!(result.content.trim(), "Équation $\\alpha $ holds.");
+        assert_eq!(result.content.trim(), "Équation $\\alpha$ holds.");
         assert_eq!(result.formulas.len(), 1);
         assert_eq!(result.formulas[0].latex.trim(), "\\alpha");
         assert_issue_2123_public_math_payload(&result);
@@ -4876,12 +4988,12 @@ mod tests {
         assert_eq!(document.nodes.len(), 1);
         let node = &document.nodes[0];
         let text = node.content.text().expect("public paragraph text");
-        assert_eq!(text, "Équation $\\alpha $ holds.");
+        assert_eq!(text, "Équation $\\alpha$ holds.");
         assert_eq!(node.annotations.len(), 1);
         let annotation = &node.annotations[0];
         assert_eq!(annotation.start as usize, "Équation ".len());
-        assert_eq!(annotation.end as usize, "Équation $\\alpha $".len());
-        assert_eq!(&text[annotation.start as usize..annotation.end as usize], "$\\alpha $");
+        assert_eq!(annotation.end as usize, "Équation $\\alpha$".len());
+        assert_eq!(&text[annotation.start as usize..annotation.end as usize], "$\\alpha$");
         assert_eq!(
             annotation.kind,
             crate::types::AnnotationKind::Custom {
@@ -4893,7 +5005,7 @@ mod tests {
         assert_eq!(
             payload["document"]["nodes"][0]["annotations"],
             serde_json::json!([{
-                "start": "Équation ".len(), "end": "Équation $\\alpha $".len(),
+                "start": "Équation ".len(), "end": "Équation $\\alpha$".len(),
                 "kind": {"annotation_type":"custom", "name":"xberg.math", "value":"inline"},
             }])
         );
@@ -4930,6 +5042,233 @@ mod tests {
             .map(|annotation| &text[annotation.start as usize..annotation.end as usize])
             .collect();
         assert_eq!(spans, ["$x$", "$y$"]);
+    }
+
+    async fn extract_math_docx(
+        body: &str,
+    ) -> (
+        Vec<crate::types::internal::InternalElement>,
+        crate::types::extraction::ExtractedDocument,
+    ) {
+        let document_xml = format!(
+            r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>{body}</w:body></w:document>"#
+        );
+        let internal = extract_docx_internal_document(&build_test_docx(&document_xml)).await;
+        let elements = internal.elements.clone();
+        let result = crate::extraction::derive::derive_extraction_result(
+            internal,
+            true,
+            crate::core::config::OutputFormat::Markdown,
+        );
+        (elements, result)
+    }
+
+    fn math_blocks(elements: &[crate::types::internal::InternalElement]) -> Vec<(&'static str, &str)> {
+        use crate::types::internal::ElementKind;
+        elements
+            .iter()
+            .filter_map(|element| {
+                let kind = match element.kind {
+                    ElementKind::Heading { .. } => "heading",
+                    ElementKind::Paragraph => "paragraph",
+                    ElementKind::ListItem { .. } => "list_item",
+                    ElementKind::Formula => "formula",
+                    ElementKind::QuoteStart => "quote_start",
+                    ElementKind::QuoteEnd => "quote_end",
+                    _ => return None,
+                };
+                Some((kind, element.text.as_str()))
+            })
+            .collect()
+    }
+
+    fn formula_latex(result: &crate::types::extraction::ExtractedDocument) -> Vec<&str> {
+        let mut latex: Vec<&str> = result.formulas.iter().map(|formula| formula.latex.as_str()).collect();
+        latex.sort_unstable();
+        latex
+    }
+
+    const DISPLAY_X: &str = "<m:oMathPara><m:oMath><m:r><m:t>x=1</m:t></m:r></m:oMath></m:oMathPara>";
+    const DISPLAY_Y: &str = "<m:oMathPara><m:oMath><m:r><m:t>y=2</m:t></m:r></m:oMath></m:oMathPara>";
+
+    #[tokio::test]
+    async fn should_emit_display_math_in_a_heading_after_the_heading() {
+        for level in ["1", "2", "3"] {
+            let body = format!(
+                r#"<w:p><w:pPr><w:pStyle w:val="Heading{level}"/></w:pPr>
+                <w:r><w:t xml:space="preserve">Area </w:t></w:r><m:oMath><m:r><m:t>A</m:t></m:r></m:oMath>
+                {DISPLAY_X}{DISPLAY_Y}</w:p>"#
+            );
+            let (elements, result) = extract_math_docx(&body).await;
+            assert_eq!(
+                math_blocks(&elements),
+                [("heading", "Area $A$"), ("formula", "x=1"), ("formula", "y=2")],
+                "Heading{level}"
+            );
+            assert_eq!(formula_latex(&result), ["A", "x=1", "y=2"], "Heading{level}");
+        }
+    }
+
+    #[tokio::test]
+    async fn should_emit_a_heading_holding_only_display_math_as_a_formula() {
+        let space = r#"<w:r><w:t xml:space="preserve"> </w:t></w:r>"#;
+        for blank in ["", space, "<w:r><w:tab/></w:r>"] {
+            let body = format!(
+                r#"<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr>{blank}{DISPLAY_X}</w:p>
+                <w:p><w:pPr><w:pStyle w:val="Quote"/></w:pPr>{blank}{DISPLAY_Y}</w:p>"#
+            );
+            let (elements, result) = extract_math_docx(&body).await;
+            assert_eq!(
+                math_blocks(&elements),
+                [
+                    ("formula", "x=1"),
+                    ("quote_start", ""),
+                    ("formula", "y=2"),
+                    ("quote_end", "")
+                ],
+                "{blank}"
+            );
+            assert_eq!(formula_latex(&result), ["x=1", "y=2"], "{blank}");
+        }
+    }
+
+    /// Renderers attach a note reference to the block it follows, so a heading's equations come after its refs.
+    #[tokio::test]
+    async fn should_keep_a_heading_note_reference_on_the_heading_before_its_display_math() {
+        let document_xml = format!(
+            r#"<w:document xmlns:w="{NOTES_DOCUMENT_NS}"
+            xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Area</w:t></w:r><w:r><w:footnoteReference w:id="2"/></w:r>{DISPLAY_X}</w:p>
+</w:body></w:document>"#
+        );
+        let data = build_test_docx_with_parts(&document_xml, None, Some(NOTE_A_B_FOOTNOTES), None, None, None, None);
+        let internal = DocxExtractor::new()
+            .extract_content(
+                &data,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                &ExtractionConfig::default(),
+            )
+            .await
+            .unwrap();
+        let kinds: Vec<&str> = internal
+            .elements
+            .iter()
+            .map(|element| element.kind.discriminant())
+            .filter(|kind| ["heading", "footnote_ref", "formula"].contains(kind))
+            .collect();
+        assert_eq!(kinds, ["heading", "footnote_ref", "formula"]);
+        let result = crate::extraction::derive::derive_extraction_result(
+            internal,
+            true,
+            crate::core::config::OutputFormat::Markdown,
+        );
+        let markdown = result.formatted_content.as_deref().unwrap_or(&result.content);
+        assert!(markdown.starts_with("# Area[^1]\n\n```math\nx=1\n```"), "{markdown:?}");
+    }
+
+    #[tokio::test]
+    async fn should_keep_display_math_inside_its_quote() {
+        let body = format!(
+            r#"<w:p><w:pPr><w:pStyle w:val="Quote"/></w:pPr><w:r><w:t>As said</w:t></w:r>{DISPLAY_X}</w:p>
+            <w:p><w:pPr><w:pStyle w:val="Quote"/></w:pPr>{DISPLAY_Y}</w:p>"#
+        );
+        let (elements, result) = extract_math_docx(&body).await;
+        assert_eq!(
+            math_blocks(&elements),
+            [
+                ("quote_start", ""),
+                ("formula", "x=1"),
+                ("paragraph", "As said"),
+                ("quote_end", ""),
+                ("quote_start", ""),
+                ("formula", "y=2"),
+                ("quote_end", ""),
+            ]
+        );
+        assert_eq!(formula_latex(&result), ["x=1", "y=2"]);
+        let markdown = result.formatted_content.as_deref().unwrap_or(&result.content);
+        assert!(markdown.contains("> ```math\n> y=2\n> ```"), "{markdown}");
+    }
+
+    #[tokio::test]
+    async fn should_list_every_equation_whatever_the_paragraph_style() {
+        let mut body = String::new();
+        let styles = [
+            r#"<w:pStyle w:val="Heading1"/>"#,
+            r#"<w:pStyle w:val="Heading4"/>"#,
+            r#"<w:pStyle w:val="Quote"/>"#,
+            r#"<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>"#,
+            "",
+        ];
+        let mut expected = Vec::new();
+        for (index, style) in styles.iter().enumerate() {
+            for with_text in [false, true] {
+                let text = if with_text { "<w:r><w:t>Words</w:t></w:r>" } else { "" };
+                let (display, inline) = (format!("d{index}{with_text}"), format!("i{index}{with_text}"));
+                body.push_str(&format!(
+                    r#"<w:p><w:pPr>{style}</w:pPr>{text}<m:oMath><m:r><m:t>{inline}</m:t></m:r></m:oMath>
+                    <m:oMathPara><m:oMath><m:r><m:t>{display}</m:t></m:r></m:oMath></m:oMathPara></w:p>"#
+                ));
+                expected.push(display);
+                expected.push(inline);
+            }
+        }
+        let (elements, result) = extract_math_docx(&body).await;
+        expected.sort_unstable();
+        assert_eq!(formula_latex(&result), expected);
+        for element in &elements {
+            assert!(
+                !element.text.contains("$$"),
+                "display math left in text: {:?}",
+                element.text
+            );
+            for annotation in &element.annotations {
+                if annotation.kind.math_display().is_some() {
+                    let span = element.text.get(annotation.start as usize..annotation.end as usize);
+                    assert!(
+                        span.is_some_and(|span| span.len() > 2 && span.starts_with('$') && span.ends_with('$')),
+                        "math annotation off its span in {:?}",
+                        element.text
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn should_resolve_bookmarks_on_paragraphs_holding_only_display_math() {
+        let body = format!(
+            r#"<w:sdt><w:sdtPr><w:docPartObj><w:docPartGallery w:val="Table of Contents"/></w:docPartObj></w:sdtPr>
+            <w:sdtContent><w:p><w:hyperlink w:anchor="_Toc1"><w:r><w:t>Equation</w:t></w:r></w:hyperlink></w:p></w:sdtContent></w:sdt>
+            <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:bookmarkStart w:id="1" w:name="_Toc1"/>{DISPLAY_X}<w:bookmarkEnd w:id="1"/></w:p>
+            <w:p><w:bookmarkStart w:id="2" w:name="eq2"/>{DISPLAY_Y}<w:bookmarkEnd w:id="2"/></w:p>
+            <w:p><w:hyperlink w:anchor="eq2"><w:r><w:t>see</w:t></w:r></w:hyperlink></w:p>"#
+        );
+        let document_xml = format!(
+            r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>{body}</w:body></w:document>"#
+        );
+        let internal = extract_docx_internal_document(&build_test_docx(&document_xml)).await;
+        let targets: Vec<(crate::types::internal::RelationshipKind, &str)> = internal
+            .relationships
+            .iter()
+            .map(|relationship| {
+                let crate::types::internal::RelationshipTarget::Index(target) = relationship.target else {
+                    panic!("unresolved link: {:?}", relationship.target);
+                };
+                let element = &internal.elements[target as usize];
+                assert_eq!(element.kind, crate::types::internal::ElementKind::Formula);
+                (relationship.kind, element.text.as_str())
+            })
+            .collect();
+        assert_eq!(
+            targets,
+            [
+                (crate::types::internal::RelationshipKind::TocEntry, "x=1"),
+                (crate::types::internal::RelationshipKind::InternalLink, "y=2"),
+            ]
+        );
     }
 
     async fn render_docx_notes(
@@ -5216,7 +5555,7 @@ mod tests {
         format!("<w:tc><w:p>{content}</w:p></w:tc>")
     }
 
-    async fn extract_math_docx(data: &[u8]) -> crate::types::extraction::ExtractedDocument {
+    async fn extract_table_math_docx(data: &[u8]) -> crate::types::extraction::ExtractedDocument {
         let internal = extract_docx_internal_document(data).await;
         crate::extraction::derive::derive_extraction_result(internal, true, crate::core::config::OutputFormat::Markdown)
     }
@@ -5274,20 +5613,20 @@ mod tests {
             table_cell(&text_run("Area")),
             table_cell(&omath("&#945;")),
         ));
-        let result = extract_math_docx(&build_test_docx(&xml)).await;
+        let result = extract_table_math_docx(&build_test_docx(&xml)).await;
 
         let markdown = rendered_markdown(&result);
-        assert!(markdown.contains("| Area | $`\\alpha `$ |"), "{markdown}");
+        assert!(markdown.contains("| Area | $`\\alpha`$ |"), "{markdown}");
         assert!(!markdown.contains("$\\\\alpha"), "{markdown}");
         assert_eq!(
             reparsed_cell_math(markdown),
-            [[vec![], vec![]], [vec![], vec!["\\alpha "]]]
+            [[vec![], vec![]], [vec![], vec!["\\alpha"]]]
         );
 
         let table = &result.tables[0];
         let annotation = crate::types::TextAnnotation {
             start: 0,
-            end: "$\\alpha $".len() as u32,
+            end: "$\\alpha$".len() as u32,
             kind: crate::types::AnnotationKind::math(false),
         };
         assert_eq!(
@@ -5298,7 +5637,7 @@ mod tests {
                 annotation: annotation.clone(),
             }]
         );
-        assert_eq!(cell_math_spans(table), [(1, 1, "$\\alpha $", Some(false))]);
+        assert_eq!(cell_math_spans(table), [(1, 1, "$\\alpha$", Some(false))]);
 
         let document = result.document.as_ref().expect("document structure requested");
         let grid = document
@@ -5323,7 +5662,7 @@ mod tests {
             payload["tables"][0]["cell_annotations"],
             serde_json::json!([{
                 "row": 1, "col": 1,
-                "annotation": {"start": 0, "end": 9,
+                "annotation": {"start": 0, "end": 8,
                     "kind": {"annotation_type": "custom", "name": "xberg.math", "value": "inline"}},
             }])
         );
@@ -5349,7 +5688,7 @@ mod tests {
             b = plain("b"),
             c = plain("c"),
         ));
-        let result = extract_math_docx(&build_test_docx(&xml)).await;
+        let result = extract_table_math_docx(&build_test_docx(&xml)).await;
 
         let table = &result.tables[0];
         assert_eq!(
@@ -5392,7 +5731,7 @@ mod tests {
             b = omath("B"),
         ));
         let data = build_test_docx_with_parts(&xml, None, Some(NOTE_A_B_FOOTNOTES), None, None, None, None);
-        let result = extract_math_docx(&data).await;
+        let result = extract_table_math_docx(&data).await;
 
         let table = &result.tables[0];
         assert_eq!(
@@ -5436,7 +5775,7 @@ mod tests {
             table_cell(&omath("h"))
         );
         let data = build_test_docx_with_parts(&body, None, None, None, Some(&header), None, None);
-        let result = extract_math_docx(&data).await;
+        let result = extract_table_math_docx(&data).await;
 
         let body_table = result
             .tables
@@ -5477,7 +5816,7 @@ mod tests {
             inner = table_cell(&format!("{}{}", text_run("in "), omath("x"))),
             after = table_cell(&omath("y")),
         ));
-        let result = extract_math_docx(&build_test_docx(&xml)).await;
+        let result = extract_table_math_docx(&build_test_docx(&xml)).await;
 
         let table = &result.tables[0];
         assert_eq!(table.cells, [["outer in $x$", "$y$"]]);
@@ -5494,7 +5833,7 @@ mod tests {
             table_cell(&text_run("Widget")),
             table_cell(&text_run("$5 | each")),
         ));
-        let result = extract_math_docx(&build_test_docx(&xml)).await;
+        let result = extract_table_math_docx(&build_test_docx(&xml)).await;
 
         assert!(result.tables[0].cell_annotations.is_empty());
         let json = serde_json::to_string(&result).expect("serialize the extraction");

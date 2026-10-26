@@ -14,6 +14,7 @@
 // these needs compiler-in-the-loop verification, not a mechanical pass. Delete this
 // note and the file's baseline entry together once it goes green. Help wanted.
 
+use crate::extraction::math_symbols::needs_space_after_latex;
 use crate::extractors::security::{SecurityBudget, SecurityError, SecurityLimits, ZipBombValidator};
 use ahash::AHashMap;
 use serde::{Deserialize, Serialize};
@@ -872,12 +873,21 @@ impl Paragraph {
     /// `trim_text(false)` to preserve this whitespace.
     pub(crate) fn to_text(&self) -> String {
         let mut text = String::new();
+        // Only the preceding equation's own LaTeX is checked, never plain run text. ~keep
+        let mut prev_math: Option<&str> = None;
         for run in &self.runs {
-            if let Some((ref latex, _)) = run.math_latex {
-                text.push_str(latex);
-            } else {
-                text.push_str(&run.text);
+            let piece = match run.math_latex {
+                Some((ref latex, _)) => latex.as_str(),
+                None => run.text.as_str(),
+            };
+            if piece.is_empty() {
+                continue;
             }
+            if prev_math.is_some_and(|latex| needs_space_after_latex(latex, piece)) {
+                text.push(' ');
+            }
+            text.push_str(piece);
+            prev_math = run.math_latex.is_some().then_some(piece);
         }
         text
     }
@@ -3932,6 +3942,35 @@ mod tests {
         para.add_run(Run::new("quick ".to_string()));
         para.add_run(Run::new("fox".to_string()));
         assert_eq!(para.to_text(), "The quick fox");
+    }
+
+    fn math_run(latex: &str) -> Run {
+        Run {
+            math_latex: Some((latex.to_string(), false)),
+            ..Default::default()
+        }
+    }
+
+    /// A backslash in plain text before an equation is not a control word to keep apart.
+    #[test]
+    fn test_paragraph_to_text_only_checks_equation_latex() {
+        let mut para = Paragraph::new();
+        para.add_run(Run::new("path\\to".to_string()));
+        para.add_run(math_run("x"));
+        para.add_run(Run::new("y".to_string()));
+        assert_eq!(para.to_text(), "path\\toxy");
+    }
+
+    /// A non-ASCII letter after a control word would still extend it in XeTeX and LuaTeX.
+    #[test]
+    fn test_paragraph_to_text_spaces_non_ascii_letter_after_control_word() {
+        let mut para = Paragraph::new();
+        para.add_run(math_run("\\alpha"));
+        para.add_run(Run::new("\u{e9}t\u{e9}".to_string()));
+        para.add_run(math_run("\\beta"));
+        para.add_run(Run::new(String::new()));
+        para.add_run(Run::new("\u{3b3}".to_string()));
+        assert_eq!(para.to_text(), "\\alpha \u{e9}t\u{e9}\\beta \u{3b3}");
     }
 
     #[test]
@@ -7381,7 +7420,7 @@ mod tests {
         }
     }
 
-    fn math_run(latex: &str, display: bool) -> Run {
+    fn cell_math_run(latex: &str, display: bool) -> Run {
         Run {
             math_latex: Some((latex.to_string(), display)),
             ..Default::default()
@@ -7409,43 +7448,47 @@ mod tests {
             (
                 vec![paragraph_of(vec![
                     Run::new("\u{E9}t\u{E9} ".into()),
-                    math_run("x", false),
+                    cell_math_run("x", false),
                 ])],
                 &[("$x$", false)],
             ),
             (
                 vec![
                     paragraph_of(vec![Run::new("\u{E9}t\u{E9}".into())]),
-                    paragraph_of(vec![Run::new("see ".into()), math_run("y", false)]),
+                    paragraph_of(vec![Run::new("see ".into()), cell_math_run("y", false)]),
                 ],
                 &[("$y$", false)],
             ),
             (
                 vec![paragraph_of(vec![
                     Run::new("  ".into()),
-                    math_run("z", false),
+                    cell_math_run("z", false),
                     Run::new(" ".into()),
                 ])],
                 &[("$z$", false)],
             ),
             (
-                vec![paragraph_of(vec![bold, Run::new(" ".into()), math_run("A", false)])],
+                vec![paragraph_of(vec![
+                    bold,
+                    Run::new(" ".into()),
+                    cell_math_run("A", false),
+                ])],
                 &[("$A$", false)],
             ),
             (
-                vec![paragraph_of(vec![math_run("x", false), math_run("y", false)])],
+                vec![paragraph_of(vec![cell_math_run("x", false), cell_math_run("y", false)])],
                 &[("$x$", false), ("$y$", false)],
             ),
             (
                 vec![paragraph_of(vec![
-                    math_run("", false),
+                    cell_math_run("", false),
                     Run::new("k ".into()),
-                    math_run(" ", false),
+                    cell_math_run(" ", false),
                 ])],
                 &[("$ $", false)],
             ),
             (
-                vec![paragraph_of(vec![math_run("a \\\\ b", true)])],
+                vec![paragraph_of(vec![cell_math_run("a \\\\ b", true)])],
                 &[("$$a \\\\ b$$", true)],
             ),
         ];
