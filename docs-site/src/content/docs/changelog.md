@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **(pdf): Native Rust consumers can retain script baselines with `extract_page_text_with_script_geometry`.**
+
 - **(api): Set `include_image_data: false` to omit raw image byte arrays from extraction responses.**
   JSON and multipart requests support this option for synchronous and asynchronous extraction; image metadata
   and optional Base64 data remain available, and the default response is unchanged. (#2187)
@@ -61,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Archive count, size, and compression-ratio limits are checked before header validation or payload reads.
 
 ### Fixed
+
+- **(pdf): Preserve superscript exponents and subscripts in native PDF prose Markdown.**
+  Explicit text rise and positioned scripts retain inline annotations; confirmed numeric footnotes remain separated. (#2275)
 
 - **(docx): Preserve superscript and subscript markers in table cells and note definitions.**
   Markdown keeps `10^9^` and `H~2~O` with `escape_markdown: false`, including scripts beside bold, italic

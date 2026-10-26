@@ -2141,6 +2141,7 @@ pub struct TextExtractor<'doc> {
     fonts: HashMap<String, Arc<FontInfo>>,
     /// Extracted text spans (complete strings from Tj/TJ operators)
     spans: Vec<TextSpan>,
+    pub(crate) preserve_script_baselines: bool,
     /// Extracted characters (for backward compatibility)
     chars: Vec<TextChar>,
     /// Resources dictionary (for accessing XObjects and fonts)

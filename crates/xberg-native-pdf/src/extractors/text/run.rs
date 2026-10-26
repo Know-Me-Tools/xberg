@@ -108,9 +108,7 @@ impl<'doc> TextExtractor<'doc> {
         // glyphs into a separate Y-band above the body, producing
         // output like `"1,2 ★ 3,4 5 / Chibueze, …"` instead of
         // `"Chibueze,1,2★ Caleb,3,4† …"`. ~keep
-        self.snap_superscript_baselines();
-
-        self.sort_spans_by_reading_order();
+        self.sort_spans_preserving_script_geometry();
 
         self.deduplicate_overlapping_spans();
 

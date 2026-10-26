@@ -8,6 +8,27 @@
 use super::*;
 
 impl<'doc> TextExtractor<'doc> {
+    pub(super) fn sort_spans_preserving_script_geometry(&mut self) {
+        // Sorting may snap a script to its base, but geometry must retain the
+        // original baseline for downstream script annotations (GH#2275). Sequence
+        // numbers are unique here; sorting neither splits nor merges spans. ~keep
+        let baselines = self.preserve_script_baselines.then(|| {
+            self.spans
+                .iter()
+                .map(|span| (span.sequence, span.bbox.y))
+                .collect::<std::collections::HashMap<_, _>>()
+        });
+        self.snap_superscript_baselines();
+        self.sort_spans_by_reading_order();
+        if let Some(baselines) = baselines {
+            for span in &mut self.spans {
+                if let Some(baseline) = baselines.get(&span.sequence) {
+                    span.bbox.y = *baseline;
+                }
+            }
+        }
+    }
+
     /// Deduplicate overlapping characters on the same line.
     ///
     /// Some PDFs render text multiple times at slightly different X positions

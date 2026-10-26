@@ -42,6 +42,7 @@ impl<'doc> TextExtractor<'doc> {
             state_stack: GraphicsStateStack::new(),
             fonts: HashMap::new(),
             spans: Vec::new(),
+            preserve_script_baselines: false,
             chars: Vec::new(),
             resources: None,
             document: None,

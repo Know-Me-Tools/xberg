@@ -391,8 +391,8 @@ pub(crate) fn extract_tables_heuristic(
 ) -> Result<HeuristicTableExtraction> {
     use crate::pdf::table_reconstruct::{HocrWord, segments_to_words};
 
-    let (per_page_segments, used_structure_tree) = crate::pdf::native::hierarchy::extract_all_segments(doc, artifacts)
-        .map_err(|e| {
+    let (per_page_segments, used_structure_tree) =
+        crate::pdf::native::hierarchy::extract_all_segments_for_tables(doc, artifacts).map_err(|e| {
             PdfError::TextExtractionFailed(format!(
                 "xberg_native_pdf hierarchy extraction failed for heuristic tables: {e}"
             ))

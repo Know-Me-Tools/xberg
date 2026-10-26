@@ -6,6 +6,12 @@
 
 use super::*;
 
+#[derive(Clone, Copy)]
+enum ScriptGeometry {
+    Flatten,
+    Preserve,
+}
+
 impl PdfDocument {
     /// Internal helper: extract raw (unsorted) text spans from a page.
     ///
@@ -26,7 +32,13 @@ impl PdfDocument {
         page_index: usize,
         config: crate::extractors::TextExtractionConfig,
     ) -> Result<Vec<crate::layout::TextSpan>> {
-        self.extract_spans_impl(page_index, config, HashSet::new(), HashSet::new())
+        self.extract_spans_impl(
+            page_index,
+            config,
+            HashSet::new(),
+            HashSet::new(),
+            ScriptGeometry::Flatten,
+        )
     }
 
     pub(super) fn extract_spans_raw_filtered(
@@ -40,6 +52,7 @@ impl PdfDocument {
             crate::extractors::TextExtractionConfig::default(),
             excluded_layers,
             excluded_inks,
+            ScriptGeometry::Flatten,
         )
     }
 
@@ -49,6 +62,7 @@ impl PdfDocument {
         config: crate::extractors::TextExtractionConfig,
         excluded_layers: HashSet<String>,
         excluded_inks: HashSet<String>,
+        script_geometry: ScriptGeometry,
     ) -> Result<Vec<crate::layout::TextSpan>> {
         if self.is_encrypted_unreadable() {
             tracing::warn!(target: LOG_TARGET, "PDF is encrypted and could not be decrypted; returning no spans");
@@ -102,6 +116,7 @@ impl PdfDocument {
         }
 
         let mut extractor = TextExtractor::with_config(config);
+        extractor.preserve_script_baselines = matches!(script_geometry, ScriptGeometry::Preserve);
         // Stamp the page index so spans carry McidScope::Page(page_index)
         // by default; Form XObject Do invocations push their own scope
         // on top of the stack inside the extractor. ~keep ~keep
@@ -339,12 +354,21 @@ impl PdfDocument {
     ) -> Result<Vec<crate::layout::TextSpan>> {
         // Extract raw spans using the common extraction logic. The unfiltered
         // path is kept verbatim for empty sets so existing callers are unchanged. ~keep
-        let mut spans = if excluded_layers.is_empty() && excluded_inks.is_empty() {
+        let spans = if excluded_layers.is_empty() && excluded_inks.is_empty() {
             self.extract_spans_raw(page_index)?
         } else {
             self.extract_spans_raw_filtered(page_index, excluded_layers, excluded_inks)?
         };
 
+        self.order_extracted_spans(page_index, reading_order, spans)
+    }
+
+    fn order_extracted_spans(
+        &self,
+        page_index: usize,
+        reading_order: ReadingOrder,
+        mut spans: Vec<crate::layout::TextSpan>,
+    ) -> Result<Vec<crate::layout::TextSpan>> {
         // Drop text lying entirely off the MediaBox - a doc that reuses one big
         // Form XObject across pages relies on the `W n` clip to hide the off-page
         // portion, which the raw extractor does not honour. `extract_spans` applies
@@ -615,6 +639,39 @@ impl PdfDocument {
             // (urx - llx, ury - lly), not the raw upper-right corner. A
             // non-zero-origin MediaBox (e.g. `[10 -100 622 692]`) previously
             // reported 622x692 instead of the true 612x792. ~keep
+            page_width: media_box.2 - media_box.0,
+            page_height: media_box.3 - media_box.1,
+        })
+    }
+
+    /// Extract positioned page spans while retaining script baselines.
+    ///
+    /// Reading order, clipping and erase filtering match
+    /// [`Self::extract_page_text_with_options`]. Superscript baselines are
+    /// restored after the extractor's sorting pass, before deduplication and
+    /// merging, so structure consumers can retain script annotations. Explicit
+    /// text rise remains in [`crate::layout::TextSpan::text_rise`].
+    ///
+    /// # Errors
+    /// Returns an error when the page, fonts or content cannot be decoded.
+    pub fn extract_page_text_with_script_geometry(
+        &self,
+        page_index: usize,
+        reading_order: ReadingOrder,
+    ) -> Result<crate::layout::PageText> {
+        let spans = self.extract_spans_impl(
+            page_index,
+            crate::extractors::TextExtractionConfig::default(),
+            HashSet::new(),
+            HashSet::new(),
+            ScriptGeometry::Preserve,
+        )?;
+        let spans = self.order_extracted_spans(page_index, reading_order, spans)?;
+        let chars = spans.iter().flat_map(|span| span.to_chars()).collect();
+        let media_box = self.get_page_media_box(page_index)?;
+        Ok(crate::layout::PageText {
+            spans,
+            chars,
             page_width: media_box.2 - media_box.0,
             page_height: media_box.3 - media_box.1,
         })

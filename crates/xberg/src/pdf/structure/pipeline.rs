@@ -2097,7 +2097,8 @@ fn blocks_to_paragraphs(
                 );
             let rotation_change = !line.has_same_rotation(prev);
             let starts_new_line = rotation_change
-                || (line.upright_baseline() - prev.upright_baseline()).abs() > INLINE_STYLE_BASELINE_TOLERANCE;
+                || ((line.upright_baseline() - prev.upright_baseline()).abs() > INLINE_STYLE_BASELINE_TOLERANCE
+                    && !is_script_run_of(prev, line));
             let has_same_line_follower = lines.get(line_idx + 1).is_some_and(|next| {
                 next.has_same_rotation(line)
                     && (next.upright_baseline() - line.upright_baseline()).abs() <= INLINE_STYLE_BASELINE_TOLERANCE

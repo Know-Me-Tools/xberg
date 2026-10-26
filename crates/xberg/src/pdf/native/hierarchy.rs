@@ -39,6 +39,12 @@ const INLINE_SCRIPT_MAX_CHARS: usize = 4;
 const INLINE_SCRIPT_MIN_WIDTH_COVERAGE: f32 = 0.7;
 const INLINE_SCRIPT_MAX_WIDTH_COVERAGE: f32 = 1.3;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScriptGeometry {
+    Flatten,
+    Preserve,
+}
+
 /// ~keep Pagination artifacts must honor content-filter opt-ins before hierarchy extraction drops them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ArtifactRetention {
@@ -365,7 +371,15 @@ fn apply_xy_cut_if_column_aware(
     }
 }
 
+#[cfg(test)]
 fn rejoin_inline_scripts(spans: Vec<xberg_native_pdf::layout::TextSpan>) -> Vec<xberg_native_pdf::layout::TextSpan> {
+    rejoin_inline_scripts_inner(spans, ScriptGeometry::Preserve)
+}
+
+fn rejoin_inline_scripts_inner(
+    spans: Vec<xberg_native_pdf::layout::TextSpan>,
+    script_geometry: ScriptGeometry,
+) -> Vec<xberg_native_pdf::layout::TextSpan> {
     let notes = super::text::numeric_notes(&spans);
     let mut by_base: HashMap<usize, Vec<ScriptAttachment>> = HashMap::new();
     let mut attached = vec![false; spans.len()];
@@ -373,7 +387,9 @@ fn rejoin_inline_scripts(spans: Vec<xberg_native_pdf::layout::TextSpan>) -> Vec<
         if by_base.contains_key(&script_index) {
             continue;
         }
-        let Some((base_index, insertion_index)) = find_inline_script_base(&spans, &attached, script_index) else {
+        let Some((base_index, insertion_index)) =
+            find_inline_script_base(&spans, &attached, script_index, script_geometry)
+        else {
             continue;
         };
         attached[script_index] = true;
@@ -399,7 +415,7 @@ fn rejoin_inline_scripts(spans: Vec<xberg_native_pdf::layout::TextSpan>) -> Vec<
             continue;
         }
         match by_base.remove(&index) {
-            Some(scripts) => emit_base_with_scripts(span, scripts, &spans, &mut repaired),
+            Some(scripts) => emit_base_with_scripts(span, scripts, &spans, &mut repaired, script_geometry),
             None => repaired.push(span.clone()),
         }
     }
@@ -410,6 +426,7 @@ fn find_inline_script_base(
     spans: &[xberg_native_pdf::layout::TextSpan],
     attached: &[bool],
     script_index: usize,
+    script_geometry: ScriptGeometry,
 ) -> Option<(usize, usize)> {
     let script = spans.get(script_index)?;
     if !is_compact_horizontal_ascii_span(script) {
@@ -417,17 +434,22 @@ fn find_inline_script_base(
     }
 
     let start = script_index.saturating_sub(INLINE_SCRIPT_LOOKBACK);
-    (start..script_index)
-        .filter(|base_index| !attached[*base_index])
+    (start..if script_geometry == ScriptGeometry::Preserve {
+        spans.len().min(script_index + INLINE_SCRIPT_LOOKBACK + 1)
+    } else {
+        script_index
+    })
+        .filter(|base_index| *base_index != script_index && !attached[*base_index])
+        .filter(|base_index| *base_index < script_index || has_displaced_script_geometry(&spans[*base_index], script))
         .filter_map(|base_index| {
             let base = &spans[base_index];
-            inline_script_insertion(base, script, base_index + 1 == script_index).map(|insertion| {
+            inline_script_insertion(base, script, base_index + 1 == script_index, script_geometry).map(|insertion| {
                 (
                     base_index,
                     insertion,
                     (script.bbox.y - base.bbox.y).abs(),
                     horizontal_attachment_distance(base, script),
-                    script_index - base_index,
+                    script_index.abs_diff(base_index),
                 )
             })
         })
@@ -444,12 +466,14 @@ fn inline_script_insertion(
     base: &xberg_native_pdf::layout::TextSpan,
     script: &xberg_native_pdf::layout::TextSpan,
     immediately_follows: bool,
+    script_geometry: ScriptGeometry,
 ) -> Option<usize> {
     if base.artifact_type.is_some()
         || script.artifact_type.is_some()
         || !is_horizontal_ltr(base)
         || !base.text.is_ascii()
-        || !base.text.chars().any(|character| character.is_ascii_alphabetic())
+        || (!base.text.chars().any(|character| character.is_ascii_alphabetic())
+            && (script_geometry == ScriptGeometry::Flatten || !has_displaced_script_geometry(base, script)))
         || !has_valid_span_geometry(base)
         || !has_valid_span_geometry(script)
     {
@@ -487,6 +511,19 @@ fn inline_script_insertion(
         return Some(char_count);
     }
     character_origins(base).map(|origins| origins.partition_point(|origin| *origin < script.bbox.x))
+}
+
+fn has_displaced_script_geometry(
+    base: &xberg_native_pdf::layout::TextSpan,
+    script: &xberg_native_pdf::layout::TextSpan,
+) -> bool {
+    if base.is_monospace || script.is_monospace || base.font_size <= 0.0 {
+        return false;
+    }
+    let shift =
+        ((script.bbox.y + script.text_rise * script.font_size) - (base.bbox.y + base.text_rise * base.font_size)).abs()
+            / base.font_size;
+    (INLINE_SCRIPT_MIN_BASELINE_SHIFT_EM..=INLINE_SCRIPT_MAX_BASELINE_SHIFT_EM).contains(&shift)
 }
 
 fn is_compact_horizontal_ascii_span(span: &xberg_native_pdf::layout::TextSpan) -> bool {
@@ -567,6 +604,7 @@ fn emit_base_with_scripts(
     mut scripts: Vec<ScriptAttachment>,
     spans: &[xberg_native_pdf::layout::TextSpan],
     output: &mut Vec<xberg_native_pdf::layout::TextSpan>,
+    script_geometry: ScriptGeometry,
 ) {
     scripts.sort_by(|left, right| {
         left.insertion_index.cmp(&right.insertion_index).then_with(|| {
@@ -582,7 +620,17 @@ fn emit_base_with_scripts(
         let fragment = (script.insertion_index > range_start)
             .then(|| split_span(base, range_start, script.insertion_index))
             .flatten();
-        let mut normalized = normalize_script_span(&spans[script.script_index], base);
+        let original = &spans[script.script_index];
+        if script_geometry == ScriptGeometry::Preserve
+            && !script.separate_numeric_note
+            && has_displaced_script_geometry(base, original)
+        {
+            output.extend(fragment);
+            output.push(original.clone());
+            range_start = script.insertion_index;
+            continue;
+        }
+        let mut normalized = normalize_script_span(original, base);
         // Structure assembly rejoins scripts before paragraph spacing sees them.
         // Carry the plain-text path's confirmed footnote boundary through that join;
         // normalizing the script first would discard its original font/rise evidence. ~keep
@@ -682,12 +730,13 @@ fn normalize_script_span(
 /// # Returns
 ///
 /// Vector of `SegmentData` objects with font metrics for hierarchy detection.
+#[cfg(test)]
 pub(crate) fn extract_segments_from_page(
     doc: &mut NativeDocument,
     page_index: usize,
     artifacts: ArtifactRetention,
 ) -> Result<Vec<SegmentData>> {
-    extract_segments_from_page_inner(doc, page_index, &HashMap::new(), artifacts)
+    extract_segments_from_page_inner(doc, page_index, &HashMap::new(), artifacts, ScriptGeometry::Preserve)
 }
 
 /// Inner implementation of per-page segment extraction.
@@ -699,11 +748,16 @@ fn extract_segments_from_page_inner(
     page_index: usize,
     mcid_roles: &HashMap<u32, Option<u8>>,
     artifacts: ArtifactRetention,
+    script_geometry: ScriptGeometry,
 ) -> Result<Vec<SegmentData>> {
-    let mut page_text_data = match doc
-        .doc
-        .extract_page_text_with_options(page_index, xberg_native_pdf::document::ReadingOrder::TopToBottom)
-    {
+    let reading_order = xberg_native_pdf::document::ReadingOrder::TopToBottom;
+    let extracted = if script_geometry == ScriptGeometry::Preserve {
+        doc.doc
+            .extract_page_text_with_script_geometry(page_index, reading_order)
+    } else {
+        doc.doc.extract_page_text_with_options(page_index, reading_order)
+    };
+    let mut page_text_data = match extracted {
         Ok(data) => data,
         Err(e) => {
             tracing::debug!(
@@ -723,7 +777,7 @@ fn extract_segments_from_page_inner(
         );
         xberg_native_pdf::document::reorder_ltr_key_value_rows(&mut page_text_data.spans);
     }
-    let spans = rejoin_inline_scripts(page_text_data.spans);
+    let spans = rejoin_inline_scripts_inner(page_text_data.spans, script_geometry);
 
     let segments: Vec<SegmentData> = spans
         .into_iter()
@@ -741,15 +795,18 @@ fn extract_segments_from_page_inner(
             let is_bold = span.font_weight == xberg_native_pdf::layout::text_block::FontWeight::Bold;
             let bbox = &span.bbox;
 
-            let pdf_baseline_y = bbox.y;
-            let pdf_y = bbox.y;
+            let pdf_baseline_y = if script_geometry == ScriptGeometry::Preserve {
+                bbox.y + span.text_rise * span.font_size
+            } else {
+                bbox.y
+            };
 
             let assigned_role = span.mcid.and_then(|mcid| mcid_roles.get(&mcid).copied()).flatten();
 
             SegmentData {
                 text: span.text,
                 x: bbox.x,
-                y: pdf_y,
+                y: pdf_baseline_y,
                 width: bbox.width,
                 height: bbox.height,
                 font_size: span.font_size,
@@ -899,6 +956,7 @@ fn dedupe_redrawn_segments(segments: Vec<SegmentData>) -> Vec<SegmentData> {
 fn extract_segments_with_structure_tree(
     doc: &mut NativeDocument,
     artifacts: ArtifactRetention,
+    script_geometry: ScriptGeometry,
 ) -> Result<(Vec<Vec<SegmentData>>, bool)> {
     let mark_info = match doc.doc.mark_info() {
         Ok(mi) => mi,
@@ -933,7 +991,7 @@ fn extract_segments_with_structure_tree(
 
     let heading_count: usize = all_page_content
         .values()
-        .flat_map(|contents| contents.iter())
+        .flatten()
         .filter(|c| c.parsed_type.heading_level().is_some())
         .count();
 
@@ -963,7 +1021,7 @@ fn extract_segments_with_structure_tree(
             })
             .unwrap_or_default();
 
-        let segments = extract_segments_from_page_inner(doc, page_idx, &mcid_roles, artifacts)?;
+        let segments = extract_segments_from_page_inner(doc, page_idx, &mcid_roles, artifacts, script_geometry)?;
         total_role_assigned += segments.iter().filter(|s| s.assigned_role.is_some()).count();
         all_pages.push(segments);
     }
@@ -973,7 +1031,6 @@ fn extract_segments_with_structure_tree(
         total_role_assigned,
         "xberg_native_pdf: structure tree heading detection complete"
     );
-
     Ok((all_pages, true))
 }
 
@@ -998,7 +1055,24 @@ pub(crate) fn extract_all_segments(
     doc: &mut NativeDocument,
     artifacts: ArtifactRetention,
 ) -> Result<(Vec<Vec<SegmentData>>, bool)> {
-    let (tree_segments, used_tree) = extract_segments_with_structure_tree(doc, artifacts)?;
+    extract_all_segments_inner(doc, artifacts, ScriptGeometry::Preserve)
+}
+
+// Heuristic tables have plain cell strings, not annotation carriers. Preserve
+// their existing script flattening until table annotations are implemented. ~keep
+pub(crate) fn extract_all_segments_for_tables(
+    doc: &mut NativeDocument,
+    artifacts: ArtifactRetention,
+) -> Result<(Vec<Vec<SegmentData>>, bool)> {
+    extract_all_segments_inner(doc, artifacts, ScriptGeometry::Flatten)
+}
+
+fn extract_all_segments_inner(
+    doc: &mut NativeDocument,
+    artifacts: ArtifactRetention,
+    script_geometry: ScriptGeometry,
+) -> Result<(Vec<Vec<SegmentData>>, bool)> {
+    let (tree_segments, used_tree) = extract_segments_with_structure_tree(doc, artifacts, script_geometry)?;
     if used_tree && !tree_segments.is_empty() {
         return Ok((tree_segments, true));
     }
@@ -1010,7 +1084,7 @@ pub(crate) fn extract_all_segments(
     let mut all_pages: Vec<Vec<SegmentData>> = Vec::with_capacity(page_count);
 
     for page_idx in 0..page_count {
-        let segments = extract_segments_from_page(doc, page_idx, artifacts)?;
+        let segments = extract_segments_from_page_inner(doc, page_idx, &HashMap::new(), artifacts, script_geometry)?;
         all_pages.push(segments);
     }
 
@@ -1792,11 +1866,13 @@ mod tests {
         let repaired = super::rejoin_inline_scripts(vec![base, trailing, subscript_two, subscript_four]);
         let texts: Vec<_> = repaired.iter().map(|span| span.text.as_str()).collect();
 
-        assert_eq!(texts, ["H", "2", " SO4", " solution"]);
-        assert_eq!(repaired[1].bbox.y, 200.0);
-        assert_eq!(repaired[1].font_size, 10.0);
+        assert_eq!(texts, ["H", "2", " SO", "4", " solution"]);
+        assert_eq!(repaired[1].bbox.y, 198.4);
+        assert_eq!(repaired[1].font_size, 6.7);
         assert_eq!(repaired[2].bbox.y, 200.0);
         assert_eq!(repaired[2].font_size, 10.0);
+        assert_eq!(repaired[3].bbox.y, 198.4);
+        assert_eq!(repaired[3].font_size, 6.7);
     }
 
     #[test]
@@ -1921,7 +1997,7 @@ mod tests {
         let repaired = super::rejoin_inline_scripts(vec![base.clone(), separator.clone(), normalized_rise]);
         assert_eq!(
             repaired.iter().map(|span| span.text.as_str()).collect::<Vec<_>>(),
-            ["Unit2", " tail"]
+            ["Unit", "2", " tail"]
         );
 
         let mut distant = positioned_span("2", 120.1, 195.0, 3.0, 6.7, vec![120.1]);
@@ -1959,7 +2035,7 @@ mod tests {
         let repaired = super::rejoin_inline_scripts(vec![closer_old, farther_recent, script]);
         assert_eq!(
             repaired.iter().map(|span| span.text.as_str()).collect::<Vec<_>>(),
-            ["Old2", "New"]
+            ["Old", "2", "New"]
         );
 
         let old_tie = positioned_span("Old", 100.0, 200.0, 20.0, 10.0, vec![]);
@@ -1968,7 +2044,7 @@ mod tests {
         let repaired = super::rejoin_inline_scripts(vec![old_tie, recent_tie, script]);
         assert_eq!(
             repaired.iter().map(|span| span.text.as_str()).collect::<Vec<_>>(),
-            ["Old", "New2"]
+            ["Old", "New", "2"]
         );
     }
 
@@ -1980,7 +2056,7 @@ mod tests {
         let repaired = super::rejoin_inline_scripts(vec![base, script_base, nested_script]);
         assert_eq!(
             repaired.iter().map(|span| span.text.as_str()).collect::<Vec<_>>(),
-            ["Ab", "c"]
+            ["A", "b", "c"]
         );
     }
 

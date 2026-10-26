@@ -796,7 +796,9 @@ fn push_paragraph_element_by_kind(
     );
 
     let get_text = |para: &PdfParagraph| -> String {
-        let text = if !para.text.is_empty() {
+        let text = if paragraph_has_scripts(para) {
+            extract_text_and_annotations(para, hyphen_witnesses).0
+        } else if !para.text.is_empty() {
             para.text.clone()
         } else {
             join_line_texts_plain(&para.lines, hyphen_witnesses)
@@ -806,11 +808,15 @@ fn push_paragraph_element_by_kind(
 
     if let Some(level) = para.heading_level {
         let text = get_text(para);
-        return if para.layout_region_path.is_some() {
+        let index = if para.layout_region_path.is_some() {
             builder.push_heading_in_current_container(level, &text, page, bbox)
         } else {
             builder.push_heading(level, &text, page, bbox)
         };
+        if paragraph_has_scripts(para) {
+            builder.set_annotations(index, extract_text_and_annotations(para, hyphen_witnesses).1);
+        }
+        return index;
     }
 
     if para.is_code_block {
@@ -837,7 +843,7 @@ fn push_paragraph_element_by_kind(
     if para.is_list_item {
         let ordered = list_item_is_ordered(para);
         let text = get_text(para);
-        let annotations = if para.text.is_empty() {
+        let annotations = if para.text.is_empty() || paragraph_has_scripts(para) {
             let (annotated_text, annotations) = extract_text_and_annotations(para, hyphen_witnesses);
             if annotated_text == text {
                 annotations
@@ -884,7 +890,7 @@ fn push_paragraph_element_by_kind(
         return builder.push_paragraph(&text, annotations, page, bbox);
     }
 
-    if !para.text.is_empty() {
+    if !para.text.is_empty() && !paragraph_has_scripts(para) {
         let annotations = if para.is_bold {
             vec![TextAnnotation {
                 start: 0,
@@ -943,6 +949,42 @@ fn emit_caption_elements(
     }
 }
 
+fn annotated_segments_need_space(
+    previous: &crate::pdf::hierarchy::SegmentData,
+    previous_word: &str,
+    next: &crate::pdf::hierarchy::SegmentData,
+    next_word: &str,
+) -> bool {
+    let explicit_space = previous.text.ends_with(char::is_whitespace) || next.text.starts_with(char::is_whitespace);
+    if !explicit_space && super::pipeline::is_script_run_of(previous, next) {
+        return false;
+    }
+    segments_need_space(previous, previous_word, next, next_word)
+}
+
+fn segment_script_kind(segments: &[&crate::pdf::hierarchy::SegmentData], index: usize) -> Option<AnnotationKind> {
+    let script = segments[index];
+    segments[..index]
+        .iter()
+        .rev()
+        .take(super::pipeline::SCRIPT_RUN_BASE_LOOKBACK)
+        .find_map(|base| {
+            if script.font_size >= base.font_size || !super::pipeline::is_script_run_of(base, script) {
+                return None;
+            }
+            Some(if script.upright_baseline() > base.upright_baseline() {
+                AnnotationKind::Superscript
+            } else {
+                AnnotationKind::Subscript
+            })
+        })
+}
+
+fn paragraph_has_scripts(para: &PdfParagraph) -> bool {
+    let segments: Vec<_> = para.lines.iter().flat_map(|line| &line.segments).collect();
+    (0..segments.len()).any(|index| segment_script_kind(&segments, index).is_some())
+}
+
 /// Extract plain text and inline annotations (bold/italic) from a paragraph.
 ///
 /// Walks segments, groups consecutive runs of the same bold/italic state,
@@ -964,9 +1006,14 @@ fn extract_text_and_annotations(
     while i < all_segments.len() {
         let bold = all_segments[i].is_bold;
         let italic = all_segments[i].is_italic;
+        let script = segment_script_kind(&all_segments, i);
 
         let run_start = i;
-        while i < all_segments.len() && all_segments[i].is_bold == bold && all_segments[i].is_italic == italic {
+        while i < all_segments.len()
+            && all_segments[i].is_bold == bold
+            && all_segments[i].is_italic == italic
+            && segment_script_kind(&all_segments, i) == script
+        {
             i += 1;
         }
 
@@ -990,7 +1037,7 @@ fn extract_text_and_annotations(
                 }
                 LineBreakHyphen::KeepHyphen => {}
                 LineBreakHyphen::NotApplicable => {
-                    if segments_need_space(prev_seg, prev_last, next_seg, next_first) {
+                    if annotated_segments_need_space(prev_seg, prev_last, next_seg, next_first) {
                         text.push(' ');
                     }
                 }
@@ -1018,7 +1065,12 @@ fn extract_text_and_annotations(
                             if needs_space_between(prev, word) {
                                 text.push(' ');
                             }
-                        } else if segments_need_space(all_segments[prev_seg_idx], prev, all_segments[seg_idx], word) {
+                        } else if annotated_segments_need_space(
+                            all_segments[prev_seg_idx],
+                            prev,
+                            all_segments[seg_idx],
+                            word,
+                        ) {
                             text.push(' ');
                         }
                     }
@@ -1030,6 +1082,13 @@ fn extract_text_and_annotations(
         let span_end = text.len();
 
         if span_start < span_end {
+            if let Some(kind) = script {
+                annotations.push(TextAnnotation {
+                    start: span_start as u32,
+                    end: span_end as u32,
+                    kind,
+                });
+            }
             if bold {
                 annotations.push(TextAnnotation {
                     start: span_start as u32,
@@ -1312,6 +1371,83 @@ mod tests {
 
     use super::super::types::PdfLine;
     use super::*;
+
+    #[test]
+    fn should_preserve_script_byte_offsets_with_overlapping_bold_and_italic() {
+        let mut para = make_paragraph("", None);
+        let mut base = plain_segment("é10");
+        base.width = 18.0;
+        base.is_bold = true;
+        base.is_italic = true;
+        let script = SegmentData {
+            text: "12".to_string(),
+            x: 18.0,
+            y: 703.0,
+            width: 9.0,
+            height: 8.0,
+            font_size: 8.0,
+            baseline_y: 703.0,
+            ..base.clone()
+        };
+        let suffix = SegmentData {
+            text: "/l".to_string(),
+            x: 27.0,
+            width: 6.0,
+            ..base.clone()
+        };
+        para.lines[0].segments = vec![base, script, suffix];
+        let (text, annotations) = extract_text_and_annotations(&para, &Default::default());
+        assert_eq!(text, "é1012/l");
+        let scripts: Vec<_> = annotations
+            .iter()
+            .filter(|a| a.kind == AnnotationKind::Superscript)
+            .collect();
+        assert_eq!(scripts.len(), 1);
+        assert_eq!((scripts[0].start, scripts[0].end), (4, 6));
+        assert_eq!(&text[scripts[0].start as usize..scripts[0].end as usize], "12");
+        for kind in [AnnotationKind::Bold, AnnotationKind::Italic] {
+            assert!(annotations.iter().any(|a| a.start == 4 && a.end == 6 && a.kind == kind));
+        }
+    }
+
+    #[test]
+    fn should_join_script_style_changes_without_erasing_explicit_spaces() {
+        for (bold, italic) in [(true, false), (false, true)] {
+            for explicit_space in [false, true] {
+                let mut para = make_paragraph("", None);
+                let base = SegmentData {
+                    width: 8.0,
+                    is_bold: bold,
+                    is_italic: italic,
+                    ..plain_segment("H")
+                };
+                let script = SegmentData {
+                    x: 8.0,
+                    y: 698.0,
+                    baseline_y: 698.0,
+                    font_size: 8.0,
+                    height: 8.0,
+                    width: 4.0,
+                    ..plain_segment("2")
+                };
+                let suffix = SegmentData {
+                    x: 12.0,
+                    width: 8.0,
+                    text: if explicit_space { " O" } else { "O" }.to_string(),
+                    ..base.clone()
+                };
+                para.lines[0].segments = vec![base, script, suffix];
+                let (text, annotations) = extract_text_and_annotations(&para, &Default::default());
+                assert_eq!(text, if explicit_space { "H2 O" } else { "H2O" });
+                let scripts: Vec<_> = annotations
+                    .iter()
+                    .filter(|a| a.kind == AnnotationKind::Subscript)
+                    .collect();
+                assert_eq!(scripts.len(), 1);
+                assert_eq!((scripts[0].start, scripts[0].end), (1, 2));
+            }
+        }
+    }
 
     fn plain_segment(text: &str) -> SegmentData {
         SegmentData {
