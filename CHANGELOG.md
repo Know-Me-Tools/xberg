@@ -65,6 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(djot): The footnote reference in the caption of a table without rows is dropped with the caption.**
+  A table without rows, such as a lone `|---|` line, is not written and its caption is dropped. The footnote
+  reference in that caption used to stay and appeared before the next table.
 - **(build): Clippy passes with the `xml`, `hwpx` or `email` feature turned on alone.**
   Helpers that only other features call carry those features' cfg, and CI now runs clippy with `-D warnings` on each
   of the three feature sets. (#2243)
