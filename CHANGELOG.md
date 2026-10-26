@@ -60,6 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(docx): Preserve superscript and subscript markers in table cells and note definitions.**
+  Markdown keeps `10^9^` and `H~2~O` with `escape_markdown: false`, including scripts beside bold, italic
+  or linked text. (#2275)
 - **(images): Preserve cell-only OCR tables without duplicating neighboring tables.**
   Extracted tables and page content keep the same cells, order, and metadata. (#2226)
 - **(doc): Extract floating PNG and JPEG pictures from Word 97–2003 documents.**

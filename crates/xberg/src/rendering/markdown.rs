@@ -116,6 +116,9 @@ pub(crate) fn render_markdown(doc: &InternalDocument) -> String {
         strip_arxiv_watermark_noise(root);
     }
     keep_code_literal(root, &arena);
+    if !doc.escape_markdown {
+        keep_text_tildes_unescaped(root, &arena);
+    }
 
     if root.first_child().is_none() {
         tracing::debug!("markdown rendering: empty AST, returning empty string");
@@ -166,6 +169,25 @@ fn filter_page_marker_comments(output: String, page_marker_format: Option<&str>)
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// ~keep Only constant tildes bypass escaping; code literals and every other text byte stay on their own AST paths.
+fn keep_text_tildes_unescaped<'a>(root: &'a AstNode<'a>, arena: &'a Arena<'a>) {
+    for node in root.descendants().collect::<Vec<_>>() {
+        let text = match &node.data.borrow().value {
+            NodeValue::Text(text) if text.contains('~') => text.clone(),
+            _ => continue,
+        };
+        for (index, part) in text.split('~').enumerate() {
+            if index > 0 {
+                node.insert_before(arena.alloc(AstNode::from(NodeValue::Raw("~".into()))));
+            }
+            if !part.is_empty() {
+                node.insert_before(arena.alloc(AstNode::from(NodeValue::Text(part.to_string().into()))));
+            }
+        }
+        node.detach();
+    }
 }
 
 /// Apply the `escape_markdown`-dependent unescape pass to rendered output.
@@ -371,6 +393,108 @@ mod tests {
             !rendered.contains("1."),
             "a synthesized ordinal must not compete with the document's own label, got: {rendered}"
         );
+    }
+
+    #[test]
+    fn should_keep_issue_2275_table_tildes_when_escaping_disabled() {
+        let mut builder = InternalDocumentBuilder::new("test");
+        builder.push_table_from_cells(&[vec!["Value".into()], vec!["H~2~O".into()]], None, None);
+        let mut doc = builder.build();
+        doc.escape_markdown = false;
+        assert_eq!(render_markdown(&doc), "| Value |\n| --- |\n| H~2~O |\n");
+    }
+
+    #[test]
+    fn should_keep_issue_2275_prose_tildes_when_escaping_disabled() {
+        let mut builder = InternalDocumentBuilder::new("test");
+        builder.push_paragraph("H~2~O and ~literal~", vec![], None, None);
+        let mut doc = builder.build();
+        doc.escape_markdown = false;
+        assert_eq!(render_markdown(&doc), "H~2~O and ~literal~\n");
+    }
+
+    #[test]
+    fn should_keep_issue_2275_html_like_text_escaped_beside_tildes() {
+        let mut builder = InternalDocumentBuilder::new("test");
+        builder.push_paragraph("<img src=x>~x~", vec![], None, None);
+        let mut doc = builder.build();
+        doc.escape_markdown = false;
+        let arena = Arena::new();
+        let root = build_comrak_ast(&doc, &arena);
+        keep_text_tildes_unescaped(root, &arena);
+        let mut raw_tokens = 0;
+        for node in root.descendants() {
+            match &node.data.borrow().value {
+                NodeValue::HtmlInline(_) | NodeValue::HtmlBlock(_) => panic!("source text became HTML"),
+                NodeValue::Raw(payload) => {
+                    assert_eq!(payload, "~");
+                    raw_tokens += 1;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(raw_tokens, 2);
+        let markdown = render_markdown(&doc);
+        assert_eq!(markdown, "\\<img src=x\\>~x~\n");
+        let parsed = comrak::parse_document(&arena, &markdown, &comrak_options());
+        assert_eq!(
+            parsed
+                .descendants()
+                .filter(|node| matches!(
+                    node.data.borrow().value,
+                    NodeValue::HtmlInline(_) | NodeValue::HtmlBlock(_)
+                ))
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn should_escape_issue_2275_literal_tildes_by_default() {
+        let mut builder = InternalDocumentBuilder::new("test");
+        builder.push_paragraph("H~2~O", vec![], None, None);
+        builder.push_table_from_cells(&[vec!["Value".into()], vec!["H~2~O".into()]], None, None);
+        let doc = builder.build();
+        assert!(doc.escape_markdown);
+        assert_eq!(
+            render_markdown(&doc),
+            "H\\~2\\~O\n\n| Value |\n| --- |\n| H\\~2\\~O |\n"
+        );
+    }
+
+    #[test]
+    fn should_preserve_issue_2275_backslash_tildes_in_inline_and_fenced_code() {
+        let inline = r"\~literal~";
+        let fenced = "\\~literal~\n~~~\n`\\~`";
+        for escape_markdown in [false, true] {
+            let mut builder = InternalDocumentBuilder::new("test");
+            builder.push_paragraph(
+                inline,
+                vec![crate::types::builder::code(0, inline.len() as u32)],
+                None,
+                None,
+            );
+            builder.push_code(fenced, Some("text"), None, None);
+            builder.push_paragraph("H~2~O", vec![], None, None);
+            let mut doc = builder.build();
+            doc.escape_markdown = escape_markdown;
+            let markdown = render_markdown(&doc);
+            let arena = Arena::new();
+            let root = comrak::parse_document(&arena, &markdown, &comrak_options());
+            let literals: Vec<_> = root
+                .descendants()
+                .filter_map(|node| match &node.data.borrow().value {
+                    NodeValue::Code(code) => Some(code.literal.clone()),
+                    NodeValue::CodeBlock(code) => Some(code.literal.clone()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                literals,
+                [inline.to_string(), format!("{fenced}\n")],
+                "escape_markdown={escape_markdown}: {markdown}"
+            );
+        }
     }
 
     /// Issue #1292: by default, prose containing a leading `#06-18`-style token

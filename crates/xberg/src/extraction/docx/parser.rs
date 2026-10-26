@@ -910,9 +910,11 @@ impl Paragraph {
             }
             let group_end = j;
 
-            let all_same_inner = self.runs[group_start..group_end]
-                .iter()
-                .all(|r| r.underline == run.underline && r.strikethrough == run.strikethrough);
+            let all_same_inner = self.runs[group_start..group_end].iter().all(|r| {
+                r.underline == run.underline
+                    && r.strikethrough == run.strikethrough
+                    && r.script_marker() == run.script_marker()
+            });
 
             if all_same_inner {
                 let mut merged_text = String::new();
@@ -925,6 +927,8 @@ impl Paragraph {
                     italic: run.italic,
                     underline: run.underline,
                     strikethrough: run.strikethrough,
+                    superscript: run.superscript,
+                    subscript: run.subscript,
                     hyperlink_url: run.hyperlink_url.clone(),
                     ..Default::default()
                 };
@@ -941,7 +945,18 @@ impl Paragraph {
                     text.push('*');
                 }
 
+                let mut script_marker = None;
                 for r in &self.runs[group_start..group_end] {
+                    let next_marker = r.script_marker();
+                    if next_marker != script_marker {
+                        if let Some(marker) = script_marker {
+                            text.push(marker);
+                        }
+                        if let Some(marker) = next_marker {
+                            text.push(marker);
+                        }
+                        script_marker = next_marker;
+                    }
                     if r.underline {
                         text.push_str("<u>");
                     }
@@ -957,6 +972,9 @@ impl Paragraph {
                     }
                 }
 
+                if let Some(marker) = script_marker {
+                    text.push(marker);
+                }
                 if run.bold && run.italic {
                     text.push_str("***");
                 } else if run.bold {
@@ -1027,6 +1045,16 @@ impl Run {
         }
     }
 
+    fn script_marker(&self) -> Option<char> {
+        if self.superscript {
+            Some('^')
+        } else if self.subscript {
+            Some('~')
+        } else {
+            None
+        }
+    }
+
     /// Render this run as markdown with formatting markers.
     pub(crate) fn to_markdown(&self) -> String {
         if let Some((ref latex, is_display)) = self.math_latex {
@@ -1052,6 +1080,7 @@ impl Run {
             0
         }) + (if self.strikethrough { 4 } else { 0 })
             + (if self.underline { 7 } else { 0 })
+            + (if self.script_marker().is_some() { 2 } else { 0 })
             + self.hyperlink_url.as_ref().map_or(0, |u| u.len() + 4);
         let mut out = String::with_capacity(self.text.len() + extra);
 
@@ -1072,7 +1101,13 @@ impl Run {
             out.push('*');
         }
 
+        if let Some(marker) = self.script_marker() {
+            out.push(marker);
+        }
         out.push_str(&self.text);
+        if let Some(marker) = self.script_marker() {
+            out.push(marker);
+        }
 
         if self.bold && self.italic {
             out.push_str("***");
@@ -7329,3 +7364,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "script_tests.rs"]
+mod script_tests;
