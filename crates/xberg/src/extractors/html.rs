@@ -637,8 +637,11 @@ impl SyncExtractor for HtmlExtractor {
             },
         };
 
-        let html_options =
-            apply_content_filter_to_html_options(config.html_options.clone(), config.content_filter.as_ref());
+        let html_options = crate::extraction::html::resolve_conversion_options(
+            config.html_options.clone(),
+            config.output_format.clone(),
+        );
+        let html_options = apply_content_filter_to_html_options(Some(html_options), config.content_filter.as_ref());
 
         // `_table_data` is intentionally unused: it comes from the same conversion pass as
         // `doc_structure`, whose `map_document_structure` already creates the table elements and

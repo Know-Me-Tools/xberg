@@ -29,14 +29,26 @@ pub(crate) fn map_output_format(format: XbergOutputFormat) -> LibOutputFormat {
 /// - `extract_metadata = true` (parse YAML frontmatter)
 /// - `include_document_structure = true` (populate document tree)
 /// - `preprocessing.enabled = true` (clean navigation and boilerplate before conversion)
+/// - `sup_symbol = "^"` and `sub_symbol = "~"` for Markdown output
 ///
 /// Sets output format based on the provided format parameter.
 pub(crate) fn resolve_conversion_options(
     options: Option<ConversionOptions>,
     output_format: XbergOutputFormat,
 ) -> ConversionOptions {
+    let markdown_defaults = matches!(&output_format, XbergOutputFormat::Markdown);
     let mut opts = options.unwrap_or_else(|| ConversionOptions {
         extract_metadata: true,
+        sup_symbol: if markdown_defaults {
+            "^".to_string()
+        } else {
+            String::new()
+        },
+        sub_symbol: if markdown_defaults {
+            "~".to_string()
+        } else {
+            String::new()
+        },
         preprocessing: super::types::PreprocessingOptions {
             enabled: true,
             ..Default::default()
@@ -276,6 +288,41 @@ fn metadata_pass(html: &str) -> Option<HtmlMetadata> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_default_html_script_symbols_only_for_markdown_output() {
+        let options = resolve_conversion_options(None, XbergOutputFormat::Markdown);
+        assert_eq!(options.sup_symbol, "^");
+        assert_eq!(options.sub_symbol, "~");
+
+        for format in [
+            XbergOutputFormat::Plain,
+            XbergOutputFormat::Djot,
+            XbergOutputFormat::Html,
+            XbergOutputFormat::Json,
+            XbergOutputFormat::DocTags,
+            XbergOutputFormat::Custom("custom".to_string()),
+        ] {
+            let options = resolve_conversion_options(None, format.clone());
+            assert_eq!(options.sup_symbol, "", "{format:?}");
+            assert_eq!(options.sub_symbol, "", "{format:?}");
+            assert_eq!(options.output_format, map_output_format(format));
+        }
+    }
+
+    #[test]
+    fn should_preserve_supplied_html_script_symbols() {
+        for (sup_symbol, sub_symbol) in [("", ""), ("<sup>", "<sub>"), ("^", "")] {
+            let supplied = ConversionOptions {
+                sup_symbol: sup_symbol.to_string(),
+                sub_symbol: sub_symbol.to_string(),
+                ..Default::default()
+            };
+            let options = resolve_conversion_options(Some(supplied), XbergOutputFormat::Markdown);
+            assert_eq!(options.sup_symbol, sup_symbol);
+            assert_eq!(options.sub_symbol, sub_symbol);
+        }
+    }
 
     #[test]
     fn test_convert_simple_html() {

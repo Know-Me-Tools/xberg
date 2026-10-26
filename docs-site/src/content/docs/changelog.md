@@ -64,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(html): Preserve superscript and subscript markers in Markdown when HTML options are unset.**
+  Default conversion keeps `10^9^` and `H~2~O`; explicitly supplied conversion options retain their script symbols. (#2275)
+
 - **(structured): Rust callers can select image rasterization security limits for trusted large photos.**
   `pages_for_call_with_security_limits` and `ParsedDocument::from_bytes_with_security_limits` retain caller budgets
   through image decoding, PNG encoding and per-operation render caches; existing APIs keep their default limits. (#2283)
