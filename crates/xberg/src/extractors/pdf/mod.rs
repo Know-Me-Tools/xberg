@@ -637,17 +637,20 @@ const MIN_TABLE_TOKEN_REPRESENTATION: f64 = 0.90;
 /// duplicate is cheaper than dropping a real table.
 const MIN_TABLE_TOKENS_FOR_CONTAINMENT: usize = 8;
 
-/// Tokens the element stream already renders, as a consumable multiset.
-fn element_token_multiset(doc: &InternalDocument) -> ahash::AHashMap<String, usize> {
+/// Tokens of `texts`, as a consumable multiset.
+fn token_multiset<'a>(texts: impl IntoIterator<Item = &'a str>) -> ahash::AHashMap<String, usize> {
     let mut represented = ahash::AHashMap::<String, usize>::new();
-    for token in doc
-        .elements
-        .iter()
-        .flat_map(|element| normalized_pdf_tokens(&element.text))
-    {
-        *represented.entry(token).or_default() += 1;
+    for text in texts {
+        for token in normalized_pdf_tokens(text) {
+            *represented.entry(token).or_default() += 1;
+        }
     }
     represented
+}
+
+/// Tokens the element stream already renders, as a consumable multiset.
+fn element_token_multiset(doc: &InternalDocument) -> ahash::AHashMap<String, usize> {
+    token_multiset(doc.elements.iter().map(|element| element.text.as_str()))
 }
 
 /// Whether `table`'s cell text is already carried by the element stream.
@@ -2435,10 +2438,10 @@ impl PdfExtractor {
                     // Keep the rasters only when this run configures a native reader of them.
                     let formula_reads = cfg!(feature = "formula-recognition")
                         && config.layout.as_ref().is_some_and(|l| l.formula_model.is_some());
-                    let vlm_reads = cfg!(feature = "liter-llm")
-                        && config.ocr.as_ref().is_some_and(|o| {
-                            o.vlm_fallback != crate::core::config::VlmFallbackPolicy::Disabled && o.vlm_config.is_some()
-                        });
+                    #[cfg(feature = "liter-llm")]
+                    let vlm_reads = region_vlm::region_vlm_config(config).is_some();
+                    #[cfg(not(feature = "liter-llm"))]
+                    let vlm_reads = false;
                     if (formula_reads || vlm_reads) && markdown_layout_usable_for_native(&markdown_page_rotations) {
                         native_only_layout_inputs = Some(native_inputs);
                     }
@@ -3519,25 +3522,13 @@ impl PdfExtractor {
 
         #[cfg(all(feature = "liter-llm", feature = "layout-detection"))]
         {
-            let vlm_enabled = config
-                .ocr
-                .as_ref()
-                .map(|o| o.vlm_fallback != crate::core::config::VlmFallbackPolicy::Disabled && o.vlm_config.is_some())
-                .unwrap_or(false);
-
-            if vlm_enabled
+            if let Some(vlm_cfg) = region_vlm::region_vlm_config(config)
                 && let (Some(layout_images), Some(hints), Some(detections)) = (
                     markdown_layout_images.as_deref(),
                     markdown_layout_hints.as_deref(),
                     markdown_layout_detections.as_deref(),
                 )
             {
-                let vlm_cfg = config
-                    .ocr
-                    .as_ref()
-                    .and_then(|o| o.vlm_config.as_ref())
-                    .expect("vlm_config checked above");
-
                 let region_results = region_vlm::extract_vlm_regions(layout_images, hints, detections, vlm_cfg).await;
                 if !region_results.is_empty() {
                     tracing::debug!(

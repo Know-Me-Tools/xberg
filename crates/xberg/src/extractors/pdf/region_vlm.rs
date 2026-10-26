@@ -5,6 +5,16 @@
 //! layout) regions, this module crops those regions from the page raster, calls
 //! the VLM via [`crate::llm::region_extractor`], and splices the resulting
 //! markdown back into the assembled document at the region's original position.
+//! A table or other region's answer replaces the native table elements inside it, and
+//! the body paragraphs inside it whose words the answer carries, matched by box; a
+//! figure's description is added beside it.
+//! Native paragraphs have a box only when the PDF is built as a structured document
+//! (`needs_structured_extraction` in `extraction.rs`), so on the flat path (Plain, Json
+//! and other formats not built from Markdown) they stay, OCR paragraphs merged in with
+//! boxes aside, and the answer goes after the page's last element.
+//! The region and the text are compared as if in one page frame, so on a rotated
+//! page, or one whose MediaBox does not start at the origin, a region can miss the
+//! text it covers.
 //!
 //! Only compiled when `liter-llm` + `layout-detection` are both enabled
 //! (not on Windows).
@@ -16,10 +26,13 @@ use std::io::Cursor;
 use image::{ExtendedColorType, ImageEncoder};
 
 use crate::RegionKind;
-use crate::core::config::LlmConfig;
+use crate::core::config::{ExtractionConfig, LlmConfig, VlmFallbackPolicy};
 use crate::layout::{DetectionResult, LayoutDetection};
 use crate::llm::region_extractor::extract_region_with_vlm;
 use crate::pdf::structure::types::{LayoutHint, LayoutHintClass};
+use crate::types::BoundingBox;
+use crate::types::document_structure::ContentLayer;
+use crate::types::internal::{ElementKind, InternalDocument, InternalElement, RelationshipKind};
 
 /// Minimum confidence threshold for a layout hint to trigger VLM region extraction.
 const MIN_REGION_CONFIDENCE: f32 = 0.6;
@@ -29,6 +42,13 @@ const MIN_REGION_CONFIDENCE: f32 = 0.6;
 /// Regions smaller than this are skipped — they are unlikely to contain meaningful
 /// content and would waste VLM API tokens.
 const MIN_REGION_PIXEL_AREA: u32 = 1_000;
+
+/// Share of a native element's area that must lie inside a table or other region for
+/// the region's answer to replace it. Above one half, an element belongs to at most one
+/// of two disjoint regions, and the margin absorbs jitter between the layout box and the
+/// native geometry. An element straddling the edge is kept, as is a paragraph whose words the
+/// answer lacks: duplicated text over lost text.
+const REPLACE_CONTAINMENT: f64 = 0.6;
 
 /// A VLM-extracted markdown string and the page index it belongs to.
 pub(crate) struct RegionVlmResult {
@@ -62,6 +82,21 @@ const fn region_kind_for_hint(class_name: LayoutHintClass) -> Option<RegionKind>
         LayoutHintClass::Other => Some(RegionKind::ComplexLayout),
         _ => None,
     }
+}
+
+/// Whether a region's answer stands in for the native content inside it. A figure's
+/// description does not transcribe the labels or text drawn in the figure.
+const fn answer_replaces_native(class_name: LayoutHintClass) -> bool {
+    matches!(class_name, LayoutHintClass::Table | LayoutHintClass::Other)
+}
+
+/// The VLM that layout regions are sent to, when the fallback policy is not `Disabled`.
+pub(crate) fn region_vlm_config(config: &ExtractionConfig) -> Option<&LlmConfig> {
+    config
+        .ocr
+        .as_ref()
+        .filter(|ocr| ocr.vlm_fallback != VlmFallbackPolicy::Disabled)
+        .and_then(|ocr| ocr.vlm_config.as_ref())
 }
 
 /// Extract markdown from VLM for all figure / complex-layout regions across all pages.
@@ -293,8 +328,6 @@ fn splice_element(
     mut at: usize,
     element: crate::types::internal::InternalElement,
 ) -> usize {
-    use crate::types::internal::{ElementKind, InternalElement};
-
     let is_content = |element: &InternalElement| !matches!(element.kind, ElementKind::PageBreak);
     let first_on_page = element.page.is_some()
         && !document
@@ -327,491 +360,236 @@ fn insert_element(
     document.elements.insert(at, element);
 }
 
+/// Share of `inner`'s area inside the hint's box, both in PDF points. The hint needs no corner swap:
+/// `region_crop` refuses an inverted detection, and an inverted hint overlaps no element anyway.
+fn contained_share(inner: &BoundingBox, hint: &LayoutHint) -> f64 {
+    let (left, right) = (f64::from(hint.left), f64::from(hint.right));
+    let (bottom, top) = (f64::from(hint.bottom), f64::from(hint.top));
+    let (x0, x1) = (inner.x0.min(inner.x1), inner.x0.max(inner.x1));
+    let (y0, y1) = (inner.y0.min(inner.y1), inner.y0.max(inner.y1));
+    let area = (x1 - x0) * (y1 - y0);
+    let width = (x1.min(right) - x0.max(left)).max(0.0);
+    let height = (y1.min(top) - y0.max(bottom)).max(0.0);
+    if area > 0.0 { width * height / area } else { 0.0 }
+}
+
+/// Page and box of an element; a table element without its own falls back to its table's.
+fn element_page_box(document: &InternalDocument, element: &InternalElement) -> Option<(u32, BoundingBox)> {
+    let table = match element.kind {
+        ElementKind::Table { table_index } => document.tables.get(table_index as usize),
+        _ => None,
+    };
+    let page = element.page.or(table.map(|table| table.page_number))?;
+    let bbox = element.bbox.or(table.and_then(|table| table.bounding_box))?;
+    Some((page, bbox))
+}
+
+/// Whether `element` is mostly inside the region's box on its page.
+fn inside_region(document: &InternalDocument, element: &InternalElement, page_num: u32, hint: &LayoutHint) -> bool {
+    element_page_box(document, element)
+        .is_some_and(|(page, bbox)| page == page_num && contained_share(&bbox, hint) >= REPLACE_CONTAINMENT)
+}
+
+/// Whether an answer may stand in for `element`: a table, or a body paragraph that is not linked as
+/// a caption. A table's cells are what the VLM transcribed; a paragraph goes only if the answer
+/// carries its words ([`take_words`]), since a table prompt returns only the table and a note or
+/// title in the region would be lost. Everything else stays.
+fn replaceable(element: &InternalElement, is_caption: bool) -> bool {
+    match element.kind {
+        ElementKind::Table { .. } => true,
+        ElementKind::Paragraph => !is_caption && element.layer == ContentLayer::Body,
+        _ => false,
+    }
+}
+
+/// Takes every word of `text` out of `answer` and returns `true`, or takes none and returns `false`
+/// when any is missing, so a partly transcribed paragraph is kept and two cannot share one word.
+fn take_words(text: &str, answer: &mut ahash::AHashMap<String, usize>) -> bool {
+    let words = super::token_multiset([text]);
+    if words
+        .iter()
+        .any(|(word, count)| answer.get(word).copied().unwrap_or_default() < *count)
+    {
+        return false;
+    }
+    for (word, count) in words {
+        if let Some(remaining) = answer.get_mut(&word) {
+            *remaining -= count;
+        }
+    }
+    true
+}
+
+/// Takes `text`'s words out of `answer` as far as it holds them.
+fn spend_words(text: &str, answer: &mut ahash::AHashMap<String, usize>) {
+    for (word, count) in super::token_multiset([text]) {
+        if let Some(remaining) = answer.get_mut(&word) {
+            *remaining = remaining.saturating_sub(count);
+        }
+    }
+}
+
+/// Also drops each container start and end pair the removal left with nothing inside, so the
+/// answer is not spliced into an empty group and the page reads as empty to [`splice_element`].
+fn drop_emptied_containers(elements: &[InternalElement], drop: &mut [bool]) {
+    // (start index, holds a kept element, holds a dropped one)
+    let mut open: Vec<(usize, bool, bool)> = Vec::new();
+    for (index, element) in elements.iter().enumerate() {
+        if element.kind.is_container_start() {
+            open.push((index, false, false));
+            continue;
+        }
+        let (kept, dropped) = if element.kind.is_container_end()
+            && let Some((start, kept, dropped)) = open.pop()
+        {
+            let emptied = dropped && !kept;
+            if emptied {
+                drop[start] = true;
+                drop[index] = true;
+            }
+            (!emptied, emptied)
+        } else {
+            (!drop[index], drop[index])
+        };
+        if let Some(parent) = open.last_mut() {
+            parent.1 |= kept;
+            parent.2 |= dropped;
+        }
+    }
+}
+
+/// Also drops a page break left leading or doubled by the removal, so a page emptied by it
+/// reads as empty to [`splice_element`]. A trailing one needs no drop: the answer follows it.
+fn drop_emptied_page_breaks(elements: &[InternalElement], drop: &mut [bool]) {
+    let mut last_kept: Option<usize> = None;
+    let mut removed_since = false;
+    for (index, element) in elements.iter().enumerate() {
+        if drop[index] {
+            removed_since = true;
+            continue;
+        }
+        let is_break = matches!(element.kind, ElementKind::PageBreak);
+        let after_break = last_kept.is_none_or(|kept| matches!(elements[kept].kind, ElementKind::PageBreak));
+        if is_break && removed_since && after_break {
+            drop[index] = true;
+            continue;
+        }
+        last_kept = Some(index);
+        removed_since = false;
+    }
+}
+
+/// Removes the elements flagged in `drop` and every relationship whose source or `Index` target is
+/// one of them; the remaining indices are remapped. Not the OCR path's `remap_relationships`: it also drops
+/// `Key` links that never resolved, which `resolve_relationships` reports in a warning later.
+fn remove_elements(document: &mut InternalDocument, drop: &[bool]) {
+    use crate::types::internal::RelationshipTarget;
+
+    let mut next = 0u32;
+    let new_index: Vec<Option<u32>> = drop
+        .iter()
+        .map(|dropped| {
+            (!dropped).then(|| {
+                next += 1;
+                next - 1
+            })
+        })
+        .collect();
+    let mut flags = drop.iter();
+    document.elements.retain(|_| !flags.next().copied().unwrap_or(false));
+    document.relationships.retain_mut(|relationship| {
+        let Some(source) = new_index.get(relationship.source as usize).copied().flatten() else {
+            return false;
+        };
+        relationship.source = source;
+        if let RelationshipTarget::Index(target) = &mut relationship.target {
+            let Some(remapped) = new_index.get(*target as usize).copied().flatten() else {
+                return false;
+            };
+            *target = remapped;
+        }
+        true
+    });
+}
+
+/// Removes the native content a table or other region's `answer` replaces from the document elements.
+/// `document.tables` and any prebuilt pages are not touched, so the `tables` list keeps the native
+/// table, as do prebuilt `pages[n].tables` and Plain or Json page content; page content rendered
+/// from the elements, and pages built from them, show the answer. Returns where the removed content
+/// began in the remaining elements, and the depth of the first element replaced, so the answer takes
+/// its place; `None` when that element has no page of its own, as the flat path's table element
+/// pushed at the document's end, whose slot is not where its page is.
+fn remove_region_content(
+    document: &mut InternalDocument,
+    page_num: u32,
+    hint: &LayoutHint,
+    answer: &str,
+) -> Option<(usize, u16)> {
+    let captions: ahash::AHashSet<u32> = document
+        .relationships
+        .iter()
+        .filter(|relationship| matches!(relationship.kind, RelationshipKind::Caption))
+        .map(|relationship| relationship.source)
+        .collect();
+    let mut answer_words = super::token_multiset([answer]);
+    let candidates: Vec<usize> = (0..document.elements.len())
+        .filter(|&index| {
+            let element = &document.elements[index];
+            replaceable(element, captions.contains(&(index as u32))) && inside_region(document, element, page_num, hint)
+        })
+        .collect();
+    let mut drop = vec![false; document.elements.len()];
+    // A table's cells are what the answer transcribes, so they spend their words first; otherwise a title or
+    // note repeating a cell's words would be removed on the strength of the table's transcription. ~keep
+    for &index in &candidates {
+        if let ElementKind::Table { table_index } = document.elements[index].kind {
+            drop[index] = true;
+            let cells = document.tables.get(table_index as usize).into_iter();
+            for cell in cells.flat_map(|table| table.cells.iter().flatten()) {
+                spend_words(cell, &mut answer_words);
+            }
+        }
+    }
+    for &index in &candidates {
+        drop[index] = drop[index] || take_words(&document.elements[index].text, &mut answer_words);
+    }
+    let first = &document.elements[drop.iter().position(|dropped| *dropped)?];
+    let (depth, paged) = (first.depth, first.page == Some(page_num));
+    drop_emptied_containers(&document.elements, &mut drop);
+    drop_emptied_page_breaks(&document.elements, &mut drop);
+    let at = drop.iter().take_while(|dropped| !**dropped).count();
+    remove_elements(document, &drop);
+    paged.then_some((at, depth))
+}
+
 /// Inject VLM-extracted region markdown into an `InternalDocument`.
 ///
-/// For each `RegionVlmResult`, splices a paragraph element carrying the VLM markdown
-/// into `document.elements` at the position of the originating layout hint, using
-/// [`find_insertion_index`] to locate it among the page's existing elements by
-/// bounding-box geometry, rather than appending it after the page's content.
-/// Existing `Relationship` indices are shifted via [`shift_relationship_indices`]
-/// so caption/link relationships recorded before the splice keep pointing at the
-/// correct element.
-pub(crate) fn inject_region_results(
-    document: &mut crate::types::internal::InternalDocument,
-    results: Vec<RegionVlmResult>,
-) {
-    use crate::types::internal::{ElementKind, InternalElement};
-
+/// A table or other region's answer first replaces the native table elements mostly inside it
+/// ([`REPLACE_CONTAINMENT`]), and the body paragraphs there whose words it carries, and takes their
+/// place: the position the removed content began at, and the depth of the first element replaced.
+/// Any other answer, a figure's, one that replaced nothing or one whose replaced content had no page
+/// of its own, is placed by [`find_insertion_index`] at depth 0. Placing a replacing answer by
+/// geometry instead would land it inside a list or group that follows the table, since container
+/// starts carry no box. Existing `Relationship` indices are remapped so caption/link relationships
+/// recorded before the splice keep pointing at the correct element.
+pub(crate) fn inject_region_results(document: &mut InternalDocument, results: Vec<RegionVlmResult>) {
     for result in results {
         let page_num = (result.page_index + 1) as u32;
-        let insert_at = find_insertion_index(&document.elements, page_num, result.hint.top);
+        let replaced = answer_replaces_native(result.hint.class_name)
+            .then(|| remove_region_content(document, page_num, &result.hint, &result.markdown))
+            .flatten();
+        let (insert_at, depth) =
+            replaced.unwrap_or_else(|| (find_insertion_index(&document.elements, page_num, result.hint.top), 0));
         let inserted_at = splice_element(
             document,
             insert_at,
-            InternalElement::text(ElementKind::Paragraph, result.markdown, 0).with_page(page_num),
+            InternalElement::text(ElementKind::Paragraph, result.markdown, depth).with_page(page_num),
         );
         tracing::debug!(page = page_num, inserted_at, "injected VLM region result into document");
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::layout::{BBox, LayoutClass};
-    use crate::pdf::structure::types::LayoutHintClass;
-
-    fn make_hint(class: LayoutHintClass, confidence: f32) -> LayoutHint {
-        LayoutHint {
-            class_name: class,
-            confidence,
-            left: 50.0,
-            bottom: 600.0,
-            right: 400.0,
-            top: 750.0,
-        }
-    }
-
-    #[test]
-    fn test_low_confidence_hints_are_skipped() {
-        let hint = make_hint(LayoutHintClass::Picture, 0.3);
-        assert!(hint.confidence < MIN_REGION_CONFIDENCE);
-    }
-
-    #[test]
-    fn should_skip_hints_with_dedicated_classical_handling() {
-        let classically_handled = [
-            LayoutHintClass::Text,
-            LayoutHintClass::SectionHeader,
-            LayoutHintClass::Title,
-            LayoutHintClass::PageHeader,
-            LayoutHintClass::PageFooter,
-            LayoutHintClass::Caption,
-            LayoutHintClass::Code,
-            LayoutHintClass::Formula,
-            LayoutHintClass::Footnote,
-            LayoutHintClass::ListItem,
-            LayoutHintClass::Form,
-            LayoutHintClass::KeyValueRegion,
-            LayoutHintClass::DocumentIndex,
-        ];
-        for class in classically_handled {
-            assert_eq!(
-                region_kind_for_hint(class),
-                None,
-                "{class:?} must not be routed to the VLM"
-            );
-        }
-    }
-
-    #[test]
-    fn should_route_dense_table_hint_to_dense_table_region_kind() {
-        assert_eq!(
-            region_kind_for_hint(LayoutHintClass::Table),
-            Some(RegionKind::DenseTable)
-        );
-    }
-
-    #[test]
-    fn should_route_other_hint_to_complex_layout_region_kind() {
-        assert_eq!(
-            region_kind_for_hint(LayoutHintClass::Other),
-            Some(RegionKind::ComplexLayout)
-        );
-    }
-
-    #[test]
-    fn should_route_picture_hint_to_figure_region_kind() {
-        assert_eq!(region_kind_for_hint(LayoutHintClass::Picture), Some(RegionKind::Figure));
-    }
-
-    #[test]
-    fn should_crop_the_pixel_detection_not_the_pdf_space_hint() {
-        // US Letter (612x792 pt) rendered at 150 dpi.
-        let page_image = image::RgbImage::new(1_275, 1_650);
-        let det = LayoutDetection::new(LayoutClass::Table, 0.9, BBox::new(100.0, 200.0, 700.0, 500.0));
-        let hint = LayoutHint {
-            class_name: LayoutHintClass::Table,
-            confidence: 0.9,
-            left: 48.0,
-            bottom: 552.0,
-            right: 336.0,
-            top: 696.0,
-        };
-
-        let (kind, rect) = region_crop(0, &page_image, &hint, &det).expect("confident table region should be cropped");
-        assert_eq!(kind, RegionKind::DenseTable);
-        assert_eq!(rect, (100, 200, 600, 300));
-    }
-
-    #[test]
-    fn should_skip_detection_boxes_that_clamp_to_nothing() {
-        let page_image = image::RgbImage::new(1_275, 1_650);
-        let hint = make_hint(LayoutHintClass::Table, 0.9);
-        for bbox in [
-            BBox::new(100.0, 200.0, 100.0, 500.0),
-            BBox::new(-500.0, -500.0, -100.0, -100.0),
-        ] {
-            let det = LayoutDetection::new(LayoutClass::Table, 0.9, bbox);
-            assert!(region_crop(0, &page_image, &hint, &det).is_none());
-        }
-    }
-
-    #[test]
-    fn should_skip_page_when_hint_and_detection_counts_disagree() {
-        let hints = [make_hint(LayoutHintClass::Table, 0.9)];
-        let det = LayoutDetection::new(LayoutClass::Table, 0.9, BBox::new(100.0, 200.0, 700.0, 500.0));
-
-        assert!(paired_detections(0, &hints, &DetectionResult::new(1_275, 1_650, vec![])).is_none());
-        assert!(
-            paired_detections(
-                0,
-                &hints,
-                &DetectionResult::new(1_275, 1_650, vec![det.clone(), det.clone()])
-            )
-            .is_none()
-        );
-        assert_eq!(
-            paired_detections(0, &hints, &DetectionResult::new(1_275, 1_650, vec![det])).map(<[_]>::len),
-            Some(1)
-        );
-    }
-
-    #[test]
-    fn test_min_pixel_area_constant() {
-        const { assert!(MIN_REGION_PIXEL_AREA > 0) };
-    }
-
-    fn element_with_bbox(page: u32, top: f64) -> crate::types::internal::InternalElement {
-        use crate::types::BoundingBox;
-        use crate::types::internal::{ElementKind, InternalElement};
-
-        let mut element = InternalElement::text(ElementKind::Paragraph, "existing", 0);
-        element.page = Some(page);
-        element.bbox = Some(BoundingBox {
-            x0: 0.0,
-            y0: top - 10.0,
-            x1: 100.0,
-            y1: top,
-        });
-        element
-    }
-
-    fn hint_with_top(top: f32) -> LayoutHint {
-        LayoutHint {
-            class_name: LayoutHintClass::Table,
-            confidence: 0.9,
-            left: 50.0,
-            bottom: top - 100.0,
-            right: 400.0,
-            top,
-        }
-    }
-
-    #[test]
-    fn should_splice_vlm_result_at_its_bbox_anchor_not_at_document_end() {
-        use crate::types::internal::InternalDocument;
-
-        let mut document = InternalDocument::default();
-        // Page 1: a paragraph above the region (top=750) and one below it (top=400).
-        document.elements.push(element_with_bbox(1, 750.0));
-        document.elements.push(element_with_bbox(1, 400.0));
-        // Page 2: an unrelated paragraph, which must stay after the injected result.
-        document.elements.push(element_with_bbox(2, 700.0));
-
-        let results = vec![RegionVlmResult {
-            page_index: 0,
-            markdown: "VLM TABLE".to_string(),
-            hint: hint_with_top(600.0),
-        }];
-
-        inject_region_results(&mut document, results);
-
-        assert_eq!(document.elements.len(), 4);
-        assert_eq!(document.elements[0].text, "existing");
-        assert_eq!(document.elements[0].page, Some(1));
-        assert_eq!(document.elements[1].text, "VLM TABLE");
-        assert_eq!(document.elements[1].page, Some(1));
-        assert_eq!(document.elements[2].text, "existing");
-        assert_eq!(document.elements[2].page, Some(1));
-        assert_eq!(document.elements[3].page, Some(2));
-    }
-
-    #[test]
-    fn should_append_vlm_result_after_page_when_no_element_bbox_is_below_it() {
-        use crate::types::internal::InternalDocument;
-
-        let mut document = InternalDocument::default();
-        document.elements.push(element_with_bbox(1, 750.0));
-        document.elements.push(element_with_bbox(1, 700.0));
-
-        let results = vec![RegionVlmResult {
-            page_index: 0,
-            markdown: "VLM CAPTION".to_string(),
-            hint: hint_with_top(600.0),
-        }];
-
-        inject_region_results(&mut document, results);
-
-        assert_eq!(document.elements.len(), 3);
-        assert_eq!(document.elements[2].text, "VLM CAPTION");
-    }
-
-    fn page_break() -> crate::types::internal::InternalElement {
-        use crate::types::internal::{ElementKind, InternalElement};
-
-        InternalElement::text(ElementKind::PageBreak, "", 0)
-    }
-
-    fn page_shape(document: &crate::types::internal::InternalDocument) -> Vec<(Option<u32>, bool)> {
-        use crate::types::internal::ElementKind;
-
-        document
-            .elements
-            .iter()
-            .map(|element| (element.page, matches!(element.kind, ElementKind::PageBreak)))
-            .collect()
-    }
-
-    #[test]
-    fn should_break_before_vlm_result_on_trailing_page_with_no_elements() {
-        use crate::types::internal::InternalDocument;
-
-        let mut document = InternalDocument::default();
-        document.elements.push(element_with_bbox(1, 700.0));
-
-        let results = vec![RegionVlmResult {
-            page_index: 1,
-            markdown: "VLM TABLE".to_string(),
-            hint: hint_with_top(600.0),
-        }];
-
-        inject_region_results(&mut document, results);
-
-        assert_eq!(
-            page_shape(&document),
-            vec![(Some(1), false), (None, true), (Some(2), false)]
-        );
-        assert_eq!(document.elements[2].text, "VLM TABLE");
-    }
-
-    #[test]
-    fn should_give_vlm_result_on_page_with_no_elements_breaks_on_both_sides() {
-        use crate::types::internal::{InternalDocument, Relationship, RelationshipKind, RelationshipTarget};
-
-        let mut document = InternalDocument::default();
-        document.elements.push(element_with_bbox(1, 700.0));
-        document.elements.push(page_break());
-        document.elements.push(element_with_bbox(3, 700.0));
-        document.relationships.push(Relationship {
-            source: 0,
-            target: RelationshipTarget::Index(2),
-            kind: RelationshipKind::InternalLink,
-        });
-
-        let results = vec![
-            RegionVlmResult {
-                page_index: 1,
-                markdown: "VLM FIGURE".to_string(),
-                hint: hint_with_top(600.0),
-            },
-            RegionVlmResult {
-                page_index: 1,
-                markdown: "VLM TABLE".to_string(),
-                hint: hint_with_top(300.0),
-            },
-        ];
-
-        inject_region_results(&mut document, results);
-
-        assert_eq!(
-            page_shape(&document),
-            vec![
-                (Some(1), false),
-                (None, true),
-                (Some(2), false),
-                (Some(2), false),
-                (None, true),
-                (Some(3), false)
-            ]
-        );
-        assert_eq!(document.elements[2].text, "VLM FIGURE");
-        assert_eq!(document.elements[3].text, "VLM TABLE");
-        assert_eq!(
-            document.relationships[0].target,
-            RelationshipTarget::Index(5),
-            "the page-3 target must follow both results and the added break"
-        );
-    }
-
-    fn list_marker(kind: crate::types::internal::ElementKind) -> crate::types::internal::InternalElement {
-        crate::types::internal::InternalElement::text(kind, "", 0)
-    }
-
-    fn list_item(page: u32) -> crate::types::internal::InternalElement {
-        use crate::types::internal::{ElementKind, InternalElement};
-
-        InternalElement::text(ElementKind::ListItem { ordered: false }, "item", 0).with_page(page)
-    }
-
-    #[test]
-    fn should_place_vlm_result_on_leading_empty_page_before_next_page_list() {
-        use crate::types::internal::{
-            ElementKind, InternalDocument, Relationship, RelationshipKind, RelationshipTarget,
-        };
-
-        let mut document = InternalDocument::default();
-        document
-            .elements
-            .push(list_marker(ElementKind::ListStart { ordered: false }));
-        document.elements.push(list_item(2));
-        document.elements.push(list_marker(ElementKind::ListEnd));
-        document.relationships.push(Relationship {
-            source: 1,
-            target: RelationshipTarget::Index(1),
-            kind: RelationshipKind::InternalLink,
-        });
-
-        let results = vec![RegionVlmResult {
-            page_index: 0,
-            markdown: "VLM TABLE".to_string(),
-            hint: hint_with_top(600.0),
-        }];
-
-        inject_region_results(&mut document, results);
-
-        assert_eq!(
-            page_shape(&document),
-            vec![
-                (Some(1), false),
-                (None, true),
-                (None, false),
-                (Some(2), false),
-                (None, false)
-            ]
-        );
-        assert_eq!(document.elements[0].text, "VLM TABLE");
-        assert!(matches!(document.elements[2].kind, ElementKind::ListStart { .. }));
-        assert_eq!(document.relationships[0].source, 3);
-        assert_eq!(document.relationships[0].target, RelationshipTarget::Index(3));
-    }
-
-    #[test]
-    fn should_place_vlm_result_on_empty_page_before_next_page_list() {
-        use crate::types::internal::{ElementKind, InternalDocument};
-
-        let mut document = InternalDocument::default();
-        document.elements.push(element_with_bbox(1, 700.0));
-        document.elements.push(page_break());
-        document
-            .elements
-            .push(list_marker(ElementKind::ListStart { ordered: false }));
-        document.elements.push(list_item(3));
-
-        let results = vec![RegionVlmResult {
-            page_index: 1,
-            markdown: "VLM TABLE".to_string(),
-            hint: hint_with_top(600.0),
-        }];
-
-        inject_region_results(&mut document, results);
-
-        assert_eq!(
-            page_shape(&document),
-            vec![
-                (Some(1), false),
-                (None, true),
-                (Some(2), false),
-                (None, true),
-                (None, false),
-                (Some(3), false)
-            ]
-        );
-        assert_eq!(document.elements[2].text, "VLM TABLE");
-        assert!(matches!(document.elements[4].kind, ElementKind::ListStart { .. }));
-    }
-
-    #[test]
-    fn should_break_before_vlm_result_after_last_page_closing_list() {
-        use crate::types::internal::{ElementKind, InternalDocument};
-
-        let mut document = InternalDocument::default();
-        document
-            .elements
-            .push(list_marker(ElementKind::ListStart { ordered: false }));
-        document.elements.push(list_item(1));
-        document.elements.push(list_marker(ElementKind::ListEnd));
-
-        let results = vec![RegionVlmResult {
-            page_index: 1,
-            markdown: "VLM TABLE".to_string(),
-            hint: hint_with_top(600.0),
-        }];
-
-        inject_region_results(&mut document, results);
-
-        assert_eq!(
-            page_shape(&document),
-            vec![
-                (None, false),
-                (Some(1), false),
-                (None, false),
-                (None, true),
-                (Some(2), false)
-            ]
-        );
-        assert_eq!(document.elements[4].text, "VLM TABLE");
-    }
-
-    #[test]
-    fn should_shift_relationship_indices_when_splicing_before_referenced_elements() {
-        use crate::types::internal::{InternalDocument, Relationship, RelationshipKind, RelationshipTarget};
-
-        let mut document = InternalDocument::default();
-        // index 0: paragraph above the region (stays before the splice point)
-        document.elements.push(element_with_bbox(1, 750.0));
-        // index 1: paragraph below the region (splice must land before this one)
-        document.elements.push(element_with_bbox(1, 400.0));
-        // index 2: unrelated element on page 2
-        document.elements.push(element_with_bbox(2, 700.0));
-
-        // A caption relationship recorded before splicing, pointing at raw indices.
-        document.relationships.push(Relationship {
-            source: 1,
-            target: RelationshipTarget::Index(2),
-            kind: RelationshipKind::Caption,
-        });
-        // A relationship entirely before the splice point must be left untouched.
-        document.relationships.push(Relationship {
-            source: 0,
-            target: RelationshipTarget::Key("unresolved".to_string()),
-            kind: RelationshipKind::InternalLink,
-        });
-
-        let results = vec![RegionVlmResult {
-            page_index: 0,
-            markdown: "VLM TABLE".to_string(),
-            hint: hint_with_top(600.0),
-        }];
-
-        inject_region_results(&mut document, results);
-
-        // The new element was inserted at index 1, so indices >= 1 shift by one.
-        assert_eq!(document.elements[1].text, "VLM TABLE");
-        assert_eq!(document.elements[2].text, "existing");
-        assert_eq!(document.relationships[0].source, 2, "source index 1 must shift to 2");
-        assert_eq!(
-            document.relationships[0].target,
-            RelationshipTarget::Index(3),
-            "target index 2 must shift to 3"
-        );
-        assert_eq!(
-            document.relationships[1].source, 0,
-            "relationship before the splice point must not shift"
-        );
-        assert_eq!(
-            document.relationships[1].target,
-            RelationshipTarget::Key("unresolved".to_string()),
-            "unresolved key targets are untouched"
-        );
-    }
-}
+mod replace_tests;
+#[cfg(test)]
+mod tests;
