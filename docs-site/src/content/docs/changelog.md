@@ -62,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(images): Preserve cell-only OCR tables without duplicating neighboring tables.**
+  Extracted tables and page content keep the same cells, order, and metadata. (#2226)
 - **(doc): Extract floating PNG and JPEG pictures from Word 97–2003 documents.**
   A picture positioned over the text was skipped with a warning, so its text never reached embedded OCR.
   Floating pictures in the main document are now extracted at their anchor, so their OCR text keeps source

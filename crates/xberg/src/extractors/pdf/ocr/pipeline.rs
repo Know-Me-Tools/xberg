@@ -3825,6 +3825,18 @@ pub(super) async fn extract_with_ocr_for_page(
             }
         }
     }
+    // ~keep A standalone image has no later native-PDF table handoff. Complete cell-only
+    // sidecars before assembly so every accepted table receives its canonical IR node.
+    // This follows page rejection and transcript stripping, and precedes normalization
+    // and authoritative public-node replacement (#2226).
+    let standalone_image = content.is_none() && xobject_document.is_none();
+    if standalone_image {
+        for table in &mut collected_tables {
+            if table.markdown.trim().is_empty() {
+                table.markdown = crate::rendering::common::render_table_markdown(&table.cells);
+            }
+        }
+    }
     fill_unstructured_ocr_pages(&mut all_page_paragraphs, &refill_texts, &pages_text_claimed_by_tables);
 
     let (ocr_doc, mut raw_page_paragraphs) = {
@@ -3834,7 +3846,8 @@ pub(super) async fn extract_with_ocr_for_page(
                 .zip(&pages_text_claimed_by_tables)
                 .any(|(paragraphs, claimed_by_tables)| {
                     paragraphs.as_ref().is_some_and(|paragraphs| !paragraphs.is_empty()) || *claimed_by_tables
-                });
+                })
+                || (standalone_image && collected_tables.iter().any(|table| !table.markdown.trim().is_empty()));
         if has_structured {
             let pages: Vec<Vec<crate::pdf::structure::types::PdfParagraph>> = all_page_paragraphs
                 .into_iter()

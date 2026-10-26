@@ -3240,26 +3240,10 @@ impl ImageExtractor {
             doc.ocr_page_failures.extend(pipeline_doc.ocr_page_failures);
         }
 
-        let page_tables: Vec<std::sync::Arc<crate::types::Table>> = tables
-            .into_iter()
-            .enumerate()
-            .map(|(index, table)| {
-                if doc.elements.iter().any(|element| matches!(element.kind, crate::types::internal::ElementKind::Table { table_index } if table_index as usize == index)) {
-                    return std::sync::Arc::new(table);
-                }
-                let bbox = table.bounding_box;
-                let table_index = doc.push_table(table.clone());
-                let mut element = crate::types::internal::InternalElement::text(
-                    crate::types::internal::ElementKind::Table { table_index },
-                    "",
-                    0,
-                );
-                element.bbox = bbox;
-                doc.push_element(element);
-                std::sync::Arc::new(table)
-            })
-            .collect();
-
+        // ~keep The pipeline document owns the final table set and reading order after
+        // normalization, stitching and authoritative public-node replacement (#2226).
+        let page_tables: Vec<std::sync::Arc<crate::types::Table>> =
+            doc.tables.iter().cloned().map(std::sync::Arc::new).collect();
         if !page_tables.is_empty() {
             // ~keep Page content is re-rendered from the elements tagged with its page number;
             // untagged elements leave the page as plain text, which would omit the tables.
@@ -3869,6 +3853,10 @@ impl InternalDocumentExtractor for ImageExtractor {
         50
     }
 }
+
+#[cfg(all(test, feature = "pdf", feature = "ocr-pipeline"))]
+#[path = "image_table_tests.rs"]
+mod image_table_tests;
 
 #[cfg(test)]
 mod tests {
