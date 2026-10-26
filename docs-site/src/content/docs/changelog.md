@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **(elixir): Allow compatible Brotli and allocator updates in native builds.**
+  Elixir no longer forces decompressor 6.0.1 when another dependency requires a newer compatible release.
 - **(pdf): Native font metrics retain their 16-bit glyph-count API with the updated font parser.**
   `TrueTypeFont::num_glyphs()` caps larger upstream counts at 65,535; width-table work stays bounded to that range.
   Font ascenders and descenders use normalized above/below-baseline signs.

@@ -1777,6 +1777,11 @@ exclude_functions = [
 ]
 exclude_types = ["Recyclable"]
 
+[crates.elixir.dependency_versions]
+"cargo:alloc-no-stdlib" = "^3.0.0"
+"cargo:alloc-stdlib" = "^0.3.0"
+"cargo:brotli-decompressor" = "^6.0.1"
+
 [[crates.elixir.target_dep_overrides]]
 cfg = 'target_os = "windows"'
 features = ["windows-target", "simd-utf8"]
