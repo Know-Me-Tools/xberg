@@ -30,10 +30,10 @@ overrides it and names the generated test file (e.g. `fixtures/plugin_api/list_r
   Batch calls take `inputs`. A bytes input can also sit at the top level of `input` (`kind: "bytes"`, `bytes`,
   `filename`, `mime_type`) without `extract_input`. Other calls take call-specific `input` fields
   (`pdf_bytes`/`password`, `findings_json`, registry `name`/`backend`); copy an existing fixture of that call.
-- `assertions` is a list of `{type, field, value}`; `contains_any` and `contains_all` take `values` (a list). Types:
+- Assertion types:
   `not_error`, `error`, `equals`, `min_length`, `count_min`, `count_equals`, `contains`, `contains_any`,
-  `contains_all`, `not_contains`, `not_empty`, `greater_than_or_equal`, `less_than_or_equal`. `field` is a path into
-  the result, e.g. `results[0].mime_type`.
+  `contains_all`, `not_contains`, `not_empty`, `greater_than_or_equal`, `less_than_or_equal`. Example `field`:
+  `results[0].mime_type`.
 - `skip`: `{languages: [...], reason: "..."}`.
 - Directories: `smoke`, `extract`, `batch`, `contract`, `error`, `format_specific`, `pdf`, `code`, `url`, `plugin_api`,
   `registry`, `summarization`. Field-only categories (all under `plugin_api/`): `ocr_backend_management`,
