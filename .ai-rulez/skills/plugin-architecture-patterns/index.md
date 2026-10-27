@@ -1,3 +1,3 @@
 # Concepts
 
-* [Plugin Architecture Patterns](SKILL.md) - Design, implement or diagnose Xberg plugin traits, typed registries, priority collisions, lifecycle, native extractors and Alef-generated Python plugin bridges. Use for plugin-system work, not ordinary parsing.
+* [Plugin Architecture Patterns](SKILL.md) - Xberg plugin traits, typed registries, priority collisions, lifecycle and Alef Python plugin bridges. Use for plugin-system work, not parsing.

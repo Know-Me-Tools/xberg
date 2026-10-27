@@ -1,7 +1,7 @@
 ---
 type: Playbook
 title: E2E Fixtures
-description: "xberg's e2e fixture schema: fields, call names, input shapes, assertion types, skip, categories under fixtures/. Use when adding or editing an xberg e2e fixture; generation itself is the shared e2e-generation skill."
+description: "xberg's e2e fixture schema: fields, categories, calls, inputs, mock responses, assertions. Use when adding or editing an xberg e2e fixture."
 paths:
   - "fixtures/**"
   - "e2e/**"

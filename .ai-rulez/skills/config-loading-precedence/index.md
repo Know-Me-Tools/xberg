@@ -1,3 +1,3 @@
 # Concepts
 
-* [Config Loading Precedence](SKILL.md) - How Xberg resolves configuration: CLI and server/MCP precedence, config file walk-up, inline JSON merge, CLI overrides, silent no-op traps. Use when adding a config flag or env var or a setting does not take effect.
+* [Config Loading Precedence](SKILL.md) - How Xberg resolves config: CLI and server/MCP precedence, file walk-up, inline JSON, overrides. Use when adding a setting or one does not take effect.

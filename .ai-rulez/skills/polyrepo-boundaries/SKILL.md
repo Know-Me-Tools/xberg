@@ -1,7 +1,7 @@
 ---
 type: Playbook
 title: Polyrepo Boundaries
-description: Decide which xberg-io repository owns a cross-repository fix or API and coordinate compatible changes across sibling repos. Use when work spans sibling repositories, not for a self-contained Xberg edit.
+description: "Which xberg-io repo owns a cross-repo fix or API, and coordinating compatible sibling changes. Use when work spans sibling repositories."
 x-ai-rulez:
   kind: skill
   id: polyrepo-boundaries

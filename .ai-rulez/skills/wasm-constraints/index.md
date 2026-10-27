@@ -1,3 +1,3 @@
 # Concepts
 
-* [Wasm Constraints](SKILL.md) - WASM build constraints for crates/xberg-wasm: wasm-target features, sync-only internal APIs, SyncExtractor, HTML size limit, size-optimized build. Use when building for wasm32 or debugging WASM build or runtime failures.
+* [Wasm Constraints](SKILL.md) - crates/xberg-wasm build constraints: wasm-target features, sync-only APIs, SyncExtractor, size limits. Use for wasm32 build or runtime failures.

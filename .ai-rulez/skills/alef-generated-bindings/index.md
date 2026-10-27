@@ -1,3 +1,3 @@
 # Concepts
 
-* [Alef Generated Bindings](SKILL.md) - Xberg specifics on top of the shared Alef workflow: generated output locations, alef.toml sections, core edits that break a regen, FFI bridge JSON marshalling. Use when editing bindings, extractors or trait methods, or regenerating.
+* [Alef Generated Bindings](SKILL.md) - Xberg on top of the shared Alef workflow: output locations, alef.toml sections, regen-breaking core edits, FFI JSON bridge. Use when editing bindings.

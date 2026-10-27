@@ -1,3 +1,3 @@
 # Concepts
 
-* [Ocr Pipeline And Quality](SKILL.md) - Change or evaluate Xberg OCR backends, preprocessing, caching, page acceptance, geometry, hOCR, table reconstruction or cross-backend quality. Use for OCR behavior and A/B quality work, not plain PDF text.
+* [Ocr Pipeline And Quality](SKILL.md) - Xberg OCR backends, preprocessing, caching, page acceptance, hOCR, tables, cross-backend quality. Use for OCR behavior or A/B quality work.

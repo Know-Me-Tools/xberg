@@ -1,3 +1,3 @@
 # Concepts
 
-* [Polyrepo Boundaries](SKILL.md) - Decide which xberg-io repository owns a cross-repository fix or API and coordinate compatible changes across sibling repos. Use when work spans sibling repositories, not for a self-contained Xberg edit.
+* [Polyrepo Boundaries](SKILL.md) - Which xberg-io repo owns a cross-repo fix or API, and coordinating compatible sibling changes. Use when work spans sibling repositories.
