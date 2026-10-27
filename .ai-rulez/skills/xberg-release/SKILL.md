@@ -111,6 +111,9 @@ same pushed SHA. A successful older run does not validate newer local commits.
 - Elixir musl smoke tests need the NIF and the directory containing its bundled native libraries. Passing only the
   NIF path is insufficient when dependent shared libraries are staged beside it.
 - Windows GNU Ruby builds must use the ORT-free feature set because the GNU ABI has no compatible ORT prebuilt.
+- Scoop (shared `scoop-distribution` skill): `xberg.exe` imports `onnxruntime.dll`, so the publish job must vendor
+  the DLL closure into the zip; the shim resolves DLLs from the app directory and no `depends` entry is needed.
+  Tesseract is looked up on `PATH` at runtime and belongs in the manifest's `notes`, not `depends`.
 
 ### Push and dispatch
 
@@ -118,7 +121,7 @@ same pushed SHA. A successful older run does not validate newer local commits.
   direction.
 - Push one coherent state. Do not repeatedly push while intentional CI is still running merely to get newer diagnostics.
 - After the push, dispatch CI, Publish Release with dry-run inputs, and Benchmarks against that pushed SHA. Follow the
-  repository's `gh-workflows` conventions for monitoring and retries.
+  shared `github-workflow-conventions` skill for monitoring and retries.
 - Retry only after identifying and addressing the cause. Cancellation alone is not a defect; a repeated actual
   failure is.
 - Close addressed issues only after the fixing commit is reachable remotely, and state the intended release when
