@@ -360,7 +360,6 @@ poly.local.toml
 testResults.xml
 
 # BEGIN ai-rulez (DO NOT EDIT - managed by ai-rulez)
-.ai-rulez/.generated-manifest.local.json
 .ai-rulez/local/
 .github/agents/
 .github/instructions/api-compatibility.instructions.md
@@ -403,6 +402,7 @@ opencode.json
 **/.ai-rulez/.generated-manifest.local.json
 plugin/.ai-rulez/.generated-manifest.json
 .agents/settings.json
+.claude/settings.json
 .claude/plugins.json
 .codex/commands/
 .codex/plugins.json
