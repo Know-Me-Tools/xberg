@@ -56,6 +56,7 @@ pub(crate) async fn rerank_via_llm(
         documents: docs,
         top_n: top_k.map(|k| k as u32),
         return_documents: Some(false),
+        extra_body: config.extra_body.clone(),
     };
 
     let response = client.rerank(request).await.map_err(|e| {
@@ -159,5 +160,50 @@ mod tests {
         let u = usage.unwrap();
         assert_eq!(u.input_tokens, Some(42_u64));
         assert_eq!(u.total_tokens, Some(42_u64));
+    }
+
+    #[tokio::test]
+    async fn should_forward_rerank_extra_body_only_when_configured() {
+        use serde_json::json;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        for extra_body in [None, Some(json!({"max_tokens_per_doc": 123}))] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/rerank"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "id": "rerank-test", "results": [{"index": 0, "relevance_score": 0.75}]
+                })))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let config = LlmConfig {
+                model: "cohere/rerank-english-v3.0".to_owned(),
+                api_key: Some("test-key".to_owned()),
+                base_url: Some(server.uri()),
+                load_env: Some(false),
+                max_retries: Some(0),
+                extra_body: extra_body.clone(),
+                ..Default::default()
+            };
+            let (results, _) = rerank_via_llm("query", &["document".to_owned()], &config, Some(1))
+                .await
+                .expect("rerank succeeds");
+            assert_eq!(results.len(), 1);
+            assert_eq!((results[0].index, results[0].score), (0, 0.75));
+            assert_eq!(results[0].document, "document");
+            let requests = server.received_requests().await.expect("wire requests available");
+            assert_eq!(requests.len(), 1);
+            let body: serde_json::Value = requests[0].body_json().expect("JSON request");
+            assert_eq!(
+                body.get("max_tokens_per_doc"),
+                extra_body.as_ref().and_then(|value| value.get("max_tokens_per_doc"))
+            );
+            assert!(
+                body.get("extra_body").is_none(),
+                "extra body must merge into the wire object"
+            );
+        }
     }
 }

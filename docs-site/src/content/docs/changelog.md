@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(llm): Forward configured provider options to hosted embedding and reranking requests.**
 - **(pdf): Read two-up pages one half at a time.** (#2227)
 - **(pdf): Preserve native regions unless VLM answers retain their content; report table-model load failures.** (#2259, #2269)
 - **(djot): Preserve smart punctuation, table captions, line breaks and image alt text.** (#2254)

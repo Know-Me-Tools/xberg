@@ -77,6 +77,7 @@ pub(crate) async fn embed_via_llm<T: AsRef<str>>(
         encoding_format: Some(EmbeddingFormat::Base64),
         dimensions: None,
         user: None,
+        extra_body: config.extra_body.clone(),
     };
 
     let response = client.embed(request).await.map_err(|e| {
@@ -258,5 +259,59 @@ mod tests {
             base64_object.embedding, float_object.embedding,
             "base64 and float-array response shapes must decode to identical vectors"
         );
+    }
+}
+
+#[cfg(all(
+    test,
+    feature = "tokio-runtime",
+    any(feature = "embeddings", feature = "static-embeddings"),
+    not(target_arch = "wasm32")
+))]
+mod request_tests {
+    use super::*;
+    use serde_json::json;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn should_forward_embedding_extra_body_only_when_configured() {
+        for extra_body in [None, Some(json!({"input_type": "search_document"}))] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/embeddings"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "object": "list", "model": "text-embedding-3-small",
+                    "data": [{"object": "embedding", "index": 0, "embedding": [1.0, 0.0]}],
+                    "usage": {"prompt_tokens": 2, "total_tokens": 2}
+                })))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let config = LlmConfig {
+                model: "openai/text-embedding-3-small".to_owned(),
+                api_key: Some("test-key".to_owned()),
+                base_url: Some(server.uri()),
+                load_env: Some(false),
+                max_retries: Some(0),
+                extra_body: extra_body.clone(),
+                ..Default::default()
+            };
+            let (vectors, _) = embed_via_llm(&["document"], &config, false)
+                .await
+                .expect("embedding succeeds");
+            assert_eq!(vectors, vec![vec![1.0, 0.0]]);
+            let requests = server.received_requests().await.expect("wire requests available");
+            assert_eq!(requests.len(), 1);
+            let body: serde_json::Value = requests[0].body_json().expect("JSON request");
+            assert_eq!(
+                body.get("input_type"),
+                extra_body.as_ref().and_then(|value| value.get("input_type"))
+            );
+            assert!(
+                body.get("extra_body").is_none(),
+                "extra body must merge into the wire object"
+            );
+        }
     }
 }
