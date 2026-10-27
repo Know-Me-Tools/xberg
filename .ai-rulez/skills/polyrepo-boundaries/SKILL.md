@@ -12,8 +12,7 @@ x-ai-rulez:
 # Polyrepo boundaries
 
 Each sibling under the workspace root is an independent Git repository with its own history, release, CI, and
-governance. Never include changes from two repositories in one commit or assume pushing Xberg publishes a sibling
-dependency.
+governance. Pushing Xberg does not publish a sibling dependency.
 
 ## Ownership
 
