@@ -10,7 +10,7 @@ def _job_block(workflow: str, job: str) -> str:
     return match[1]
 
 
-ZIGBUILD_ACTION_SHA = "0b670903ab1fe160a17492d5de61ec16f28a7264"
+ZIGBUILD_ACTION_PIN = "xberg-io/actions/setup-rust@v1"
 ZIGBUILD_SOURCE_SHA = "89c352ae6ff0bbafe17788da327764d9ef92240b"
 ZIGBUILD_CALLERS = {
     "php-extension": ("Restore workspace manifest after the out-of-workspace PHP build", "Rebuild PHP extension", 6),
@@ -28,7 +28,7 @@ def validate_zigbuild_caller(name: str, block: str) -> str:
     installers = [step for step in steps if "cargo-zigbuild-revision:" in step]
     assert len(installers) == 1, (name, "installer count", len(installers))
     installer = installers[0]
-    assert f"uses: xberg-io/actions/setup-rust@{ZIGBUILD_ACTION_SHA}" in installer, (name, "action pin")
+    assert f"uses: {ZIGBUILD_ACTION_PIN}\n" in installer, (name, "action pin")
     assert f'cargo-zigbuild-revision: "{ZIGBUILD_SOURCE_SHA}"' in installer, (name, "source pin")
     target = "matrix.platform.target" if name == "php-extension" else "matrix.target"
     assert f"if: contains({target}, '-linux-gnu')" in installer, (name, "GNU mask")
@@ -72,7 +72,7 @@ def assert_zigbuild_negative_controls(workflow: str) -> None:
     block = _job_block(workflow, "php-extension")
     installer = validate_zigbuild_caller("php-extension", block)
     controls = (
-        (block.replace(ZIGBUILD_ACTION_SHA, "0" * 40), "action pin"),
+        (block.replace(ZIGBUILD_ACTION_PIN, "xberg-io/actions/setup-rust@v0"), "action pin"),
         (block.replace(f'          cargo-zigbuild-revision: "{ZIGBUILD_SOURCE_SHA}"\n', ""), "installer count"),
         (block.replace(installer, "").replace("    steps:\n", "    steps:\n" + installer), "installer order"),
     )

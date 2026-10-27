@@ -1250,7 +1250,7 @@ jobs:
         with:
           toolchain: ${{ runner.os == 'Windows' && 'stable-x86_64-pc-windows-gnu' || '' }}
 
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@v1.335.0
         with:
           ruby-version: "3.3"
           bundler-cache: false
@@ -1389,7 +1389,7 @@ jobs:
       # `-static-libstdc++` alone still emitted GLIBC_2.39 and GLIBCXX_3.4.31. ~keep
       - name: Install verified cargo-zigbuild for GNU targets
         if: contains(matrix.platform.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-rust@0b670903ab1fe160a17492d5de61ec16f28a7264
+        uses: xberg-io/actions/setup-rust@v1
         with:
           target: ${{ matrix.platform.target }}
           disable-cache: "true"
@@ -1455,7 +1455,7 @@ jobs:
       # Tagged source retries must use the verification fixes from this workflow revision. ~keep
       - name: Checkout release verification tools
         if: contains(matrix.platform.target, '-linux-gnu')
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.workflow_sha }}
           path: .release-tools
@@ -1869,7 +1869,7 @@ jobs:
 
           submodules: false
       - name: Install Task
-        uses: xberg-io/actions/install-task@9ed0576675002330bb3d5446ac603b70a6f096ee
+        uses: xberg-io/actions/install-task@v1
 
       - uses: xberg-io/actions/setup-rust@v1
         if: ${{ !matrix.musl }}
@@ -1898,11 +1898,11 @@ jobs:
 
       - name: Install alef CLI
         if: ${{ !matrix.musl }}
-        uses: xberg-io/actions/install-alef@9ed0576675002330bb3d5446ac603b70a6f096ee
+        uses: xberg-io/actions/install-alef@v1
 
       - name: Install verified cargo-zigbuild for GNU targets
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-rust@0b670903ab1fe160a17492d5de61ec16f28a7264
+        uses: xberg-io/actions/setup-rust@v1
         with:
           target: ${{ matrix.target }}
           disable-cache: "true"
@@ -1985,7 +1985,7 @@ jobs:
 
       - name: Install verified cargo-zigbuild for GNU targets
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-rust@0b670903ab1fe160a17492d5de61ec16f28a7264
+        uses: xberg-io/actions/setup-rust@v1
         with:
           target: ${{ matrix.target }}
           disable-cache: "true"
@@ -2123,7 +2123,7 @@ jobs:
 
       - name: Install verified cargo-zigbuild for GNU targets
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-rust@0b670903ab1fe160a17492d5de61ec16f28a7264
+        uses: xberg-io/actions/setup-rust@v1
         with:
           target: ${{ matrix.target }}
           disable-cache: "true"
@@ -2318,7 +2318,7 @@ jobs:
 
       - name: Install verified cargo-zigbuild for GNU targets
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-rust@0b670903ab1fe160a17492d5de61ec16f28a7264
+        uses: xberg-io/actions/setup-rust@v1
         with:
           target: ${{ matrix.target }}
           disable-cache: "true"
@@ -2447,7 +2447,7 @@ jobs:
         shell: bash
         run: echo "ImageOS=win25" >> "$GITHUB_ENV"
 
-      - uses: erlef/setup-beam@v1.24.1
+      - uses: erlef/setup-beam@v1
         with:
           elixir-version: "1.17"
           otp-version: "27"
@@ -2782,7 +2782,7 @@ jobs:
 
       - name: Install verified cargo-zigbuild for GNU targets
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-rust@0b670903ab1fe160a17492d5de61ec16f28a7264
+        uses: xberg-io/actions/setup-rust@v1
         with:
           target: ${{ matrix.target }}
           disable-cache: "true"
@@ -2956,7 +2956,7 @@ jobs:
 
       - name: Install verified cargo-zigbuild for GNU targets
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-rust@0b670903ab1fe160a17492d5de61ec16f28a7264
+        uses: xberg-io/actions/setup-rust@v1
         with:
           target: ${{ matrix.target }}
           disable-cache: "true"
@@ -2964,7 +2964,7 @@ jobs:
           cargo-zigbuild-revision: "89c352ae6ff0bbafe17788da327764d9ef92240b"
           macos-dynamic-lookup: "false"
 
-      - uses: xberg-io/actions/build-swift-artifactbundle@7a65509ae3a6ebcee91745c0cbc1f8238d7b44dc
+      - uses: xberg-io/actions/build-swift-artifactbundle@v1
         id: libs
         # Must equal the `.iOS(.vN)` floor in Package.swift. Unset, rustc links at its iOS default
         # (10.0) while cc/cmake compile for the runner SDK (18.5), and prebuilt ORT objects call
@@ -3011,7 +3011,7 @@ jobs:
           merge-multiple: true
           path: swift-libs
 
-      - uses: xberg-io/actions/build-swift-artifactbundle@7a65509ae3a6ebcee91745c0cbc1f8238d7b44dc
+      - uses: xberg-io/actions/build-swift-artifactbundle@v1
         id: bundle
         with:
           crate-name: xberg-swift
@@ -3791,32 +3791,32 @@ jobs:
       id-token: write
     steps:
       - name: Checkout publication helpers
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Checkout pinned shared publication verifier
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@v7
         with:
           repository: xberg-io/actions
           ref: cc89740654cef67b752113ddd87d4f0d23dda3f5
           path: .python-publication-actions
           persist-credentials: false
       - name: Install task runner
-        uses: xberg-io/actions/install-task@cc89740654cef67b752113ddd87d4f0d23dda3f5
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        uses: xberg-io/actions/install-task@v1
+      - uses: actions/download-artifact@v8
         with:
           pattern: python-wheels-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      - uses: actions/download-artifact@v8
         if: needs.prepare.outputs.dry_run != 'true'
         with:
           name: python-sdist
           path: dist
 
       - name: Verify Python wheel package contents
-        uses: xberg-io/actions/verify-package-contents@cc89740654cef67b752113ddd87d4f0d23dda3f5
+        uses: xberg-io/actions/verify-package-contents@v1
         with:
           language: python
           artifact-path: dist
@@ -3826,7 +3826,7 @@ jobs:
       - name: Create central archive token
         if: needs.prepare.outputs.dry_run != 'true'
         id: archive-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
@@ -3842,7 +3842,7 @@ jobs:
         run: task python:publish:archive:prepare
       - name: Archive every Python distribution permanently
         if: needs.prepare.outputs.dry_run != 'true'
-        uses: xberg-io/actions/archive-python@cc89740654cef67b752113ddd87d4f0d23dda3f5
+        uses: xberg-io/actions/archive-python@v1
         with:
           packages-dir: dist
           repository: xberg-io/python-wheels
@@ -3857,7 +3857,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: task python:publish:archive:wait
       - name: Publish primarily to PyPI
-        uses: xberg-io/actions/publish-pypi@cc89740654cef67b752113ddd87d4f0d23dda3f5
+        uses: xberg-io/actions/publish-pypi@v1
         with:
           packages-dir: dist
           expected-version: ${{ needs.prepare.outputs.version }}
@@ -3926,7 +3926,7 @@ jobs:
           pattern: rubygems-*
           path: dist
 
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@v1.335.0
         with:
           ruby-version: "3.3"
           bundler-cache: false
@@ -4476,7 +4476,7 @@ jobs:
 
           submodules: false
       - uses: xberg-io/actions/setup-rust@v1
-      - uses: erlef/setup-beam@v1.24.1
+      - uses: erlef/setup-beam@v1
         with:
           elixir-version: "1.17"
           otp-version: "27"
@@ -4795,7 +4795,7 @@ jobs:
       ${{ !inputs.plugins-only && (needs.prepare.outputs.release_scoop == 'true' && needs.upload-cli-release.result == 'success' && (needs.prepare.outputs.is_tag == 'true' || needs.prepare.outputs.dry_run == 'true')) }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+      - uses: actions/create-github-app-token@v3
         id: bucket-token
         with:
           app-id: ${{ secrets.BOT_APP_ID }}
@@ -4803,18 +4803,18 @@ jobs:
           owner: xberg-io
           repositories: scoop-bucket
 
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+      - uses: actions/create-github-app-token@v3
         id: source-token
         with:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
           owner: xberg-io
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@v7
         with:
           repository: xberg-io/scoop-bucket
           token: ${{ steps.bucket-token.outputs.token }}
@@ -5185,7 +5185,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10.3.2
         with:
           python-version: "3.13"
       - name: Build integration distributions
@@ -5424,7 +5424,7 @@ jobs:
           config-directory: .ai-rulez
           version-sync-script: scripts/sync_integration_versions.py
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10.3.2
         with:
           python-version: "3.13"
       - name: Build Hermes wheel
@@ -5457,7 +5457,7 @@ jobs:
       - name: Verify public skill exports
         run: python3 scripts/sync_public_skills.py --check
       - name: Package all supported plugin runtimes
-        uses: xberg-io/actions/package-ai-rulez-plugin@66e9a172c28ae7e57496fe92de1ab74f2a604194
+        uses: xberg-io/actions/package-ai-rulez-plugin@v1
         with:
           cursor-marketplace: "true"
           tag: ${{ needs.prepare.outputs.tag }}
@@ -5535,7 +5535,7 @@ jobs:
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.0
         with:
           version: "12.11.2"
           run_install: false
@@ -5607,7 +5607,7 @@ jobs:
         uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
           version-sync-script: scripts/sync_integration_versions.py
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           python-version: "3.13"
       - name: Read the verified Hermes version

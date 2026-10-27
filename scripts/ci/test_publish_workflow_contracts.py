@@ -21,7 +21,6 @@ RUST_UNIT_SCRIPT = Path(__file__).parent / "rust" / "run-unit-tests.sh"
 PHP_ABI_SCRIPT = Path(__file__).parent / "verify-php-linux-abi.sh"
 PHP_STAGE_SCRIPT = Path(__file__).parent / "stage-php-linux-ort.sh"
 PUBLISHER_BOT = "xberg-dev-publisher[bot]"
-PUBLISH_PUB_SHA = "793d3a4d37a17009d91cce29f2825eda570d2abd"
 
 
 def job_block(workflow: str, job: str) -> str:
@@ -297,10 +296,9 @@ def test_release_finalization_requires_successful_asset_verification() -> None:
     assert "needs.finalize-github-release-after-uploads.result != 'failure'" not in second_condition
 
 
-def test_pubdev_publish_action_is_pinned_to_problem_matcher_fix() -> None:
+def test_pubdev_publish_action_tracks_v1_and_verifies_the_version() -> None:
     workflow = PUBDEV_WORKFLOW.read_text()
-    assert f"xberg-io/actions/publish-pub@{PUBLISH_PUB_SHA} # v1.27.1" in workflow
-    assert "xberg-io/actions/publish-pub@v1" not in workflow
+    assert "      - uses: xberg-io/actions/publish-pub@v1\n" in workflow
     assert "          expected-version: ${{ github.ref_name }}" in workflow
 
 
@@ -840,7 +838,7 @@ if __name__ == "__main__":
     test_partial_release_retries_skip_plugin_distribution_and_announcements()
     test_php_partial_retry_publishes_packagist_only_after_successful_upload()
     test_release_finalization_requires_successful_asset_verification()
-    test_pubdev_publish_action_is_pinned_to_problem_matcher_fix()
+    test_pubdev_publish_action_tracks_v1_and_verifies_the_version()
     test_homebrew_push_rebases_after_concurrent_non_conflicting_push()
     test_homebrew_push_stops_after_five_rejections()
     test_homebrew_push_aborts_rebase_conflict_without_force()
