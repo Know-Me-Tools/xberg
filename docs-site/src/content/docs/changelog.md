@@ -64,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(build): Standalone XML and HWPX features pass strict Clippy checks.** (#2243)
 - **(email): Keep HTML head metadata and scripts out of message text, and recover malformed base64 parts.**
   Body text and attachments decode stray characters without decoding nested messages twice. (#2252, #2253)
 

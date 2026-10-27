@@ -178,6 +178,13 @@ tasks:
       - cargo fmt --all
       - cargo clippy --workspace --fix --allow-dirty --allow-staged --exclude xberg-php --exclude xberg-node --exclude xberg-wasm
 
+  lint:feature:
+    desc: "Lint the library with one standalone feature enabled"
+    requires:
+      vars: [FEATURE]
+    cmds:
+      - cargo clippy --locked -p xberg --lib --no-default-features --features "{{.FEATURE}}" -- -D warnings
+
   lint:email:
     desc: "Lint all targets with only the email feature enabled"
     cmds:

@@ -24,14 +24,14 @@
 
 use super::document_structure::{AnnotationKind, TextAnnotation};
 
-#[cfg(any(feature = "office", feature = "email", feature = "xml"))]
+#[cfg(any(feature = "office", feature = "email"))]
 use ahash::AHashMap;
 
-#[cfg(any(feature = "office", feature = "email", feature = "xml"))]
+#[cfg(any(feature = "office", feature = "email"))]
 use super::document_structure::{
     ContentLayer, DocumentNode, DocumentStructure, GridCell, NodeContent, NodeId, NodeIndex, TableGrid,
 };
-#[cfg(any(feature = "office", feature = "email", feature = "xml"))]
+#[cfg(any(feature = "office", feature = "email"))]
 use super::extraction::BoundingBox;
 #[cfg_attr(alef, alef(skip))]
 /// Builder for constructing `DocumentStructure` trees with automatic
@@ -40,7 +40,7 @@ use super::extraction::BoundingBox;
 /// The builder maintains an internal section stack: when you push a heading,
 /// it automatically creates a `Group` container and nests subsequent content
 /// under it. Higher-level headings pop deeper sections off the stack.
-#[cfg(any(feature = "office", feature = "email", feature = "xml"))]
+#[cfg(any(feature = "office", feature = "email"))]
 pub(crate) struct DocumentStructureBuilder {
     doc: DocumentStructure,
     section_stack: Vec<(u8, NodeIndex)>,
@@ -51,7 +51,7 @@ pub(crate) struct DocumentStructureBuilder {
     node_count: u32,
 }
 
-#[cfg(any(feature = "office", feature = "email", feature = "xml"))]
+#[cfg(any(feature = "office", feature = "email"))]
 impl DocumentStructureBuilder {
     /// Create a new empty builder.
     pub(crate) fn new() -> Self {
@@ -447,7 +447,7 @@ impl DocumentStructureBuilder {
     }
 }
 
-#[cfg(any(feature = "office", feature = "email", feature = "xml"))]
+#[cfg(any(feature = "office", feature = "email"))]
 impl Default for DocumentStructureBuilder {
     fn default() -> Self {
         Self::new()
@@ -455,7 +455,7 @@ impl Default for DocumentStructureBuilder {
 }
 
 /// Convert a simple cell grid to a `TableGrid`.
-#[cfg(any(feature = "office", feature = "email", feature = "xml"))]
+#[cfg(any(feature = "office", feature = "email"))]
 fn cells_to_grid(cells: &[Vec<String>]) -> TableGrid {
     let rows = cells.len() as u32;
     let cols = cells.iter().map(|r| r.len()).max().unwrap_or(0) as u32;
@@ -485,7 +485,7 @@ fn cells_to_grid(cells: &[Vec<String>]) -> TableGrid {
 }
 
 /// Check if a content type should always be root-level (not nested under sections).
-#[cfg(any(feature = "office", feature = "email", feature = "xml"))]
+#[cfg(any(feature = "office", feature = "email"))]
 #[cfg(any(feature = "office", test))]
 fn is_always_root(content: &NodeContent) -> bool {
     matches!(content, NodeContent::PageBreak)
@@ -601,7 +601,7 @@ pub(crate) fn highlight(start: u32, end: u32) -> TextAnnotation {
     }
 }
 
-#[cfg(all(test, any(feature = "office", feature = "email", feature = "xml")))]
+#[cfg(all(test, any(feature = "office", feature = "email")))]
 mod tests {
     use super::*;
 
