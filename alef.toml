@@ -3093,6 +3093,7 @@ functions = [
   "ensure_initialized",
   "batch_pages",
   "pages_for_call",
+  "pages_for_call_with_security_limits",
   "validate_and_merge",
   "apply_strategy",
 
