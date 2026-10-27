@@ -622,12 +622,11 @@ pub(crate) fn extract_all_from_native_document(
                             // Table cells use flattened script geometry; structured prose must
                             // retain the original font sizes and baselines even when no table survives. ~keep
                             let (pages, used_structure_tree) = crate::pdf::native::hierarchy::extract_all_segments(
-                                &mut doc,
-                                artifacts,
+                                &mut doc, artifacts,
                             )
-                            .map_err(|error| crate::XbergError::parsing(format!(
-                                "PDF hierarchy extraction failed: {error}"
-                            )))?;
+                            .map_err(|error| {
+                                crate::XbergError::parsing(format!("PDF hierarchy extraction failed: {error}"))
+                            })?;
                             hierarchy_segments.pages = pages;
                             hierarchy_segments.used_structure_tree = used_structure_tree;
                         }
