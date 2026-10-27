@@ -22,7 +22,11 @@ Xberg is a Rust document intelligence library with polyglot bindings.
 - `tools/` — benchmark, OCR measurement, perf tooling
 - `test_documents/` — corpus submodule (`test-corpus` skill)
 - `docs-site/`, `templates/` — docs site, doc templates
-- `skills/`, `plugin/` — published skills, agent plugin
+- `skills/`, `plugin/` — published skills, agent plugin; generated from `plugin/.ai-rulez/` (`plugin-bundles` rule)
 - `charts/`, `docker/`, `scripts/` — deploy, images, CI scripts
 
 Layout and where code belongs: `crate-structure` skill.
+
+CI (`ci-*.yaml`) runs only on push to `main` and `workflow_dispatch`; a PR gets no checks. Before merging, run
+the drift gates for what you touched (`task alef:verify`, `e2e:verify`, `plugin:verify`, `docs:verify:changelog`,
+`supported-counts:verify`, `verify:feature-parity`, `verify:docker-crates`) or `gh workflow run ci-lint.yaml --ref <branch>`.
