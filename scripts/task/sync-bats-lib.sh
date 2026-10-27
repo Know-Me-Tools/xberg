@@ -17,6 +17,14 @@ readonly LIBRARY_FILES=(load.bash)
 mode="${1:-sync}"
 destination="${BATS_LIB_DEST:-scripts/tests/lib/xberg-bats}"
 
+case "$mode" in
+sync | --check) ;;
+*)
+  echo "usage: $0 [sync|--check]" >&2
+  exit 2
+  ;;
+esac
+
 ref="${BATS_LIB_REF:-}"
 if [ -z "$ref" ]; then
   echo "BATS_LIB_REF must name an immutable ${SOURCE_REPOSITORY} tag or commit." >&2
@@ -55,9 +63,5 @@ sync)
     exit 1
   fi
   echo "${destination} matches ${SOURCE_REPOSITORY}@${ref}"
-  ;;
-*)
-  echo "usage: $0 [sync|--check]" >&2
-  exit 2
   ;;
 esac

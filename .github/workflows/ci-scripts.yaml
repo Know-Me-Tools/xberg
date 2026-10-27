@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "scripts/**"
+      - "tools/**/*.sh"
+      - "integrations/scripts/**"
       - ".editorconfig"
       - "Taskfile.yml"
       - ".github/workflows/ci-scripts.yaml"
@@ -45,13 +47,9 @@ jobs:
 
       - name: Run the shell contract tests
         uses: xberg-io/actions/run-bats@v1
-        env:
-          # `bats_load_library` searches BATS_LIB_PATH and nothing else. run-bats grew a lib-path
-          # input for this, but it is not in the released v1 yet, so the variable is set directly;
-          # switch to `lib-path: scripts/tests/lib` once actions ships it. ~keep
-          BATS_LIB_PATH: ${{ github.workspace }}/scripts/tests/lib
         with:
           path: scripts/tests/bats
+          lib-path: scripts/tests/lib
           args: |-
             --recursive
             --print-output-on-failure
@@ -87,6 +85,9 @@ jobs:
 
       - name: Install Task
         uses: xberg-io/actions/install-task@v1
+
+      - name: Check shared Bats helper provenance
+        run: task test:scripts:lib:check
 
       # shfmt is not on the runner image and `task lint:shell` invokes it directly, so this job
       # exited 127 -- "executable file not found in $PATH" -- and reported a shell FORMATTING
