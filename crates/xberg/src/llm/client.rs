@@ -412,6 +412,8 @@ fn to_liter_llm_config(config: &LlmConfig) -> liter_llm::client::LlmConfig {
             .as_deref()
             .map(|url| url.trim_end_matches('/').to_string()),
         timeout_secs: config.timeout_secs,
+        // ~keep Use the upstream connect default without expanding the exhaustive public config.
+        connect_timeout_secs: None,
         max_retries: config.max_retries,
         temperature: config.temperature,
         max_tokens: config.max_tokens,
