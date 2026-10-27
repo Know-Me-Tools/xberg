@@ -2045,6 +2045,70 @@ fn page_column_corridor(lines: &[SegmentData]) -> Option<(f32, f32)> {
     qualifying.next().is_none().then_some(first)
 }
 
+// A late script may follow more spans than the glyph-attachment lookback. Keep only the current
+// printed row's font and extent, so paragraph continuity stays constant-time without assigning a base. ~keep
+struct ParagraphVisualRow<'a> {
+    anchor: &'a SegmentData,
+    left: f32,
+    right: f32,
+}
+
+impl<'a> ParagraphVisualRow<'a> {
+    fn new(anchor: &'a SegmentData) -> Self {
+        let (left, right) = anchor.upright_advance_extent();
+        Self { anchor, left, right }
+    }
+
+    fn carries_script(&self, script: &SegmentData) -> bool {
+        let base = self.anchor;
+        if base.is_monospace
+            || script.is_monospace
+            || base.assigned_role != script.assigned_role
+            || !base.has_same_rotation(script)
+            || base.font_size <= script.font_size
+            || script.font_size <= 0.0
+            || base.width < 0.0
+            || script.width < 0.0
+            || ![
+                self.left,
+                self.right,
+                base.font_size,
+                script.font_size,
+                base.width,
+                script.width,
+                script.upright_advance_extent().1,
+                base.upright_baseline(),
+                script.upright_baseline(),
+                script.upright_advance_extent().0,
+            ]
+            .iter()
+            .all(|value| value.is_finite())
+        {
+            return false;
+        }
+        is_script_run_offset(
+            base,
+            script,
+            (base.upright_baseline() - script.upright_baseline()).abs(),
+            base.font_size,
+        ) && crate::script_run::is_script_run_forward_gap(
+            self.left,
+            self.right,
+            script.upright_advance_extent().0,
+            base.font_size,
+        )
+    }
+
+    fn include(&mut self, segment: &'a SegmentData) {
+        let (left, right) = segment.upright_advance_extent();
+        self.left = self.left.min(left);
+        self.right = self.right.max(right);
+        if segment.font_size > self.anchor.font_size {
+            self.anchor = segment;
+        }
+    }
+}
+
 fn blocks_to_paragraphs(
     lines: Vec<SegmentData>,
     heading_map: &[(f32, Option<u8>)],
@@ -2062,8 +2126,10 @@ fn blocks_to_paragraphs(
     let mut current_lines: Vec<&SegmentData> = Vec::new();
     let mut current_is_single_visual_line = true;
     let mut prev_idx = 0usize;
+    let mut visual_row: Option<ParagraphVisualRow<'_>> = None;
 
     for (line_idx, line) in lines.iter().enumerate() {
+        let is_row_script = visual_row.as_ref().is_some_and(|row| row.carries_script(line));
         let should_break = if current_lines.is_empty() {
             false
         } else {
@@ -2075,7 +2141,12 @@ fn blocks_to_paragraphs(
             // rather than against `L` (x 206.78), which it actually abuts. Reuniting them in the
             // ORDER the page prints would need per-glyph positions; suppressing the break is what
             // keeps the subscript from becoming an element of its own, which is the defect. ~keep
-            let font_change = (line.font_size - prev.font_size).abs() > 1.5
+            let font_reference = visual_row
+                .as_ref()
+                .filter(|row| row.carries_script(prev))
+                .map_or(*prev, |row| row.anchor);
+            let font_change = (line.font_size - font_reference.font_size).abs() > 1.5
+                && !is_row_script
                 && !is_inline_style_transition(
                     current_is_single_visual_line,
                     prev,
@@ -2088,7 +2159,8 @@ fn blocks_to_paragraphs(
                     .take(SCRIPT_RUN_BASE_LOOKBACK)
                     .any(|candidate| is_script_run_of(candidate, line));
             let role_change = line.assigned_role != prev.assigned_role;
-            let bold_change = line.is_bold != prev.is_bold
+            let bold_change = line.is_bold != font_reference.is_bold
+                && !is_row_script
                 && !is_inline_style_transition(
                     current_is_single_visual_line,
                     prev,
@@ -2253,6 +2325,20 @@ fn blocks_to_paragraphs(
             }
             current_lines.clear();
             current_is_single_visual_line = true;
+            visual_row = None;
+        }
+        if let Some(row) = visual_row.as_mut() {
+            if is_row_script
+                || (row.anchor.has_same_rotation(line)
+                    && (row.anchor.upright_baseline() - line.upright_baseline()).abs()
+                        <= INLINE_STYLE_BASELINE_TOLERANCE)
+            {
+                row.include(line);
+            } else {
+                *row = ParagraphVisualRow::new(line);
+            }
+        } else {
+            visual_row = Some(ParagraphVisualRow::new(line));
         }
         if let Some(first) = current_lines.first() {
             current_is_single_visual_line &= line.has_same_rotation(first)
@@ -3336,11 +3422,46 @@ fn is_table_model_available(
 }
 
 #[cfg(feature = "layout-detection")]
+fn table_model_load_failed_warning(model_name: &str) -> crate::types::ProcessingWarning {
+    crate::types::ProcessingWarning {
+        source: std::borrow::Cow::Borrowed("pdf_tables"),
+        message: std::borrow::Cow::Owned(format!(
+            "layout detection found table regions but the {model_name} table model could not be loaded for a \
+             page; its tables were read from the page text"
+        )),
+    }
+}
+
+/// The table model loaders; a parameter so tests can simulate a missing model without loading one.
+#[cfg(feature = "layout-detection")]
+#[derive(Clone, Copy)]
+struct TableModelLoaders {
+    available: fn(
+        crate::core::config::layout::TableModel,
+        Option<&crate::core::config::acceleration::AccelerationConfig>,
+        usize,
+    ) -> bool,
+    tatr: fn(Option<&crate::core::config::acceleration::AccelerationConfig>, usize) -> Option<crate::layout::TatrLease>,
+    slanet: fn(
+        &str,
+        Option<&crate::core::config::acceleration::AccelerationConfig>,
+        usize,
+    ) -> Option<crate::layout::SlanetLease>,
+}
+
+#[cfg(feature = "layout-detection")]
+const TABLE_MODEL_LOADERS: TableModelLoaders = TableModelLoaders {
+    available: is_table_model_available,
+    tatr: crate::layout::take_or_create_tatr,
+    slanet: crate::layout::take_or_create_slanet,
+};
+
+#[cfg(feature = "layout-detection")]
 pub(crate) fn extract_document_structure_from_segments(
     all_page_segments: Vec<Vec<SegmentData>>,
     config: SegmentStructureConfig<'_>,
 ) -> Result<crate::types::internal::InternalDocument> {
-    build_document_structure(all_page_segments, config, is_table_model_available)
+    build_document_structure(all_page_segments, config, TABLE_MODEL_LOADERS)
 }
 
 #[cfg(not(feature = "layout-detection"))]
@@ -3354,12 +3475,7 @@ pub(crate) fn extract_document_structure_from_segments(
 fn build_document_structure(
     mut all_page_segments: Vec<Vec<SegmentData>>,
     config: SegmentStructureConfig<'_>,
-    // A parameter so tests can simulate a missing model without loading one.
-    #[cfg(feature = "layout-detection")] table_model_available: fn(
-        crate::core::config::layout::TableModel,
-        Option<&crate::core::config::acceleration::AccelerationConfig>,
-        usize,
-    ) -> bool,
+    #[cfg(feature = "layout-detection")] loaders: TableModelLoaders,
 ) -> Result<crate::types::internal::InternalDocument> {
     let SegmentStructureConfig {
         k_clusters,
@@ -3527,7 +3643,7 @@ fn build_document_structure(
             };
 
             let has_table_model = if use_model_inference {
-                let available = table_model_available(table_model, acceleration, session_thread_budget);
+                let available = (loaders.available)(table_model, acceleration, session_thread_budget);
 
                 if !available && !table_pages.is_empty() {
                     table_model_warning =
@@ -3537,6 +3653,17 @@ fn build_document_structure(
             } else {
                 false
             };
+            let heuristic_tables = |tp: &TablePageData| {
+                super::regions::extract_tables_from_layout_hints(
+                    &tp.words,
+                    &hints_pages[tp.page_idx],
+                    tp.page_idx,
+                    tp.page_height,
+                    0.5,
+                    allow_single_column,
+                    false,
+                )
+            };
 
             if has_table_model {
                 if let (Some(images @ [_, ..]), Some(results @ [_, ..])) = (layout_images, layout_results) {
@@ -3545,11 +3672,12 @@ fn build_document_structure(
                         .iter()
                         .map(|tp| {
                             if let Some(variant) = slanet_variant {
-                                let Some(mut slanet) =
-                                    crate::layout::take_or_create_slanet(variant, acceleration, session_thread_budget)
+                                let Some(mut slanet) = (loaders.slanet)(variant, acceleration, session_thread_budget)
                                 else {
                                     tracing::warn!("SLANeXT model unavailable in worker thread");
-                                    return Vec::new();
+                                    table_model_warning
+                                        .get_or_insert_with(|| table_model_load_failed_warning(model_name));
+                                    return heuristic_tables(tp);
                                 };
 
                                 if let (Some(page_image), Some(page_result)) =
@@ -3592,22 +3720,13 @@ fn build_document_structure(
                                     }
                                 }
 
-                                let hints = &hints_pages[tp.page_idx];
-                                super::regions::extract_tables_from_layout_hints(
-                                    &tp.words,
-                                    hints,
-                                    tp.page_idx,
-                                    tp.page_height,
-                                    0.5,
-                                    allow_single_column,
-                                    false,
-                                )
+                                heuristic_tables(tp)
                             } else {
-                                let Some(mut tatr) =
-                                    crate::layout::take_or_create_tatr(acceleration, session_thread_budget)
-                                else {
+                                let Some(mut tatr) = (loaders.tatr)(acceleration, session_thread_budget) else {
                                     tracing::warn!("TATR model unavailable in worker thread");
-                                    return Vec::new();
+                                    table_model_warning
+                                        .get_or_insert_with(|| table_model_load_failed_warning(model_name));
+                                    return heuristic_tables(tp);
                                 };
 
                                 if let (Some(page_image), Some(page_result)) =
@@ -3631,16 +3750,7 @@ fn build_document_structure(
                                     }
                                 }
 
-                                let hints = &hints_pages[tp.page_idx];
-                                super::regions::extract_tables_from_layout_hints(
-                                    &tp.words,
-                                    hints,
-                                    tp.page_idx,
-                                    tp.page_height,
-                                    0.5,
-                                    allow_single_column,
-                                    false,
-                                )
+                                heuristic_tables(tp)
                             }
                         })
                         .collect();
@@ -3652,10 +3762,9 @@ fn build_document_structure(
                                 (images.get(tp.page_idx), results.get(tp.page_idx))
                             {
                                 let hints = &hints_pages[tp.page_idx];
-                                let Some(mut tatr) =
-                                    crate::layout::take_or_create_tatr(acceleration, session_thread_budget)
-                                else {
-                                    return Vec::new();
+                                let Some(mut tatr) = (loaders.tatr)(acceleration, session_thread_budget) else {
+                                    table_model_warning.get_or_insert_with(|| table_model_load_failed_warning("TATR"));
+                                    return heuristic_tables(tp);
                                 };
                                 let tatr_tables = super::regions::recognize_tables_for_native_page(
                                     page_image,
@@ -3672,15 +3781,7 @@ fn build_document_structure(
                                 if !tatr_tables.is_empty() {
                                     return tatr_tables;
                                 }
-                                super::regions::extract_tables_from_layout_hints(
-                                    &tp.words,
-                                    hints,
-                                    tp.page_idx,
-                                    tp.page_height,
-                                    0.5,
-                                    allow_single_column,
-                                    false,
-                                )
+                                heuristic_tables(tp)
                             } else {
                                 Vec::new()
                             }
@@ -3693,16 +3794,7 @@ fn build_document_structure(
                             tracing::debug!("native structure pipeline: cancelled during heuristic table extraction");
                             break;
                         }
-                        let hints = &hints_pages[tp.page_idx];
-                        layout_tables.extend(super::regions::extract_tables_from_layout_hints(
-                            &tp.words,
-                            hints,
-                            tp.page_idx,
-                            tp.page_height,
-                            0.5,
-                            allow_single_column,
-                            false,
-                        ));
+                        layout_tables.extend(heuristic_tables(tp));
                     }
                 }
             } else {
@@ -3711,16 +3803,7 @@ fn build_document_structure(
                         tracing::debug!("native structure pipeline: cancelled during heuristic table extraction");
                         break;
                     }
-                    let hints = &hints_pages[tp.page_idx];
-                    layout_tables.extend(super::regions::extract_tables_from_layout_hints(
-                        &tp.words,
-                        hints,
-                        tp.page_idx,
-                        tp.page_height,
-                        0.5,
-                        allow_single_column,
-                        false,
-                    ));
+                    layout_tables.extend(heuristic_tables(tp));
                 }
             }
         }
@@ -4660,18 +4743,26 @@ struct TableCoverage {
     cell_text: String,
     /// One entry per table row: that row's cells' glyphs, concatenated.
     rows: Vec<String>,
+    /// One entry per table row: every whitespace-separated word of that row's cells, normalized.
+    /// Lets a long segment still match a row that holds its words in another order or among
+    /// extra words, where the run test fails.
+    row_words: Vec<ahash::AHashSet<String>>,
     /// Every whitespace-separated word of every cell, normalized.
     words: ahash::AHashSet<String>,
 }
 
-/// Shortest normalized run that may match across cell boundaries within one row. A shorter
-/// run (an item number, a price) is only ever carried by a whole cell word: its digits also
-/// occur, by accident, across the seam of two neighbouring numeric cells (#2171). ~keep
+/// Normalized length, in characters, at which [`TableCoverage::carries`] stops matching a segment against the
+/// whole table and matches it against one row. A shorter run (an item number, a price) is only
+/// ever carried by whole cell words: its digits also occur, by accident, across the seam of two
+/// neighbouring numeric cells (#2171). A longer one is only ever carried by one row: every word of
+/// a sentence can occur somewhere in a table that does not hold the sentence (IRS Form 8829,
+/// lines 43 and 44). ~keep
 const MIN_CROSS_CELL_RUN_GLYPHS: usize = 8;
 
 impl TableCoverage {
     fn from_rows<'a>(bbox: crate::types::BoundingBox, rows: impl IntoIterator<Item = Vec<&'a str>>) -> Self {
         let mut row_texts = Vec::new();
+        let mut row_words = Vec::new();
         let mut words = ahash::AHashSet::new();
         for row in rows {
             row_texts.push(
@@ -4679,35 +4770,47 @@ impl TableCoverage {
                     .map(|cell| normalize_for_table_coverage(cell))
                     .collect::<String>(),
             );
-            for cell in row {
-                words.extend(
-                    cell.split_whitespace()
-                        .map(normalize_for_table_coverage)
-                        .filter(|word| !word.is_empty()),
-                );
-            }
+            let this_row_words: ahash::AHashSet<String> = row
+                .iter()
+                .flat_map(|cell| cell.split_whitespace())
+                .map(normalize_for_table_coverage)
+                .filter(|word| !word.is_empty())
+                .collect();
+            words.extend(this_row_words.iter().cloned());
+            row_words.push(this_row_words);
         }
         Self {
             bbox,
             cell_text: row_texts.concat(),
             rows: row_texts,
+            row_words,
             words,
         }
     }
 
-    /// Whether the grid represents `text`: every word is a whole cell word, or a long run
-    /// sits inside one row's cells. A run is not matched against the whole table's
-    /// concatenated glyphs, which lets digits straddling unrelated cells stand in for it.
+    /// Whether the grid represents `text`. A run shorter than [`MIN_CROSS_CELL_RUN_GLYPHS`] is
+    /// carried when every word is a whole cell word anywhere in the table; a longer one when one
+    /// row holds it, either as a run inside that row's cells or as every word a whole cell word of
+    /// that row. A run is not matched against the whole table's concatenated glyphs, which lets
+    /// digits straddling unrelated cells stand in for it.
     fn carries(&self, text: &str) -> bool {
         let normalized = normalize_for_table_coverage(text);
         if normalized.is_empty() {
             return true;
         }
-        text.split_whitespace()
+        let text_words: Vec<String> = text
+            .split_whitespace()
             .map(normalize_for_table_coverage)
             .filter(|word| !word.is_empty())
-            .all(|word| self.words.contains(&word))
-            || (normalized.len() >= MIN_CROSS_CELL_RUN_GLYPHS && self.rows.iter().any(|row| row.contains(&normalized)))
+            .collect();
+        if normalized.chars().count() < MIN_CROSS_CELL_RUN_GLYPHS {
+            return text_words.iter().all(|word| self.words.contains(word));
+        }
+        self.rows.iter().any(|row| row.contains(&normalized))
+            || self
+                .row_words
+                .iter()
+                .any(|row| text_words.iter().all(|word| row.contains(word)))
     }
 }
 

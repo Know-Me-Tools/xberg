@@ -43,9 +43,33 @@ fn table_hint_page(heading: &str, body: &str, rows: &[[&str; 3]]) -> Vec<Segment
 }
 
 #[cfg(feature = "layout-detection")]
+const NO_TABLE_MODELS: TableModelLoaders = TableModelLoaders {
+    available: |_, _, _| false,
+    tatr: |_, _| None,
+    slanet: |_, _, _| None,
+};
+
+/// The preflight finds the model, but every later load fails.
+#[cfg(feature = "layout-detection")]
+const LOADS_FAIL_AFTER_PREFLIGHT: TableModelLoaders = TableModelLoaders {
+    available: |_, _, _| true,
+    ..NO_TABLE_MODELS
+};
+
+#[cfg(feature = "layout-detection")]
 fn table_hint_document(
     table_model: crate::core::config::layout::TableModel,
     hint_class: LayoutHintClass,
+) -> crate::types::internal::InternalDocument {
+    table_hint_document_with(table_model, hint_class, NO_TABLE_MODELS, false)
+}
+
+#[cfg(feature = "layout-detection")]
+fn table_hint_document_with(
+    table_model: crate::core::config::layout::TableModel,
+    hint_class: LayoutHintClass,
+    loaders: TableModelLoaders,
+    with_layout_rasters: bool,
 ) -> crate::types::internal::InternalDocument {
     let pages = vec![
         table_hint_page(
@@ -80,6 +104,14 @@ fn table_hint_document(
         top: 300.0,
     };
     let layout_hints = vec![vec![table_hint.clone()], vec![table_hint]];
+    let layout_images = vec![image::RgbImage::new(612, 792); 2];
+    let layout_results = vec![
+        crate::pdf::structure::types::PageLayoutResult {
+            page_width_pts: 612.0,
+            page_height_pts: 792.0,
+        };
+        2
+    ];
 
     build_document_structure(
         pages,
@@ -99,14 +131,14 @@ fn table_hint_document(
             layout_hints: Some(&layout_hints),
             allow_single_column: true,
             cancel_token: None,
-            layout_images: None,
-            layout_results: None,
+            layout_images: with_layout_rasters.then_some(layout_images.as_slice()),
+            layout_results: with_layout_rasters.then_some(layout_results.as_slice()),
             table_model,
             table_overlap_preference: crate::core::config::layout::TableOverlapPreference::Content,
             acceleration: None,
             session_thread_budget: 0,
         },
-        |_, _, _| false,
+        loaders,
     )
     .expect("a missing table model must not fail the structure pass")
 }
@@ -143,19 +175,31 @@ fn unavailable_table_model_warns_and_keeps_document_structure() {
         !expected.tables.is_empty(),
         "the heuristic path must read the hinted grid as a table"
     );
-    let table_contents = |document: &crate::types::internal::InternalDocument| {
-        document
-            .tables
-            .iter()
-            .map(|table| (table.page_number, table.cells.clone(), table.markdown.clone()))
-            .collect::<Vec<_>>()
-    };
     assert_eq!(table_contents(&document), table_contents(&expected));
     assert_eq!(document.elements, expected.elements);
     assert!(matches!(
         element_kind_for(&document, "Quarterly results overview"),
         Some(crate::types::internal::ElementKind::Heading { .. })
     ));
+}
+
+#[cfg(feature = "layout-detection")]
+fn table_contents(document: &crate::types::internal::InternalDocument) -> Vec<(u32, Vec<Vec<String>>, String)> {
+    document
+        .tables
+        .iter()
+        .map(|table| (table.page_number, table.cells.clone(), table.markdown.clone()))
+        .collect()
+}
+
+#[cfg(feature = "layout-detection")]
+fn table_warnings(document: &crate::types::internal::InternalDocument) -> Vec<&str> {
+    document
+        .processing_warnings
+        .iter()
+        .filter(|warning| warning.source == "pdf_tables")
+        .map(|warning| warning.message.as_ref())
+        .collect()
 }
 
 /// Layout is on but no region is a table, so a missing table model has nothing to degrade.
@@ -165,15 +209,47 @@ fn unavailable_table_model_without_table_hints_does_not_warn() {
     use crate::core::config::layout::TableModel;
 
     let document = table_hint_document(TableModel::Tatr, LayoutHintClass::Text);
-
-    assert!(
-        !document
-            .processing_warnings
-            .iter()
-            .any(|warning| warning.source == "pdf_tables"),
-        "got {:?}",
-        document.processing_warnings
+    let auto = table_hint_document_with(
+        TableModel::SlanetAuto,
+        LayoutHintClass::Text,
+        LOADS_FAIL_AFTER_PREFLIGHT,
+        true,
     );
+
+    for document in [&document, &auto] {
+        assert!(
+            table_warnings(document).is_empty(),
+            "got {:?}",
+            document.processing_warnings
+        );
+    }
+}
+
+#[cfg(feature = "layout-detection")]
+#[test]
+fn should_warn_and_keep_structure_when_the_table_model_fails_to_load_after_the_preflight() {
+    use crate::core::config::layout::TableModel;
+
+    let expected = table_hint_document(TableModel::Disabled, LayoutHintClass::Table);
+    assert!(!expected.tables.is_empty());
+    for (table_model, model_name) in [
+        (TableModel::Tatr, "TATR"),
+        (TableModel::SlanetWired, "SLANeXT"),
+        (TableModel::SlanetWireless, "SLANeXT"),
+        (TableModel::SlanetPlus, "SLANeXT"),
+        (TableModel::SlanetAuto, "SLANeXT (auto)"),
+    ] {
+        let document = table_hint_document_with(table_model, LayoutHintClass::Table, LOADS_FAIL_AFTER_PREFLIGHT, true);
+
+        let warnings = table_warnings(&document);
+        assert_eq!(warnings.len(), 1, "{table_model:?}: got {warnings:?}");
+        assert!(
+            warnings[0].contains(&format!("the {model_name} table model could not be loaded for a page")),
+            "{table_model:?}: got {warnings:?}"
+        );
+        assert_eq!(table_contents(&document), table_contents(&expected), "{table_model:?}");
+        assert_eq!(document.elements, expected.elements, "{table_model:?}");
+    }
 }
 
 /// Helper: a table at `bbox` on `page` whose only content is `markdown`
@@ -2635,6 +2711,134 @@ fn a_short_run_is_not_carried_by_digits_straddling_two_cells() {
     );
 }
 
+/// A form's line-item cells: every word of the printed instruction on lines 43 and 44 of IRS
+/// Form 8829 occurs in them, but no row holds the instruction, as a run or as its words.
+fn form_line_coverage() -> Vec<TableCoverage> {
+    vec![TableCoverage::from_rows(
+        crate::types::BoundingBox {
+            x0: 30.0,
+            y0: 300.0,
+            x1: 560.0,
+            y1: 400.0,
+        },
+        [
+            vec!["26", "Subtract from line"],
+            vec!["27", "If less than zero, enter -0-"],
+        ],
+    )]
+}
+
+/// A whole-table word set has no order, so a long run carried by it alone deleted a sentence
+/// whose words each occur in some cell.
+#[test]
+fn a_long_run_is_not_carried_by_words_scattered_across_the_table() {
+    let sentence = "Subtract line 27 from line 26. If less than zero, enter -0-";
+    let segments = vec![column_seg(sentence, 40.0, 400.0, 380.0)];
+    let kept: Vec<String> = filter_segments_by_table_bboxes(segments, &form_line_coverage())
+        .into_iter()
+        .map(|seg| seg.text)
+        .collect();
+
+    assert_eq!(
+        kept,
+        vec![sentence.to_string()],
+        "a sentence no row holds must survive even when each of its words is a cell word"
+    );
+}
+
+#[test]
+fn a_short_cell_word_and_a_long_run_inside_one_row_are_still_carried() {
+    let segments = vec![
+        column_seg("27", 40.0, 12.0, 380.0),
+        column_seg("If less than zero, enter -0-", 120.0, 200.0, 360.0),
+    ];
+    assert!(
+        filter_segments_by_table_bboxes(segments, &form_line_coverage()).is_empty(),
+        "a short whole cell word and a long run one row holds are both table text"
+    );
+}
+
+/// The layout grid can split one line over a row's cells out of order (here its two halves sit
+/// in swapped cells, so the run is broken); the row still holds every word, so the prose copy
+/// is a duplicate.
+#[test]
+fn a_long_run_is_carried_by_one_row_holding_its_words_out_of_order() {
+    let coverage = vec![TableCoverage::from_rows(
+        crate::types::BoundingBox {
+            x0: 30.0,
+            y0: 300.0,
+            x1: 560.0,
+            y1: 400.0,
+        },
+        [
+            vec![
+                "Federal Register / Tuesday, April 28, 2026",
+                "Vol. 91, No. 81 / Notices",
+            ],
+            vec!["Agency", "Docket"],
+        ],
+    )];
+    let segments = vec![column_seg(
+        "Federal Register / Vol. 91, No. 81 / Tuesday, April 28, 2026 / Notices",
+        40.0,
+        400.0,
+        380.0,
+    )];
+    assert!(
+        filter_segments_by_table_bboxes(segments, &coverage).is_empty(),
+        "a long line whose words are all whole cell words of one row is table text"
+    );
+}
+
+/// The cutover sits at MIN_CROSS_CELL_RUN_GLYPHS: below it whole cell words of different rows
+/// carry a segment, at it only one row can.
+#[test]
+fn the_word_test_switches_from_table_to_row_at_eight_characters() {
+    let coverage = vec![TableCoverage::from_rows(
+        crate::types::BoundingBox {
+            x0: 30.0,
+            y0: 300.0,
+            x1: 560.0,
+            y1: 400.0,
+        },
+        [vec!["Item", "10"], vec!["Qty", "20"], vec!["Unit", "30"]],
+    )];
+    let segments = vec![
+        column_seg("Item Qty", 40.0, 60.0, 380.0),
+        column_seg("Item Unit", 40.0, 60.0, 360.0),
+    ];
+    let kept: Vec<String> = filter_segments_by_table_bboxes(segments, &coverage)
+        .into_iter()
+        .map(|seg| seg.text)
+        .collect();
+
+    assert_eq!(
+        kept,
+        vec!["Item Unit".to_string()],
+        "seven characters of cell words from two rows are carried; eight are not"
+    );
+}
+
+/// The length is counted in characters: this Cyrillic segment is seven characters but fourteen
+/// bytes, and counted in bytes it would take the row-only path and survive as a duplicate.
+#[test]
+fn a_short_non_ascii_segment_is_measured_in_characters() {
+    let coverage = vec![TableCoverage::from_rows(
+        crate::types::BoundingBox {
+            x0: 30.0,
+            y0: 300.0,
+            x1: 560.0,
+            y1: 400.0,
+        },
+        [vec!["Итог", "1 200,00"], vec!["НДС", "240,00"]],
+    )];
+    let segments = vec![column_seg("Итог НДС", 40.0, 60.0, 380.0)];
+    assert!(
+        filter_segments_by_table_bboxes(segments, &coverage).is_empty(),
+        "a seven-character segment of whole cell words is carried whatever its byte length"
+    );
+}
+
 fn column_seg(text: &str, x: f32, width: f32, baseline_y: f32) -> SegmentData {
     SegmentData {
         text: text.to_string(),
@@ -3154,6 +3358,186 @@ fn should_keep_the_run_following_a_subscript_on_the_same_line() {
         "the unit after a subscript must stay on the same line"
     );
     assert_eq!(paragraph_text(&paragraphs[0]), "P rated kW");
+}
+
+#[test]
+fn should_keep_italic_symbols_when_assembling_the_native_nist_list() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../test_documents/pdf/regression_pages/nist-sp800-22r1a-p32.pdf");
+    let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("read {path:?}: {error}"));
+    let mut native = crate::pdf::native::NativeDocument::open_bytes(&bytes).expect("genuine NIST page parses");
+    let (mut pages, _) = crate::pdf::native::hierarchy::extract_all_segments(
+        &mut native,
+        crate::pdf::native::hierarchy::ArtifactRetention::default(),
+    )
+    .expect("native NIST segments");
+    assert_eq!(pages.len(), 1);
+    let segments: Vec<_> = pages
+        .remove(0)
+        .into_iter()
+        .filter(|segment| (80.0..105.0).contains(&segment.upright_baseline()))
+        .collect();
+    assert!(segments.iter().any(|segment| segment.text.contains("bit segments")));
+    let paragraphs = blocks_to_paragraphs(segments, &[], &[]);
+    let document = crate::pdf::structure::assembly::assemble_internal_document(
+        vec![paragraphs],
+        &[],
+        None,
+        &[],
+        &Default::default(),
+    );
+    let bodies: Vec<_> = document
+        .elements
+        .iter()
+        .filter(|element| element.text.contains("bit segments"))
+        .collect();
+    assert_eq!(bodies.len(), 1);
+    let italic: Vec<_> = bodies[0]
+        .annotations
+        .iter()
+        .filter(|annotation| annotation.kind == crate::types::AnnotationKind::Italic)
+        .map(|annotation| bodies[0].text[annotation.start as usize..annotation.end as usize].trim())
+        .collect();
+    assert_eq!(italic, ["M", "Q", "M", "Q", "Q"]);
+}
+
+#[test]
+fn should_keep_the_genuine_native_actuator_paragraph_together() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../test_documents/pdf/regression_pages/arxiv-2403.01333v1-p5.pdf");
+    let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("read {path:?}: {error}"));
+    let mut native = crate::pdf::native::NativeDocument::open_bytes(&bytes).expect("genuine actuator PDF parses");
+    let (mut pages, _) = crate::pdf::native::hierarchy::extract_all_segments(
+        &mut native,
+        crate::pdf::native::hierarchy::ArtifactRetention::default(),
+    )
+    .expect("native actuator segments");
+    assert_eq!(pages.len(), 1);
+    let segments: Vec<_> = pages
+        .remove(0)
+        .into_iter()
+        .filter(|segment| segment.x < 305.0 && (110.0..210.0).contains(&segment.upright_baseline()))
+        .collect();
+    assert!(segments.iter().any(|segment| segment.text.contains("Table")));
+    let paragraphs = blocks_to_paragraphs(segments, &[], &[]);
+    let paragraphs: Vec<_> = paragraphs
+        .iter()
+        .filter(|paragraph| paragraph_text(paragraph).contains("Table 1"))
+        .collect();
+    assert_eq!(paragraphs.len(), 1);
+    assert_eq!(
+        paragraph_text(paragraphs[0]).matches("This discrepancy arises").count(),
+        1
+    );
+}
+
+#[test]
+fn should_reject_nonfinite_script_row_widths() {
+    let base = inline_seg("H", 10.0, 100.0, false);
+    let script = SegmentData {
+        font_size: 8.0,
+        height: 8.0,
+        width: 4.0,
+        ..inline_seg("2", 18.0, 97.0, false)
+    };
+    assert!(ParagraphVisualRow::new(&base).carries_script(&script));
+    for width in [f32::NAN, f32::INFINITY, -1.0] {
+        let invalid_base = SegmentData { width, ..base.clone() };
+        assert!(!ParagraphVisualRow::new(&invalid_base).carries_script(&script));
+        let invalid_script = SegmentData {
+            width,
+            ..script.clone()
+        };
+        assert!(!ParagraphVisualRow::new(&base).carries_script(&invalid_script));
+    }
+}
+
+#[test]
+fn should_keep_a_bold_wrapped_paragraph_after_a_plain_script() {
+    let mut base = inline_seg("The bold paragraph", 48.0, 170.0, true);
+    base.width = 220.0;
+    let mut row = inline_seg("continues with H", 48.0, 158.0, true);
+    row.width = 120.0;
+    let script = SegmentData {
+        font_size: 8.0,
+        height: 8.0,
+        width: 4.0,
+        ..inline_seg("2", 165.0, 155.0, false)
+    };
+    let tail = inline_seg("and retains its prose", 48.0, 146.0, true);
+    let paragraphs = blocks_to_paragraphs(vec![base, row, script, tail], &[], &[]);
+    assert_eq!(
+        paragraphs.len(),
+        1,
+        "script style must not split the following body row"
+    );
+}
+
+#[test]
+fn should_keep_a_script_when_its_base_precedes_the_attachment_lookback() {
+    let body = |text: &str, x, baseline| SegmentData {
+        font_size: 10.0,
+        height: 10.0,
+        width: 8.0,
+        ..inline_seg(text, x, baseline, false)
+    };
+    let mut segments = vec![body("A wrapped paragraph", 48.0, 170.0), body("H", 48.0, 158.0)];
+    for index in 0..=SCRIPT_RUN_BASE_LOOKBACK {
+        segments.push(body("word", 60.0 + index as f32 * 15.0, 158.0));
+    }
+    segments.push(SegmentData {
+        font_size: 7.0,
+        height: 7.0,
+        width: 4.0,
+        ..inline_seg("2", 55.0, 155.0, false)
+    });
+    segments.push(body("continues on the next row", 48.0, 146.0));
+
+    let paragraphs = blocks_to_paragraphs(segments, &[], &[]);
+
+    assert_eq!(
+        paragraphs.len(),
+        1,
+        "the printed row must survive a late script beyond the lookback"
+    );
+    assert_eq!(
+        paragraph_text(&paragraphs[0])
+            .matches("continues on the next row")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn should_keep_a_wrapped_paragraph_when_a_line_ends_with_a_subscript() {
+    let mut first = inline_seg("The actuator rate resulting", 48.96, 170.0, false);
+    first.width = 250.0;
+    first.font_size = 10.0;
+    first.height = 10.0;
+    let mut second = inline_seg("from H formulation is lower than that from", 48.96, 158.0, false);
+    second.width = 250.0;
+    second.font_size = 10.0;
+    second.height = 10.0;
+    let mut subscript = inline_seg("2", 81.0, 155.0, false);
+    subscript.width = 4.0;
+    subscript.font_size = 7.0;
+    subscript.height = 7.0;
+    let mut continuation = inline_seg("the other formulation.", 48.96, 146.0, false);
+    continuation.width = 130.0;
+    continuation.font_size = 10.0;
+    continuation.height = 10.0;
+
+    let paragraphs = blocks_to_paragraphs(vec![first, second, subscript, continuation], &[], &[]);
+
+    assert_eq!(
+        paragraphs.len(),
+        1,
+        "a terminal script must not split a wrapped paragraph"
+    );
+    assert_eq!(
+        paragraph_text(&paragraphs[0]),
+        "The actuator rate resulting from H formulation is lower than that from 2 the other formulation."
+    );
 }
 
 #[test]
@@ -7265,4 +7649,10 @@ fn should_honor_header_and_footer_flags_independently_for_geometric_page_numbers
         verified += 1;
     }
     assert_eq!(verified, 4);
+}
+
+#[test]
+fn content_loss_should_still_recognize_a_line_leading_middle_dot_marker() {
+    assert!(looks_like_list_item("· first substantial item"));
+    assert!(looks_like_list_item("• another substantial item"));
 }
