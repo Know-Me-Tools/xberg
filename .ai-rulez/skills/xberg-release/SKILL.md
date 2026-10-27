@@ -74,7 +74,6 @@ The llama-index dev aggregator (`integrations/python/llama-index/pyproject.toml`
 
 - Bump via `task version:bump:*` / `task version:set`, then commit the synced manifests
   together with the Cargo.toml change (atomic).
-- Run `task version:check` in CI to guarantee integration manifests never drift from core.
 
 ### Don't
 
@@ -118,8 +117,6 @@ same pushed SHA. A successful older run does not validate newer local commits.
 
 ### Push and dispatch
 
-- Before pushing, `git fetch` and inspect divergence. Do not merge or rebase after committing without the user's
-  direction.
 - Push one coherent state. Do not repeatedly push while intentional CI is still running merely to get newer diagnostics.
 - After the push, dispatch CI, Publish Release with dry-run inputs, and Benchmarks against that pushed SHA.
 - Retry only after identifying and addressing the cause. Cancellation alone is not a defect; a repeated actual
