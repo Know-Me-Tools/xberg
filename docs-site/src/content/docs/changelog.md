@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(extraction): Warn when image or PDF OCR table recognition cannot load its model.**
+  Results carry one `image_tables` or `pdf_tables` warning when layout detection found table regions.
+  Mixed PDFs retain one warning when native and OCR pages encounter the same missing model. (#2244)
+
 - **(doc): Preserve direct superscript and subscript formatting in legacy Word prose Markdown.**
   Paragraphs, headings and lists keep `10^9^` and `H~2~O` with `escape_markdown: false`.
   Supplementary characters remain intact, and footnotes, headers and comments keep their story boundaries. (#2275)

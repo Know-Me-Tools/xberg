@@ -2671,22 +2671,22 @@ async fn recognize_cached_image_tables(
     rgb: &std::sync::Arc<image::RgbImage>,
     detections: &[crate::layout::LayoutDetection],
     config: &ExtractionConfig,
-) -> Vec<crate::RecognizedTable> {
+) -> (Vec<crate::RecognizedTable>, Option<crate::types::ProcessingWarning>) {
     let Some(layout_config) = config.layout.as_ref() else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
     if !uses_tatr_image_table_recognition(layout_config.table_model) {
-        return Vec::new();
+        return (Vec::new(), None);
     }
     let Some(source_elements) = whole_image_doc.prebuilt_ocr_elements.as_ref() else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
     let Some(transform) = whole_image_ocr_coordinate_transform(whole_image_doc, rgb.width(), rgb.height()) else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
     let Some(elements) = transformed_ocr_elements(source_elements, transform, crate::types::OcrElementLevel::Word)
     else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
 
     let page_image = std::sync::Arc::clone(rgb);
@@ -2697,17 +2697,30 @@ async fn recognize_cached_image_tables(
     };
     let acceleration = config.resolved_layout_acceleration().cloned();
     let thread_budget = crate::core::config::concurrency::resolve_thread_budget(config.concurrency.as_ref());
-    tokio::task::spawn_blocking(move || {
-        let Some(mut model) = crate::layout::take_or_create_tatr(acceleration.as_ref(), thread_budget) else {
-            return Vec::new();
-        };
-        crate::ocr::layout_assembly::recognize_page_tables(&page_image, &detection, &elements, &mut model)
+    let has_table_region = detections
+        .iter()
+        .any(|detection| detection.class_name == crate::layout::LayoutClass::Table);
+    let recognized = tokio::task::spawn_blocking(move || {
+        let mut model = crate::layout::take_or_create_tatr(acceleration.as_ref(), thread_budget)?;
+        Some(crate::ocr::layout_assembly::recognize_page_tables(
+            &page_image,
+            &detection,
+            &elements,
+            &mut model,
+        ))
     })
-    .await
-    .unwrap_or_else(|error| {
-        tracing::warn!(%error, "Image table recognition worker failed; retaining OCR fallback");
-        Vec::new()
-    })
+    .await;
+    match recognized {
+        Ok(Some(tables)) => (tables, None),
+        Ok(None) => (
+            Vec::new(),
+            has_table_region.then(|| crate::layout::table_model_unavailable_warning("image_tables", "TATR")),
+        ),
+        Err(error) => {
+            tracing::warn!(%error, "Image table recognition worker failed; retaining OCR fallback");
+            (Vec::new(), None)
+        }
+    }
 }
 
 /// Returns `true` when the OCR backend configured in `config` self-declares that it
@@ -3297,12 +3310,54 @@ impl ImageExtractor {
             source: None,
         })?;
 
-        let ocr_config = config.ocr.as_ref().ok_or_else(|| crate::XbergError::Parsing {
+        config.ocr.as_ref().ok_or_else(|| crate::XbergError::Parsing {
             message: "OCR config required for layout-enhanced OCR".to_string(),
             source: None,
         })?;
 
         let preparation = prepare_layout_ocr(self, content, mime_type, config, layout_config.clone()).await?;
+        self.complete_layout_ocr(content, mime_type, config, preparation).await
+    }
+
+    /// ~keep Runs the layout OCR route after layout detection, then adds the warning for a table model
+    /// that could not be loaded to whichever document the route returns.
+    #[cfg(all(feature = "layout-detection", any(feature = "ocr", feature = "ocr-wasm")))]
+    async fn complete_layout_ocr(
+        &self,
+        content: &[u8],
+        mime_type: &str,
+        config: &ExtractionConfig,
+        preparation: LayoutOcrPreparation,
+    ) -> Result<InternalDocument> {
+        #[cfg(feature = "pdf")]
+        let (recognized_tables, table_warning) = match &preparation {
+            LayoutOcrPreparation::Detected {
+                whole_image_result: Ok(whole_image_doc),
+                rgb,
+                detections,
+            } => recognize_cached_image_tables(whole_image_doc, rgb, detections, config).await,
+            _ => (Vec::new(), None),
+        };
+        #[cfg(not(feature = "pdf"))]
+        let (recognized_tables, table_warning) = (Vec::new(), None::<crate::types::ProcessingWarning>);
+        let mut doc = self
+            .complete_layout_ocr_inner(content, mime_type, config, preparation, recognized_tables)
+            .await?;
+        if let Some(warning) = table_warning {
+            crate::core::diagnostics::push_warning_deduped(&mut doc.processing_warnings, warning);
+        }
+        Ok(doc)
+    }
+
+    #[cfg(all(feature = "layout-detection", any(feature = "ocr", feature = "ocr-wasm")))]
+    async fn complete_layout_ocr_inner(
+        &self,
+        content: &[u8],
+        mime_type: &str,
+        config: &ExtractionConfig,
+        preparation: LayoutOcrPreparation,
+        recognized_tables: Vec<crate::RecognizedTable>,
+    ) -> Result<InternalDocument> {
         let (whole_image_result, rgb, detections) = match preparation {
             LayoutOcrPreparation::Complete(doc) => return Ok(doc),
             LayoutOcrPreparation::Detected {
@@ -3311,34 +3366,12 @@ impl ImageExtractor {
                 detections,
             } => (whole_image_result, rgb, detections),
         };
-        #[cfg(feature = "pdf")]
-        let recognized_tables = match &whole_image_result {
-            Ok(whole_image_doc) => recognize_cached_image_tables(whole_image_doc, &rgb, &detections, config).await,
-            Err(_) => Vec::new(),
-        };
-        #[cfg(not(feature = "pdf"))]
-        let recognized_tables = Vec::new();
 
         if let Ok(whole_image_doc) = &whole_image_result
             && source_image_is_proven_single_frame(content, mime_type)
-            && let Some(structured) = try_assemble_cached_layout_document(
-                whole_image_doc,
-                &detections,
-                &recognized_tables,
-                rgb.width(),
-                rgb.height(),
-            )
+            && let Some(structured) =
+                finish_cached_layout_ocr(whole_image_doc, &rgb, &detections, &recognized_tables, config).await
         {
-            #[cfg(feature = "formula-recognition")]
-            let mut structured = structured;
-            #[cfg(feature = "formula-recognition")]
-            if let Some(layout) = config.layout.as_ref() {
-                recognize_assembled_formula_regions(&mut structured, &rgb, &detections, layout).await;
-            }
-            tracing::debug!(
-                tables = structured.tables.len(),
-                "Assembled cached image OCR with layout structure"
-            );
             return Ok(structured);
         }
         if let Ok(whole_image_doc) = &whole_image_result
@@ -3357,25 +3390,73 @@ impl ImageExtractor {
             return Ok(structured);
         }
 
-        let (backend, region_ocr_config) = match configured_region_ocr(config, ocr_config) {
-            Ok(configured) => configured,
-            Err(error) => return cached_whole_image_after_layout_error(&whole_image_result, error),
-        };
-        let region_doc = match extract_layout_regions(
-            backend,
-            &rgb,
-            &detections,
-            &region_ocr_config,
-            config.layout.as_ref(),
-            config.cancel_token.as_ref(),
-        )
-        .await
-        {
-            Ok(doc) => doc,
-            Err(error) => return cached_whole_image_after_layout_error(&whole_image_result, error),
-        };
-        Ok(select_image_ocr_result(region_doc, whole_image_result))
+        complete_region_layout_ocr(whole_image_result, &rgb, &detections, config).await
     }
+}
+
+#[cfg(all(feature = "layout-detection", any(feature = "ocr", feature = "ocr-wasm")))]
+async fn finish_cached_layout_ocr(
+    whole_image_doc: &InternalDocument,
+    rgb: &image::RgbImage,
+    detections: &[crate::layout::LayoutDetection],
+    recognized_tables: &[crate::RecognizedTable],
+    config: &ExtractionConfig,
+) -> Option<InternalDocument> {
+    let structured = try_assemble_cached_layout_document(
+        whole_image_doc,
+        detections,
+        recognized_tables,
+        rgb.width(),
+        rgb.height(),
+    )?;
+    #[cfg(feature = "formula-recognition")]
+    let mut structured = structured;
+    #[cfg(feature = "formula-recognition")]
+    if let Some(layout) = config.layout.as_ref() {
+        recognize_assembled_formula_regions(&mut structured, rgb, detections, layout).await;
+    }
+    #[cfg(not(feature = "formula-recognition"))]
+    let _ = config;
+    tracing::debug!(
+        tables = structured.tables.len(),
+        "Assembled cached image OCR with layout structure"
+    );
+    Some(structured)
+}
+
+#[cfg(all(feature = "layout-detection", any(feature = "ocr", feature = "ocr-wasm")))]
+async fn complete_region_layout_ocr(
+    whole_image_result: Result<InternalDocument>,
+    rgb: &image::RgbImage,
+    detections: &[crate::layout::LayoutDetection],
+    config: &ExtractionConfig,
+) -> Result<InternalDocument> {
+    let configured = config
+        .ocr
+        .as_ref()
+        .ok_or_else(|| crate::XbergError::Parsing {
+            message: "OCR config required for layout-enhanced OCR".to_string(),
+            source: None,
+        })
+        .and_then(|ocr_config| configured_region_ocr(config, ocr_config));
+    let (backend, region_ocr_config) = match configured {
+        Ok(configured) => configured,
+        Err(error) => return cached_whole_image_after_layout_error(&whole_image_result, error),
+    };
+    let region_doc = match extract_layout_regions(
+        backend,
+        rgb,
+        detections,
+        &region_ocr_config,
+        config.layout.as_ref(),
+        config.cancel_token.as_ref(),
+    )
+    .await
+    {
+        Ok(doc) => doc,
+        Err(error) => return cached_whole_image_after_layout_error(&whole_image_result, error),
+    };
+    Ok(select_image_ocr_result(region_doc, whole_image_result))
 }
 
 /// Minimum ratio of a paragraph's average hOCR font size (`x_fsize`) to the
