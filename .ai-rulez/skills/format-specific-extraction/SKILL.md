@@ -68,7 +68,7 @@ pretty-print to text. See `extractors/structured.rs`.
 
 Parse headers → extract body (text/html) → process attachments. Message-in-message nesting is
 bounded by the `SecurityBudget`'s `SecurityLimits`-derived `DepthValidator`, the same counter
-every other format uses. See `extraction/email.rs`, `extractors/email.rs`, `extractors/pst.rs`.
+every other format uses. See `extraction/email/`, `extractors/email.rs`, `extractors/pst.rs`.
 
 ## Common Helpers
 

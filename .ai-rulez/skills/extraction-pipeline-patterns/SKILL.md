@@ -17,7 +17,7 @@ x-ai-rulez:
 
 # Extraction Pipeline Patterns
 
-**Format detection → extractor routing → post-processing, across 106 formats / 140 file extensions**
+**Format detection → extractor routing → post-processing over the `FORMATS` registry**
 
 The full-registry counts are verified against published claims by
 `scripts/sync_supported_counts.py verify`. Runtime `SUPPORTED_FORMAT_COUNT` and
@@ -54,7 +54,7 @@ The full-registry counts are verified against published claims by
 - PDF: text, encrypted-document, and OCR-fallback handling under `extractors/pdf/`.
 - Images: PNG, JPEG, TIFF, WebP, HEIC, SVG, and QR under `extractors/` and `extraction/`.
 - Web: HTML, XHTML, XML, and MDX under `extractors/` and `extraction/html/`.
-- Email: EML, MSG, and PST under `extractors/` and `extraction/email.rs`.
+- Email: EML, MSG, and PST under `extractors/` and `extraction/email/`.
 - Archives: ZIP, TAR, GZIP, and 7z under `extractors/archive.rs` and `extraction/archive/`.
 - Structured: JSON, GeoJSON, YAML, TOML, CSV, DBF, SQLite, and GeoPackage under `extractors/`.
 
