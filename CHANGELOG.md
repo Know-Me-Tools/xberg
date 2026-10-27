@@ -62,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(plugin): Restore all seven Pi skills advertised by the root package.**
+  Resource paths match the packaged skills and prompts, with checks that reject missing or mismatched entries. (#2257, #2246)
+
 - **(ocr): Initialize Sceptre OCR and document orientation in either order.**
   Xberg and Sceptre 0.8.2 share one ONNX Runtime environment, preventing duplicate-environment failures
   during sequential or concurrent extraction.
