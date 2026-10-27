@@ -14,7 +14,9 @@ x-ai-rulez:
 
 # xberg E2E Fixtures
 
-One JSON object per file under `fixtures/<category>/`; the directory is the category.
+One JSON object per file under `fixtures/<dir>/`. The directory is the default category; an explicit `category` field
+overrides it and names the generated test file (e.g. `fixtures/plugin_api/list_reranker_backends.json` sets
+`reranker_backend_management`, so its Python test lands in `e2e/python/tests/test_reranker_backend_management.py`).
 
 - Fields: `id` (unique snake_case, becomes the test name), `call`, `description`, `docs` (`topic`, `title`,
   `description`, `side_effects`), `assertions`; optional `category`, `tags`, `input`, `config`, `args`, `skip`.
@@ -22,13 +24,20 @@ One JSON object per file under `fixtures/<category>/`; the directory is the cate
   plugin-registry calls (`list_*`, `register_*`, `unregister_*`, `clear_*` for OCR, embedding, tokenizer, reranker
   backends, renderers, validators, post-processors).
 - `input`: `extract_input` (`kind: "uri"` with `$mock_url/...`, or `bytes` + `filename` + `mime_type`) plus
-  `mock_responses` (`path`, `status_code`, `headers`, `body_file` relative to the repo, usually
-  `../test_documents/...`); batch calls take `inputs`.
-- `assertions` is a list of `{type, field, value}`. Types: `not_error`, `error`, `equals`, `min_length`, `count_min`,
-  `count_equals`, `contains`, `contains_any`, `contains_all`, `not_contains`, `not_empty`, `greater_than_or_equal`,
-  `less_than_or_equal`. `field` is a path into the result, e.g. `results[0].mime_type`.
+  `mock_responses` (`path`, `status_code`, `headers`, optional `method`, and a body: `body_file` resolved against
+  `fixtures/responses/` then `fixtures/`, so `../test_documents/...` is the in-repo submodule; or `body_inline`).
+  Batch calls take `inputs`. A bytes input can also sit at the top level of `input` (`kind: "bytes"`, `bytes`,
+  `filename`, `mime_type`) without `extract_input`.
+- `assertions` is a list of `{type, field, value}`; `contains_any` and `contains_all` take `values` (a list). Types:
+  `not_error`, `error`, `equals`, `min_length`, `count_min`, `count_equals`, `contains`, `contains_any`,
+  `contains_all`, `not_contains`, `not_empty`, `greater_than_or_equal`, `less_than_or_equal`. `field` is a path into
+  the result, e.g. `results[0].mime_type`.
 - `skip`: `{languages: [...], reason: "..."}`.
-- Categories: `smoke`, `extract`, `batch`, `contract`, `error`, `format_specific`, `pdf`, `images`, `code`, `url`,
-  `plugin_api`, `registry`, `summarization`, `repros`.
+- Directories: `smoke`, `extract`, `batch`, `contract`, `error`, `format_specific`, `pdf`, `code`, `url`, `plugin_api`,
+  `registry`, `summarization`. Field-only categories (all under `plugin_api/`): `ocr_backend_management`,
+  `embedding_backend_management`, `tokenizer_backend_management`, `reranker_backend_management`,
+  `renderer_management`, `validator_management`, `post_processor_management`.
+- `fixtures/repros/` holds repro assets (PDFs, configs, READMEs) and `fixtures/images/` a test image; neither holds
+  e2e fixtures.
 
 Copy the nearest existing fixture of the same `call` rather than writing one from this list.
