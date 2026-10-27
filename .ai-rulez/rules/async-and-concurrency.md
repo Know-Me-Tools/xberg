@@ -1,6 +1,7 @@
 ---
 type: Decision
 title: Async And Concurrency
+description: "Xberg async rules: tokio-only extraction paths, spawn_blocking for CPU work, Send + Sync types, timeouts. Use when editing core async code."
 paths:
   - "crates/xberg/src/**"
 x-ai-rulez:

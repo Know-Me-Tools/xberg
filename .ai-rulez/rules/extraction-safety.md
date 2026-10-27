@@ -1,6 +1,7 @@
 ---
 type: Decision
 title: Extraction Safety
+description: "Xberg extraction safety: SecurityLimits, MIME validation, fallback eligibility, partial results, error text. Use when editing extractors or core."
 paths:
   - "crates/xberg/src/extractors/**"
   - "crates/xberg/src/extraction/**"

@@ -1,6 +1,7 @@
 ---
 type: Decision
 title: Extraction Measurement Hygiene
+description: "Xberg extraction A/B and sweep hygiene: per-run cache isolation, OCR no-cache, CLI JSON nesting, timings. Use when measuring extraction output."
 paths:
   - "tools/benchmark-harness/**"
   - "tools/ocr-measure/**"

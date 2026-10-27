@@ -1,6 +1,7 @@
 ---
 type: Decision
 title: Measurement Discipline
+description: "Judging Xberg quality changes: absolute counts over ratios, tail vs population, bracketing preserved binaries. Use when comparing extraction quality."
 paths:
   - "tools/benchmark-harness/**"
   - "tools/ocr-measure/**"

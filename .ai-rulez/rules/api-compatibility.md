@@ -1,6 +1,7 @@
 ---
 type: Decision
 title: Api Compatibility
+description: "Xberg public API compatibility: semver, deprecation window, CHANGELOG entries, FFI-friendly public types. Use when changing a public API."
 paths:
   - "crates/xberg/src/**"
   - "crates/xberg-ffi/**"

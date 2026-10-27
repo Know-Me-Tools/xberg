@@ -1,6 +1,7 @@
 ---
 type: Decision
 title: Changelog Policy
+description: "What belongs in Xberg's user-facing CHANGELOG and what to omit. Use when editing a changelog."
 paths:
   - "**/CHANGELOG.md"
   - "docs-site/src/content/docs/changelog.md"
