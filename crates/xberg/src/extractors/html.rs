@@ -497,7 +497,30 @@ fn advance_fence(state: &mut Option<(char, usize)>, line: &str) -> bool {
     }
 }
 
+fn html_front_matter_end(raw: &str) -> Option<usize> {
+    let mut lines = raw.split_inclusive('\n');
+    let opening = lines.next()?;
+    if opening.trim_end_matches(['\r', '\n']) != "---" {
+        return None;
+    }
+    let mut offset = opening.len();
+    for line in lines {
+        offset += line.len();
+        if line.trim_end_matches(['\r', '\n']) == "---" {
+            return Some(offset);
+        }
+    }
+    None
+}
+
 pub(crate) fn normalize_html_markdown(raw: String) -> String {
+    // ~keep YAML metadata is not Markdown prose: its delimiter can resemble a setext heading (#2295).
+    let (front_matter, body) = raw.split_at(html_front_matter_end(&raw).unwrap_or(0));
+    let normalized_body = normalize_html_markdown_body(body);
+    format!("{front_matter}{normalized_body}")
+}
+
+fn normalize_html_markdown_body(raw: &str) -> String {
     let lines: Vec<&str> = raw.lines().collect();
     let mut pass1: Vec<String> = Vec::with_capacity(lines.len());
     let mut fence: Option<(char, usize)> = None;
@@ -1415,6 +1438,63 @@ mod tests {
         assert!(
             doc.uris.iter().any(|u| u.url.contains("test.png")),
             "Should have URI for test.png"
+        );
+    }
+
+    #[test]
+    fn should_preserve_leading_yaml_metadata_delimiters_gh2295() {
+        let input = "---\nmeta-description: d\ntitle: T\n---\n\nx\n";
+        assert_eq!(normalize_html_markdown(input.to_string()), input);
+    }
+
+    #[test]
+    fn should_preserve_front_matter_comments_and_block_scalars_gh2295() {
+        let front_matter = "---\n# metadata comment\ntitle: |\n  A title  \n  ====\n---\n";
+        let input = format!("{front_matter}\nHeading\n=======\ntext\n# Next\n");
+        assert_eq!(
+            normalize_html_markdown(input),
+            format!("{front_matter}\n# Heading\ntext\n\n# Next\n")
+        );
+    }
+
+    #[test]
+    fn should_preserve_crlf_front_matter_bytes_gh2295() {
+        let front_matter = "---\r\ntitle: T  \r\n# comment\r\n---\r\n";
+        let input = format!("{front_matter}\r\nBody   \r\n");
+        assert_eq!(normalize_html_markdown(input), format!("{front_matter}\nBody\n"));
+    }
+
+    #[test]
+    fn should_preserve_front_matter_without_a_body_gh2295() {
+        for input in ["---\ntitle: T\n---", "---\r\ntitle: T\r\n---\r\n"] {
+            assert_eq!(normalize_html_markdown(input.to_string()), input);
+        }
+    }
+
+    #[test]
+    fn should_still_normalize_setext_after_a_thematic_break_gh2295() {
+        let input = "Intro\n\n---\n\nTitle\n=====\n";
+        assert_eq!(normalize_html_markdown(input.to_string()), "Intro\n\n---\n\n# Title\n");
+    }
+
+    #[test]
+    fn should_preserve_fenced_code_after_front_matter_gh2295() {
+        let input = "---\ntitle: T\n---\n\n```\n# comment\nname\n---\n```\n";
+        assert_eq!(normalize_html_markdown(input.to_string()), input);
+    }
+
+    #[test]
+    fn should_keep_html_metadata_as_front_matter_in_markdown_output_gh2295() {
+        let config = ExtractionConfig {
+            output_format: OutputFormat::Markdown,
+            ..Default::default()
+        };
+        let html = b"<html><head><title>T</title><meta name=\"description\" content=\"d\"></head>\
+                     <body><p>x</p></body></html>";
+        let document = HtmlExtractor.extract_sync(html, "text/html", &config).unwrap();
+        assert_eq!(
+            document.pre_rendered_content.as_deref(),
+            Some("---\nmeta-description: d\ntitle: T\n---\n\nx\n")
         );
     }
 
