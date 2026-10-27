@@ -54,7 +54,7 @@ includes:
 
 vars:
   AI_RULEZ: "ai-rulez"
-  AI_RULEZ_VERSION: "5.7.0"
+  AI_RULEZ_MIN_VERSION: "5.7.0"
 
 tasks:
   ffi:verify:declarations:
@@ -290,8 +290,10 @@ tasks:
     cmds:
       - |
         installed_version="$("{{.AI_RULEZ}}" --version)"
-        if [ "$installed_version" != "ai-rulez version {{.AI_RULEZ_VERSION}}" ]; then
-          printf '%s\n' "This checkout requires ai-rulez {{.AI_RULEZ_VERSION}}; found $installed_version" >&2
+        found="${installed_version#ai-rulez version }"
+        lowest="$(printf '%s\n%s\n' "{{.AI_RULEZ_MIN_VERSION}}" "$found" | sort -V | head -n 1)"
+        if [ "$found" = "$installed_version" ] || [ "$lowest" != "{{.AI_RULEZ_MIN_VERSION}}" ]; then
+          printf '%s\n' "This checkout requires ai-rulez {{.AI_RULEZ_MIN_VERSION}} or newer; found $installed_version" >&2
           exit 1
         fi
 

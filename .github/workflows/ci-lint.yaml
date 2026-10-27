@@ -52,7 +52,7 @@ jobs:
       - name: Install reviewed ai-rulez
         uses: xberg-io/actions/setup-ai-rulez@793d3a4d37a17009d91cce29f2825eda570d2abd
         with:
-          ai-rulez-version: "5.7.0"
+          ai-rulez-version: "latest"
       - name: Validate AI governance inputs
         run: task governance:verify
 
@@ -93,7 +93,7 @@ jobs:
       - name: Install ai-rulez
         uses: xberg-io/actions/setup-ai-rulez@793d3a4d37a17009d91cce29f2825eda570d2abd
         with:
-          ai-rulez-version: "5.7.0"
+          ai-rulez-version: "latest"
       - name: Verify generated plugin bundles are current
         run: |
           ai-rulez verify --plugin

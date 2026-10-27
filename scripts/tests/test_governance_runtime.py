@@ -46,8 +46,8 @@ class GovernanceRuntimeTests(unittest.TestCase):
             check=False,
         )
 
-    def test_should_reject_wrong_version_before_any_governance_command(self) -> None:
-        """All seven entry points reject the mismatched executable before doing work."""
+    def test_should_reject_old_version_before_any_governance_command(self) -> None:
+        """All seven entry points reject an executable below the minimum before doing work."""
         targets = (
             "governance:validate",
             "governance:generate",
@@ -63,15 +63,15 @@ class GovernanceRuntimeTests(unittest.TestCase):
                 self.calls.unlink(missing_ok=True)
                 result = self.run_task(target)
                 assert result.returncode != 0, result.stdout + result.stderr
-                assert "requires ai-rulez 5.7.0" in result.stderr
+                assert "requires ai-rulez 5.7.0 or newer; found ai-rulez version 5.6.3" in result.stderr
                 assert self.calls.read_text().splitlines() == ["--version"]
 
-    def test_should_match_all_nine_workflow_installations(self) -> None:
-        """Local enforcement and every CI installer use one released version."""
+    def test_should_install_latest_in_all_nine_workflow_installations(self) -> None:
+        """Every CI installer takes the latest release; the Taskfile only sets a floor."""
         root = Path(__file__).resolve().parents[2]
         taskfile = (root / "Taskfile.yml").read_text()
-        expected = re.search(r'AI_RULEZ_VERSION: "([^"\n]+)"', taskfile)
-        assert expected is not None
+        assert re.search(r'AI_RULEZ_MIN_VERSION: "5\.7\.0"', taskfile) is not None
+        assert "AI_RULEZ_VERSION:" not in taskfile
         versions = []
         for path in (root / ".github/workflows").glob("*"):
             source = path.read_text()
@@ -79,14 +79,28 @@ class GovernanceRuntimeTests(unittest.TestCase):
                 assert "source-revision:" not in source, f"{path} overrides the released AI-Rulez runtime"
             versions.extend(re.findall(r'ai-rulez-version: "([^"\n]+)"', source))
         assert len(versions) == 9
-        assert set(versions) == {expected[1]}
+        assert set(versions) == {"latest"}
 
-    def test_should_validate_with_exact_reviewed_version(self) -> None:
-        """A matching executable reaches the original validation command."""
-        self.environment["RUNTIME_VERSION"] = "5.7.0"
-        result = self.run_task("governance:validate")
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert self.calls.read_text().splitlines() == ["--version", "validate"]
+    def test_should_validate_with_minimum_or_newer_version(self) -> None:
+        """The minimum and newer releases, compared numerically, reach the validation command."""
+        for version in ("5.7.0", "5.7.1", "5.10.0", "6.0.0"):
+            with self.subTest(version=version):
+                self.calls.unlink(missing_ok=True)
+                self.environment["RUNTIME_VERSION"] = version
+                result = self.run_task("governance:validate")
+                assert result.returncode == 0, result.stdout + result.stderr
+                assert self.calls.read_text().splitlines() == ["--version", "validate"]
+
+    def test_should_reject_versions_below_minimum_compared_numerically(self) -> None:
+        """A patch release below the floor is rejected even when it sorts after it as text."""
+        for version in ("5.6.10", "4.99.0"):
+            with self.subTest(version=version):
+                self.calls.unlink(missing_ok=True)
+                self.environment["RUNTIME_VERSION"] = version
+                result = self.run_task("governance:validate")
+                assert result.returncode != 0, result.stdout + result.stderr
+                assert f"requires ai-rulez 5.7.0 or newer; found ai-rulez version {version}" in result.stderr
+                assert self.calls.read_text().splitlines() == ["--version"]
 
 
 if __name__ == "__main__":
