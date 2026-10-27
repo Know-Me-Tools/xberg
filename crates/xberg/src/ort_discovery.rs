@@ -219,7 +219,10 @@ pub(crate) fn is_explicit_provider_request(
     feature = "ner-onnx"
 ))]
 pub(crate) fn ort_environment() -> Result<&'static ort::environment::Environment, ort::Error> {
+    #[cfg(not(feature = "sceptre-ocr-ort"))]
     static ENVIRONMENT: std::sync::OnceLock<ort::environment::Environment> = std::sync::OnceLock::new();
+    #[cfg(feature = "sceptre-ocr-ort")]
+    static ENVIRONMENT: std::sync::OnceLock<&'static ort::environment::Environment> = std::sync::OnceLock::new();
     static INIT: std::sync::Mutex<()> = std::sync::Mutex::new(());
     if let Some(environment) = ENVIRONMENT.get() {
         return Ok(environment);
@@ -230,7 +233,12 @@ pub(crate) fn ort_environment() -> Result<&'static ort::environment::Environment
     if let Some(environment) = ENVIRONMENT.get() {
         return Ok(environment);
     }
+    ensure_ort_available();
+    #[cfg(not(feature = "sceptre-ocr-ort"))]
     let environment = ort::init().build()?;
+    #[cfg(feature = "sceptre-ocr-ort")]
+    let environment = sceptre::ort_environment()
+        .map_err(|error| ort::Error::from(Box::new(error) as Box<dyn std::error::Error + Send + Sync>))?;
     let environment = ENVIRONMENT.get_or_init(|| environment);
     #[cfg(feature = "paddle-ocr-ort")]
     if !xberg_paddle_ocr::adopt_ort_environment(environment) {
@@ -678,7 +686,14 @@ mod tests {
     }
 }
 
-#[cfg(all(test, any(feature = "paddle-ocr-ort", feature = "ner-onnx")))]
+#[cfg(all(
+    test,
+    any(
+        feature = "paddle-ocr-ort",
+        feature = "ner-onnx",
+        all(feature = "sceptre-ocr-ort", feature = "auto-rotate")
+    )
+))]
 mod shared_environment_tests {
     fn field(number: u8, payload: &[u8]) -> Vec<u8> {
         let mut out = vec![(number << 3) | 2, payload.len() as u8];
@@ -698,7 +713,7 @@ mod shared_environment_tests {
     }
 
     /// A one-node `Identity` ONNX model: loads under any ONNX Runtime without model assets.
-    fn identity_model() -> Vec<u8> {
+    pub(super) fn identity_model() -> Vec<u8> {
         let node = [field(1, b"x"), field(2, b"y"), field(4, b"Identity")].concat();
         let graph = [
             field(1, &node),
@@ -759,3 +774,7 @@ mod shared_environment_tests {
         );
     }
 }
+
+#[cfg(all(test, feature = "sceptre-ocr-ort", feature = "auto-rotate"))]
+#[path = "ort_discovery/sceptre_tests.rs"]
+mod sceptre_tests;

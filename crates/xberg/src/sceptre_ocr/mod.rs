@@ -448,6 +448,10 @@ fn run_blocking(
 ) -> Result<BlockingOutput> {
     #[cfg(not(auto_rotate))]
     let _ = rotation;
+    #[cfg(feature = "sceptre-ocr-ort")]
+    if config.model.backend == Backend::Ort {
+        crate::ort_discovery::ensure_ort_available();
+    }
     let decoded = decode_sceptre_image(image_bytes)?;
     #[cfg(auto_rotate)]
     let (image, orientation, was_rotated) = decode_and_rotate(decoded, rotation.enabled, rotation.detector.as_deref())?;

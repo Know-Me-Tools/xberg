@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(ocr): Initialize Sceptre OCR and document orientation in either order.**
+  Xberg and Sceptre 0.8.2 share one ONNX Runtime environment, preventing duplicate-environment failures
+  during sequential or concurrent extraction.
+
 - **(djot): Keep neighbouring blocks in footnote definitions separated.**
   Paragraphs, headings, list items, definition terms and table captions no longer run together. (#2270)
 
