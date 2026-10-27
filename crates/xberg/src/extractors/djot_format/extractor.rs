@@ -89,6 +89,9 @@ impl DjotExtractor {
         let mut annotation_starts: Vec<(u8, u32, Option<String>)> = Vec::new();
 
         for event in events {
+            if in_footnote {
+                separate_footnote_block(event, &mut footnote_text);
+            }
             match event {
                 Event::Start(Container::Heading { level, .. }, _) => {
                     heading_text.clear();
@@ -668,6 +671,31 @@ impl DjotExtractor {
 
         b.build()
     }
+}
+
+fn separate_footnote_block(event: &Event<'_>, text: &mut String) {
+    let Event::Start(container, _) = event else {
+        return;
+    };
+    if text.is_empty()
+        || !matches!(
+            container,
+            Container::Paragraph
+                | Container::Heading { .. }
+                | Container::ListItem
+                | Container::TaskListItem { .. }
+                | Container::DescriptionTerm
+                | Container::DescriptionDetails
+                | Container::Caption
+        )
+        || text.ends_with("\n\n")
+    {
+        return;
+    }
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push('\n');
 }
 
 impl Default for DjotExtractor {

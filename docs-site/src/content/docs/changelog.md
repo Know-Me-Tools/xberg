@@ -64,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(djot): Keep neighbouring blocks in footnote definitions separated.**
+  Paragraphs, headings, list items, definition terms and table captions no longer run together. (#2270)
+
 - **(extraction): Warn when image or PDF OCR table recognition cannot load its model.**
   Results carry one `image_tables` or `pdf_tables` warning when layout detection found table regions.
   Mixed PDFs retain one warning when native and OCR pages encounter the same missing model. (#2244)
