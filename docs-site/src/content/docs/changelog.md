@@ -67,6 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(djot): Preserve smart punctuation, table captions, line breaks and image alt text.** (#2254)
+- **(djot): Drop caption footnote references when an empty table is omitted.** (#2248)
 - **(build): Standalone XML and HWPX features pass strict Clippy checks.** (#2243)
 - **(email): Keep HTML head metadata and scripts out of message text, and recover malformed base64 parts.**
   Body text and attachments decode stray characters without decoding nested messages twice. (#2252, #2253)

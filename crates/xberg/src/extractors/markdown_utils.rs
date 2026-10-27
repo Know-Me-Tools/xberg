@@ -18,6 +18,7 @@ pub(crate) enum FootnoteRefHolder {
     /// A list item at this nesting depth, so a sublist item never takes its parent's references.
     ListItem(usize),
     Table,
+    TableCaption,
     DefinitionTerm,
     DefinitionDescription,
 }
@@ -45,6 +46,11 @@ impl PendingFootnoteRefs {
             builder.push_footnote_ref(name, name, None);
             false
         });
+    }
+
+    /// Drop the references read in `holder`, because `holder` itself is dropped.
+    pub(crate) fn discard(&mut self, holder: FootnoteRefHolder) {
+        self.0.retain(|(owner, _)| *owner != holder);
     }
 
     /// Push every reference still waiting, so a holder that never closed loses none.
