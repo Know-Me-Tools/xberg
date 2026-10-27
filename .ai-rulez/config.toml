@@ -99,8 +99,8 @@ tools = ["find_skill", "load_skill"]
 include_outputs = false
 
 [lint]
-# ~keep The local feature-flag-conventions skill carries core's shared flag contract verbatim plus the
-# Xberg feature sets, so one skill is listed instead of two. Re-copy the shared part when core changes it.
+# ~keep The local feature-flag-conventions skill carries the languages module's shared flag contract verbatim plus the
+# Xberg feature sets, so one skill is listed instead of two. Re-copy the shared part when that module changes it.
 allow_overrides = ["feature-flag-conventions"]
 
 [rules]
