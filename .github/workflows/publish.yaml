@@ -5362,18 +5362,20 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org/"
-      # Plain ESM adapter — no build step. Skip if this version is already on npm so a
-      # release re-run is idempotent (publish-npm has no built-in skip-existing). ~keep
+      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
+      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
       - name: Install ai-rulez
         uses: xberg-io/actions/setup-ai-rulez@v1
         with:
-          ai-rulez-version: "latest"
+          ai-rulez-version: "5.7.0"
       - name: Verify plugin bundles match the pinned generator
         run: |
           ai-rulez verify --plugin
           node --test scripts/tests/opencode-plugin.test.mjs
       - name: Verify Pi and OpenCode resources in the npm archive
         run: python3 scripts/verify_pi_package.py
+      # Plain ESM adapter — no build step. Skip if this version is already on npm so a
+      # release re-run is idempotent (publish-npm has no built-in skip-existing). ~keep
       - name: Skip if already on npm
         id: guard
         run: |
@@ -5410,10 +5412,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
+      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
+      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
       - name: Install ai-rulez
         uses: xberg-io/actions/setup-ai-rulez@v1
         with:
-          ai-rulez-version: "latest"
+          ai-rulez-version: "5.7.0"
       - name: Verify plugin source and generated artifacts
         uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
@@ -5444,10 +5448,12 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.tag }}
           fetch-depth: 0
+      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
+      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
       - name: Install ai-rulez
         uses: xberg-io/actions/setup-ai-rulez@v1
         with:
-          ai-rulez-version: "latest"
+          ai-rulez-version: "5.7.0"
       - name: Verify public skill exports
         run: python3 scripts/sync_public_skills.py --check
       - name: Package all supported plugin runtimes
@@ -5515,10 +5521,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      - name: Install reviewed ai-rulez
+      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
+      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
+      - name: Install ai-rulez
         uses: xberg-io/actions/setup-ai-rulez@v1
         with:
-          ai-rulez-version: "latest"
+          ai-rulez-version: "5.7.0"
       - name: Verify plugin versions and generated resources
         uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
@@ -5589,10 +5597,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      - name: Install reviewed ai-rulez
+      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
+      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
+      - name: Install ai-rulez
         uses: xberg-io/actions/setup-ai-rulez@v1
         with:
-          ai-rulez-version: "latest"
+          ai-rulez-version: "5.7.0"
       - name: Verify plugin versions and generated resources
         uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
