@@ -91,10 +91,6 @@ pub async fn extract(input: JsValue, config: JsValue) -> Result<WasmExtractionRe
 
 Functions can be `async` for JS ergonomics; extraction underneath is synchronous.
 
-## Critical Rules
+## Gating
 
-1. **No tokio** — all operations synchronous.
-2. **Implement `SyncExtractor`** for every WASM-compatible in-crate extractor.
-3. **HTML capped at `MAX_HTML_SIZE_BYTES` (2 MB)** due to stack constraints.
-4. **Size optimization** via `opt-level = "z"` on the package profile only.
-5. **Gate WASM-specific code** with `#[cfg(target_arch = "wasm32")]`, and use the two-arm `cfg_attr` `async_trait` form on any plugin trait impl.
+**Gate WASM-specific code** with `#[cfg(target_arch = "wasm32")]`, and use the two-arm `cfg_attr` `async_trait` form on any plugin trait impl.

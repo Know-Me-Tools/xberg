@@ -116,13 +116,8 @@ is `ort-bundled` / `ort-dynamic`. WASM excludes ORT-backed `embeddings`, but **d
 
 ## Critical Rules
 
-1. **Detect before routing** — never dispatch on a caller-supplied extension alone.
-2. **Post-processing is mandatory** — all results flow through `run_pipeline` / `run_pipeline_sync`.
-3. **Selection is by priority, not registration order** — the registry returns the highest `priority()` for a MIME
-   type.
-4. **Do not claim streaming** — current file extraction reads the whole input into memory.
-5. **Apply `SecurityLimits` to user content** — archive size, compression ratio, file count, nesting depth.
-6. **Fail gracefully** — malformed input returns partial content plus error context, never a panic.
+- **Detect before routing** — never dispatch on a caller-supplied extension alone.
+- **Apply `SecurityLimits` to user content** — archive size, compression ratio, file count, nesting depth.
 
 ## Verification
 
