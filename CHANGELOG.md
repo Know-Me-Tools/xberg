@@ -62,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(doc): Preserve direct superscript and subscript formatting in legacy Word prose Markdown.**
+  Paragraphs, headings and lists keep `10^9^` and `H~2~O` with `escape_markdown: false`.
+  Supplementary characters remain intact, and footnotes, headers and comments keep their story boundaries. (#2275)
+
 - **(jupyter): Preserve wide characters and combining marks during terminal-style output overwrites.**
   Carriage returns follow display columns, combining marks stay with their base, and 8-bit CSI sequences are removed.
   Grid-path regressions also verify that combining marks do not leak across lines. (#2245, #2288)

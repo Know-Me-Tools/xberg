@@ -26,51 +26,92 @@ fn read_u32_checked(data: &[u8], offset: usize, what: &str) -> Result<u32> {
     ]))
 }
 
+struct Word97Layout {
+    ranges: SubdocRanges,
+    total_cp: usize,
+    pairs: usize,
+    clx_start: usize,
+    clx_length: usize,
+}
+
+impl Word97Layout {
+    fn read(word_doc: &[u8]) -> Result<Self> {
+        let fib_base_size = 32;
+        let csw_offset = fib_base_size;
+        let csw = read_u16_checked(word_doc, csw_offset, "csw")? as usize;
+        let rg_w_offset = csw_offset + 2;
+        let cslw_offset = rg_w_offset + csw * 2;
+
+        let cslw = read_u16_checked(word_doc, cslw_offset, "cslw")? as usize;
+        let rg_lw_offset = cslw_offset + 2;
+
+        let ccp_text_offset = rg_lw_offset + FIB_LW_IDX_CCP_TEXT * 4;
+        let ccp_text = read_u32_checked(word_doc, ccp_text_offset, "ccpText")? as usize;
+
+        let subdoc_ranges = SubdocRanges::from_fib(word_doc, rg_lw_offset, ccp_text);
+        let mut total_cp = subdoc_ranges.total_cp();
+        if total_cp > 0 {
+            total_cp += 1;
+        }
+
+        let cbrgfclcb_offset = rg_lw_offset + cslw * 4;
+        read_u16_checked(word_doc, cbrgfclcb_offset, "cbRgFcLcb")?;
+        let rg_fc_lcb_offset = cbrgfclcb_offset + 2;
+
+        let fc_clx_offset = rg_fc_lcb_offset + FIB_FC_LCB_IDX_CLX * 8;
+        let lcb_clx_offset = fc_clx_offset + 4;
+        let fc_clx = read_u32_checked(word_doc, fc_clx_offset, "fcClx/lcbClx")? as usize;
+        let lcb_clx = read_u32_checked(word_doc, lcb_clx_offset, "fcClx/lcbClx")? as usize;
+
+        Ok(Self {
+            ranges: subdoc_ranges,
+            total_cp,
+            pairs: rg_fc_lcb_offset,
+            clx_start: fc_clx,
+            clx_length: lcb_clx,
+        })
+    }
+}
+
 /// Extract text from Word 97/2000/XP/2003 files using the piece table.
 pub(super) fn extract_text_word97(
     word_doc: &[u8],
     table_stream: &[u8],
     warnings: &mut Vec<ProcessingWarning>,
     picture_limits: Option<&crate::extractors::security::SecurityLimits>,
+    budget: &mut crate::extractors::security::SecurityBudget,
 ) -> Result<MainText> {
-    let fib_base_size = 32;
-    let csw_offset = fib_base_size;
-    let csw = read_u16_checked(word_doc, csw_offset, "csw")? as usize;
-    let rg_w_offset = csw_offset + 2;
-    let cslw_offset = rg_w_offset + csw * 2;
+    let fib = Word97Layout::read(word_doc)?;
 
-    let cslw = read_u16_checked(word_doc, cslw_offset, "cslw")? as usize;
-    let rg_lw_offset = cslw_offset + 2;
-
-    let ccp_text_offset = rg_lw_offset + FIB_LW_IDX_CCP_TEXT * 4;
-    let ccp_text = read_u32_checked(word_doc, ccp_text_offset, "ccpText")? as usize;
-
-    let subdoc_ranges = SubdocRanges::from_fib(word_doc, rg_lw_offset, ccp_text);
-    let mut total_cp = subdoc_ranges.total_cp();
-    if total_cp > 0 {
-        total_cp += 1;
-    }
-
-    let cbrgfclcb_offset = rg_lw_offset + cslw * 4;
-    read_u16_checked(word_doc, cbrgfclcb_offset, "cbRgFcLcb")?;
-    let rg_fc_lcb_offset = cbrgfclcb_offset + 2;
-
-    let fc_clx_offset = rg_fc_lcb_offset + FIB_FC_LCB_IDX_CLX * 8;
-    let lcb_clx_offset = fc_clx_offset + 4;
-    let fc_clx = read_u32_checked(word_doc, fc_clx_offset, "fcClx/lcbClx")? as usize;
-    let lcb_clx = read_u32_checked(word_doc, lcb_clx_offset, "fcClx/lcbClx")? as usize;
-
-    if fc_clx == 0 || lcb_clx == 0 {
+    if fib.clx_start == 0 || fib.clx_length == 0 {
         images::warn_unsupported_fallback(picture_limits.is_some(), warnings, "contiguous-text fallback");
-        return extract_text_contiguous(word_doc, ccp_text).map(MainText::text_only);
+        return extract_text_contiguous(word_doc, fib.ranges.main.len()).map(MainText::text_only);
     }
 
-    if table_stream.len() < fc_clx + lcb_clx {
+    if table_stream.len() < fib.clx_start + fib.clx_length {
         return Err(XbergError::parsing("CLX extends beyond table stream"));
     }
 
-    let clx = &table_stream[fc_clx..fc_clx + lcb_clx];
+    let clx = &table_stream[fib.clx_start..fib.clx_start + fib.clx_length];
 
+    if let Some(plc_pcd) = read_piece_table(clx)? {
+        let scripts = chpx::ScriptIndex::read(word_doc, table_stream, fib.pairs, budget, warnings)?;
+        let tables = DocTables {
+            lists: papx::ListTables::build(word_doc, table_stream, fib.pairs),
+            stories: StoryTables::read(word_doc, table_stream, fib.pairs, &fib.ranges),
+            picture_limits,
+            scripts,
+            ranges: &fib.ranges,
+            total_cp: fib.total_cp,
+        };
+        return extract_text_from_piece_table(word_doc, plc_pcd, warnings, &tables, budget);
+    }
+
+    images::warn_unsupported_fallback(picture_limits.is_some(), warnings, "unavailable-piece-table fallback");
+    extract_text_fallback(word_doc, fib.ranges.main.len()).map(MainText::text_only)
+}
+
+fn read_piece_table(clx: &[u8]) -> Result<Option<&[u8]>> {
     let mut pos = 0;
     while pos < clx.len() {
         let clxt = clx[pos];
@@ -80,15 +121,7 @@ pub(super) fn extract_text_word97(
                 return Err(XbergError::parsing("Pcdt truncated at lcb"));
             }
             let _ = u32::from_le_bytes([clx[pos], clx[pos + 1], clx[pos + 2], clx[pos + 3]]) as usize;
-            pos += 4;
-
-            let plc_pcd = &clx[pos..];
-            let tables = DocTables {
-                lists: papx::ListTables::build(word_doc, table_stream, rg_fc_lcb_offset),
-                stories: StoryTables::read(word_doc, table_stream, rg_fc_lcb_offset, &subdoc_ranges),
-                picture_limits,
-            };
-            return extract_text_from_piece_table(word_doc, plc_pcd, &subdoc_ranges, total_cp, warnings, &tables);
+            return Ok(Some(&clx[pos + 4..]));
         } else if clxt == 0x01 {
             pos += 1;
             if pos + 2 > clx.len() {
@@ -100,9 +133,7 @@ pub(super) fn extract_text_word97(
             break;
         }
     }
-
-    images::warn_unsupported_fallback(picture_limits.is_some(), warnings, "unavailable-piece-table fallback");
-    extract_text_fallback(word_doc, ccp_text).map(MainText::text_only)
+    Ok(None)
 }
 
 /// Record that a piece's declared byte range runs past the end of the
@@ -151,10 +182,6 @@ struct DecodedPiece {
 }
 
 impl DecodedPiece {
-    fn len(&self) -> usize {
-        self.chars.len()
-    }
-
     fn is_empty(&self) -> bool {
         self.chars.is_empty()
     }
@@ -208,16 +235,17 @@ fn decode_piece_chars(
             let mut chars = Vec::new();
             let mut fc_ends = Vec::new();
             let mut cp_offsets = Vec::new();
-            for (i, unit) in word_doc[byte_offset..available_end]
-                .as_chunks::<2>()
-                .0
-                .iter()
-                .enumerate()
-            {
-                if let Some(c) = char::from_u32(u16::from_le_bytes([unit[0], unit[1]]) as u32) {
-                    chars.push(c);
-                    fc_ends.push((byte_offset + i * 2 + 2) as u32);
-                    cp_offsets.push(i as u32);
+            let units = word_doc[byte_offset..available_end].as_chunks::<2>().0;
+            let mut cp = 0;
+            for decoded in char::decode_utf16(units.iter().map(|bytes| u16::from_le_bytes(*bytes))) {
+                match decoded {
+                    Ok(character) => {
+                        chars.push(character);
+                        cp_offsets.push(cp as u32);
+                        cp += character.len_utf16();
+                        fc_ends.push((byte_offset + cp * 2) as u32);
+                    }
+                    Err(_) => cp += 1,
                 }
             }
             DecodedPiece {
@@ -229,33 +257,35 @@ fn decode_piece_chars(
     }
 }
 
-/// Append the overlap between `[cp_start, cp_start + chars.len())` and `range`
-/// to `out`, translating the overlap into an index range on `chars`.
+/// Select by source UTF16/CP1252 positions, not decoded scalar count; a surrogate
+/// pair or dropped malformed unit must not shift a later story boundary. ~keep
 fn append_range_overlap(
     piece: &DecodedPiece,
     cp_start: usize,
     range: SubdocRange,
     out: &mut String,
-    out_positions: Option<(&mut Vec<u32>, &mut Vec<u32>)>,
+    out_fc_ends: Option<&mut Vec<u32>>,
+    out_cps: Option<&mut Vec<u32>>,
 ) {
     if range.len() == 0 {
         return;
     }
-    let piece_end = cp_start + piece.len();
-    let overlap_start = cp_start.max(range.start);
-    let overlap_end = piece_end.min(range.end);
-    if overlap_start < overlap_end {
-        let from = overlap_start - cp_start;
-        let to = overlap_end - cp_start;
-        out.extend(&piece.chars[from..to]);
-        if let Some((out_fcs, out_cps)) = out_positions {
-            out_fcs.extend_from_slice(&piece.fc_ends[from..to]);
-            out_cps.extend(
-                piece.cp_offsets[from..to]
-                    .iter()
-                    .map(|&offset| (cp_start + offset as usize) as u32),
-            );
-        }
+    let from = piece
+        .cp_offsets
+        .partition_point(|&cp| cp_start + (cp as usize) < range.start);
+    let to = piece
+        .cp_offsets
+        .partition_point(|&cp| cp_start + (cp as usize) < range.end);
+    out.extend(&piece.chars[from..to]);
+    if let Some(out_fcs) = out_fc_ends {
+        out_fcs.extend_from_slice(&piece.fc_ends[from..to]);
+    }
+    if let Some(out_cps) = out_cps {
+        out_cps.extend(
+            piece.cp_offsets[from..to]
+                .iter()
+                .map(|&offset| (cp_start + offset as usize) as u32),
+        );
     }
 }
 
@@ -299,30 +329,14 @@ fn process_piece(
     }
 
     let plc_pcd = ctx.plc_pcd;
-    let cp_start = u32::from_le_bytes([
-        plc_pcd[cp_start_off],
-        plc_pcd[cp_start_off + 1],
-        plc_pcd[cp_start_off + 2],
-        plc_pcd[cp_start_off + 3],
-    ]) as usize;
-
-    let cp_end = u32::from_le_bytes([
-        plc_pcd[cp_end_off],
-        plc_pcd[cp_end_off + 1],
-        plc_pcd[cp_end_off + 2],
-        plc_pcd[cp_end_off + 3],
-    ]) as usize;
+    let cp_start = read_piece_value(plc_pcd, cp_start_off) as usize;
+    let cp_end = read_piece_value(plc_pcd, cp_end_off) as usize;
 
     if cp_start >= ctx.total_cp {
         return false;
     }
 
-    let fc_raw = u32::from_le_bytes([
-        plc_pcd[pcd_off + 2],
-        plc_pcd[pcd_off + 3],
-        plc_pcd[pcd_off + 4],
-        plc_pcd[pcd_off + 5],
-    ]);
+    let fc_raw = read_piece_value(plc_pcd, pcd_off + 2);
 
     let mut char_count = cp_end.saturating_sub(cp_start);
     if cp_start + char_count > ctx.total_cp {
@@ -337,19 +351,48 @@ fn process_piece(
         return true;
     }
 
-    let ranges = ctx.ranges;
+    append_piece_to_stories(&piece, cp_start, ctx.ranges, text);
+    true
+}
+
+fn read_piece_value(plc: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes([plc[offset], plc[offset + 1], plc[offset + 2], plc[offset + 3]])
+}
+
+fn append_piece_to_stories(piece: &DecodedPiece, cp_start: usize, ranges: &SubdocRanges, text: &mut SubdocumentText) {
     append_range_overlap(
-        &piece,
+        piece,
         cp_start,
         ranges.main,
         &mut text.main,
-        Some((&mut text.main_fc_ends, &mut text.main_cps)),
+        Some(&mut text.main_fc_ends),
+        Some(&mut text.main_cps),
     );
-    append_range_overlap(&piece, cp_start, ranges.footnote, &mut text.footnote, None);
-    append_range_overlap(&piece, cp_start, ranges.header, &mut text.header, None);
-    append_range_overlap(&piece, cp_start, ranges.annotation, &mut text.annotation, None);
-    append_range_overlap(&piece, cp_start, ranges.textbox, &mut text.textbox, None);
-    true
+    append_range_overlap(
+        piece,
+        cp_start,
+        ranges.footnote,
+        &mut text.footnote,
+        None,
+        Some(&mut text.footnote_cps),
+    );
+    append_range_overlap(
+        piece,
+        cp_start,
+        ranges.header,
+        &mut text.header,
+        None,
+        Some(&mut text.header_cps),
+    );
+    append_range_overlap(
+        piece,
+        cp_start,
+        ranges.annotation,
+        &mut text.annotation,
+        None,
+        Some(&mut text.annotation_cps),
+    );
+    append_range_overlap(piece, cp_start, ranges.textbox, &mut text.textbox, None, None);
 }
 
 /// Extract text from the piece table (PlcPcd), bucketing each piece's
@@ -360,11 +403,11 @@ fn process_piece(
 fn extract_text_from_piece_table(
     word_doc: &[u8],
     plc_pcd: &[u8],
-    ranges: &SubdocRanges,
-    total_cp: usize,
     warnings: &mut Vec<ProcessingWarning>,
     tables: &DocTables<'_>,
+    budget: &mut crate::extractors::security::SecurityBudget,
 ) -> Result<MainText> {
+    let ranges = tables.ranges;
     let plc_size = plc_pcd.len();
     if plc_size < 16 {
         return Err(XbergError::parsing("PlcPcd too small"));
@@ -381,7 +424,7 @@ fn extract_text_from_piece_table(
         plc_size,
         plc_pcd,
         word_doc,
-        total_cp,
+        total_cp: tables.total_cp,
         ranges,
     };
 
@@ -399,6 +442,42 @@ fn extract_text_from_piece_table(
         );
     }
 
+    assemble_main_text(&text, tables, warnings, budget)
+}
+
+fn assemble_main_text(
+    text: &SubdocumentText,
+    tables: &DocTables<'_>,
+    warnings: &mut Vec<ProcessingWarning>,
+    budget: &mut crate::extractors::security::SecurityBudget,
+) -> Result<MainText> {
+    let ranges = tables.ranges;
+    let content = joined_subdocument_text(text);
+    let paragraph_context = ParagraphContext {
+        lists: &tables.lists,
+        picture_limits: tables.picture_limits,
+        scripts: &tables.scripts,
+    };
+    let (paragraphs, picture_positions) = split_paragraphs_and_pictures(
+        &text.main,
+        &text.main_fc_ends,
+        &text.main_cps,
+        &paragraph_context,
+        budget,
+    )?;
+    let unsupported_pictures = [&text.footnote, &text.header, &text.annotation, &text.textbox]
+        .iter()
+        .any(|story| story.contains(['\x01', '\x08']));
+    Ok(MainText {
+        paragraphs,
+        picture_positions,
+        unsupported_pictures,
+        subdocuments: collect_subdocuments(text, &tables.stories, ranges, warnings),
+        content,
+    })
+}
+
+fn joined_subdocument_text(text: &SubdocumentText) -> String {
     let mut content = normalize_doc_text(&text.main);
     for (label, section) in [
         ("Footnotes", &text.footnote),
@@ -417,23 +496,7 @@ fn extract_text_from_piece_table(
         }
     }
 
-    let (paragraphs, picture_positions) = split_paragraphs_and_pictures(
-        &text.main,
-        &text.main_fc_ends,
-        &text.main_cps,
-        &tables.lists,
-        tables.picture_limits,
-    )?;
-    let unsupported_pictures = [&text.footnote, &text.header, &text.annotation, &text.textbox]
-        .iter()
-        .any(|story| story.contains(['\x01', '\x08']));
-    Ok(MainText {
-        paragraphs,
-        picture_positions,
-        unsupported_pictures,
-        subdocuments: collect_subdocuments(&text, &tables.stories, warnings),
-        content,
-    })
+    content
 }
 
 /// Table-stream structures the piece-table walk resolves text against.
@@ -441,6 +504,9 @@ struct DocTables<'a> {
     picture_limits: Option<&'a crate::extractors::security::SecurityLimits>,
     lists: papx::ListTables,
     stories: StoryTables,
+    scripts: chpx::ScriptIndex,
+    ranges: &'a SubdocRanges,
+    total_cp: usize,
 }
 
 /// Story boundaries of the subdocuments that hold more than one story, as CPs
@@ -522,15 +588,15 @@ fn header_story_kind(index: usize) -> Option<DocSubdocumentKind> {
     }
 }
 
-/// Cut a subdocument's text (one char per CP) at `bounds` and normalize each
-/// story. A story the piece table did not fully cover comes out short.
-fn split_stories(text: &str, bounds: &[usize]) -> Vec<String> {
+/// Story bounds use source CPs: decoded scalars can occupy two units, and
+/// malformed units can disappear. Keep their original positions. ~keep
+fn split_stories(text: &str, cps: &[u32], start_cp: usize, bounds: &[usize]) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     bounds
         .windows(2)
         .map(|story| {
-            let start = story[0].min(chars.len());
-            let end = story[1].min(chars.len());
+            let start = cps.partition_point(|&cp| (cp as usize) < start_cp.saturating_add(story[0]));
+            let end = cps.partition_point(|&cp| (cp as usize) < start_cp.saturating_add(story[1]));
             normalize_doc_text(&chars[start..end].iter().collect::<String>())
         })
         .collect()
@@ -542,12 +608,15 @@ fn split_stories(text: &str, bounds: &[usize]) -> Vec<String> {
 fn collect_subdocuments(
     text: &SubdocumentText,
     tables: &StoryTables,
+    ranges: &SubdocRanges,
     warnings: &mut Vec<ProcessingWarning>,
 ) -> Vec<DocSubdocument> {
     let mut subdocuments = Vec::new();
-    for (raw, bounds, kind, fallback_kind, fallback_warning) in [
+    for (raw, cps, start_cp, bounds, kind, fallback_kind, fallback_warning) in [
         (
             &text.footnote,
+            &text.footnote_cps,
+            ranges.footnote.start,
             &tables.footnote,
             DocSubdocumentKind::Footnote,
             DocSubdocumentKind::Footnote,
@@ -555,6 +624,8 @@ fn collect_subdocuments(
         ),
         (
             &text.header,
+            &text.header_cps,
+            ranges.header.start,
             &tables.header,
             DocSubdocumentKind::Header,
             DocSubdocumentKind::HeaderFooter,
@@ -562,13 +633,23 @@ fn collect_subdocuments(
         ),
         (
             &text.annotation,
+            &text.annotation_cps,
+            ranges.annotation.start,
             &tables.annotation,
             DocSubdocumentKind::Comment,
             DocSubdocumentKind::Comment,
             "Comment table (PlcfandTxt) is missing or malformed; all comment text is reported as one comment",
         ),
     ] {
-        let Some(bounds) = bounds else {
+        // A malformed piece table can resume at an earlier CP. Binary search
+        // would then assign text to the wrong story; keep that stream whole. ~keep
+        let positions_valid = cps.len() == raw.chars().count() && cps.windows(2).all(|pair| pair[0] < pair[1]);
+        let fallback_warning = if bounds.is_some() && !positions_valid {
+            "DOC character positions are malformed; subdocument text is reported as one story"
+        } else {
+            fallback_warning
+        };
+        let Some(bounds) = bounds.as_ref().filter(|_| positions_valid) else {
             let whole = normalize_doc_text(raw);
             if !whole.is_empty() {
                 crate::core::diagnostics::push_warning(warnings, DOC_WARNING_SOURCE, fallback_warning);
@@ -579,7 +660,7 @@ fn collect_subdocuments(
             }
             continue;
         };
-        for (index, story) in split_stories(raw, bounds).into_iter().enumerate() {
+        for (index, story) in split_stories(raw, cps, start_cp, bounds).into_iter().enumerate() {
             let story_kind = if kind == DocSubdocumentKind::Header {
                 header_story_kind(index)
             } else {
@@ -601,4 +682,175 @@ fn collect_subdocuments(
         });
     }
     subdocuments
+}
+
+#[cfg(test)]
+mod test_script_offsets {
+    use super::*;
+
+    #[test]
+    fn should_decode_surrogate_pair_with_source_fc_and_cp_offsets() {
+        let bytes: Vec<u8> = "😀A".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let mut warnings = Vec::new();
+        let decoded = decode_piece_chars(&bytes, 0, 3, 0, &mut warnings);
+        assert_eq!(decoded.chars, ['😀', 'A']);
+        assert_eq!(decoded.fc_ends, [4, 6]);
+        assert_eq!(decoded.cp_offsets, [0, 2]);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn should_select_subdocument_by_source_cp_after_surrogate_pair() {
+        let piece = DecodedPiece {
+            chars: vec!['😀', 'A'],
+            fc_ends: vec![4, 6],
+            cp_offsets: vec![0, 2],
+        };
+        let mut text = String::new();
+        let mut fcs = Vec::new();
+        let mut cps = Vec::new();
+        append_range_overlap(
+            &piece,
+            10,
+            SubdocRange { start: 12, end: 13 },
+            &mut text,
+            Some(&mut fcs),
+            Some(&mut cps),
+        );
+        assert_eq!(text, "A");
+        assert_eq!(fcs, [6]);
+        assert_eq!(cps, [12]);
+    }
+
+    #[test]
+    fn should_keep_source_offsets_after_dropping_unpaired_surrogate() {
+        let bytes: Vec<u8> = [0xd800u16, 0x0041, 0xdc00, 0x0042]
+            .into_iter()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        let mut warnings = Vec::new();
+        let decoded = decode_piece_chars(&bytes, 0, 4, 0, &mut warnings);
+        assert_eq!(decoded.chars, ['A', 'B']);
+        assert_eq!(decoded.fc_ends, [4, 8]);
+        assert_eq!(decoded.cp_offsets, [1, 3]);
+        assert!(warnings.is_empty());
+    }
+
+    fn two_footnote_story_doc(units: &[u16]) -> Vec<u8> {
+        use super::super::tests::{
+            TestPiece, build_doc_ole, build_fib, build_plc_pcd, build_table_stream, test_rg_fc_lcb_offset, write_u32,
+        };
+        assert_eq!(units.len(), 6);
+        let mut word = build_fib(2048, 1, 6, 0, 0);
+        let encoded: Vec<u8> = std::iter::once(13u16)
+            .chain(units.iter().copied())
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        word[1024..1024 + encoded.len()].copy_from_slice(&encoded);
+        let pairs = test_rg_fc_lcb_offset();
+        word[pairs - 2..pairs].copy_from_slice(&93u16.to_le_bytes());
+        let piece = build_plc_pcd(&[TestPiece {
+            cp_start: 0,
+            cp_end: 7,
+            fc_raw: 1024,
+        }]);
+        let mut table = build_table_stream(&mut word, &piece);
+        write_u32(&mut table, 9, piece.len() as u32);
+        let offset = table.len();
+        for bound in [0u32, 3, 5, 6] {
+            table.extend_from_slice(&bound.to_le_bytes());
+        }
+        write_u32(&mut word, pairs + 3 * 8, offset as u32);
+        write_u32(&mut word, pairs + 3 * 8 + 4, 16);
+        build_doc_ole(&word, &table)
+    }
+
+    fn assert_two_footnotes(bytes: &[u8], first: &str) {
+        let parsed = extract_doc_text(bytes).expect("two valid footnote story bounds");
+        assert_eq!(parsed.content, format!("Footnotes\n\n{first}\nB"));
+        assert!(parsed.paragraphs.is_empty());
+        assert!(
+            parsed.processing_warnings.is_empty(),
+            "{:?}",
+            parsed.processing_warnings
+        );
+        let actual: Vec<_> = parsed
+            .subdocuments
+            .iter()
+            .map(|story| (story.kind, story.text.as_str()))
+            .collect();
+        assert_eq!(
+            actual,
+            [
+                (DocSubdocumentKind::Footnote, first),
+                (DocSubdocumentKind::Footnote, "B")
+            ]
+        );
+        assert_eq!(actual.len(), 2);
+    }
+
+    #[test]
+    fn should_keep_two_footnote_stories_after_utf16_surrogate_pair() {
+        let units: Vec<_> = "😀\rB\r\r".encode_utf16().collect();
+        assert_two_footnotes(&two_footnote_story_doc(&units), "😀");
+    }
+
+    #[test]
+    fn should_keep_two_footnote_stories_after_dropped_malformed_utf16_unit() {
+        assert_two_footnotes(&two_footnote_story_doc(&[0xd800, 65, 13, 66, 13, 13]), "A");
+    }
+
+    #[test]
+    fn should_fall_back_to_whole_story_when_piece_cps_resume_in_reverse_order() {
+        use super::super::tests::{
+            TestPiece, build_doc_ole, build_fib, build_plc_pcd, build_table_stream, test_rg_fc_lcb_offset, write_u32,
+        };
+        let mut word = build_fib(2048, 0, 7, 0, 0);
+        let encoded: Vec<u8> = "ABCDwxyz!".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        word[1024..1024 + encoded.len()].copy_from_slice(&encoded);
+        let pairs = test_rg_fc_lcb_offset();
+        word[pairs - 2..pairs].copy_from_slice(&93u16.to_le_bytes());
+        let piece = build_plc_pcd(&[
+            TestPiece {
+                cp_start: 0,
+                cp_end: 4,
+                fc_raw: 1024,
+            },
+            TestPiece {
+                cp_start: 4,
+                cp_end: 2,
+                fc_raw: 1032,
+            },
+            TestPiece {
+                cp_start: 2,
+                cp_end: 7,
+                fc_raw: 1032,
+            },
+        ]);
+        assert_eq!(piece[..16], [0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 7, 0, 0, 0]);
+        let mut table = build_table_stream(&mut word, &piece);
+        write_u32(&mut table, 9, piece.len() as u32);
+        let offset = table.len();
+        for bound in [0u32, 3, 6, 7] {
+            table.extend_from_slice(&bound.to_le_bytes());
+        }
+        write_u32(&mut word, pairs + 3 * 8, offset as u32);
+        write_u32(&mut word, pairs + 3 * 8 + 4, 16);
+        let parsed = extract_doc_text(&build_doc_ole(&word, &table)).expect("malformed CP order retains text");
+        assert_eq!(parsed.content, "Footnotes\n\nABCDwxyz!");
+        assert!(parsed.paragraphs.is_empty());
+        let actual: Vec<_> = parsed
+            .subdocuments
+            .iter()
+            .map(|story| (story.kind, story.text.as_str()))
+            .collect();
+        assert_eq!(actual, [(DocSubdocumentKind::Footnote, "ABCDwxyz!")]);
+        assert_eq!(parsed.processing_warnings.len(), 1);
+        assert!(
+            parsed.processing_warnings[0]
+                .message
+                .contains("character positions are malformed")
+        );
+        assert!(parsed.processing_warnings[0].message.contains("one story"));
+    }
 }

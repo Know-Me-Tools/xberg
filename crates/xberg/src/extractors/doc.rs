@@ -6,8 +6,7 @@ use crate::Result;
 use crate::core::config::ExtractionConfig;
 use crate::core::mime::LEGACY_WORD_MIME_TYPE;
 use crate::extraction::doc::{
-    DocParagraph, DocPicture, DocSubdocument, DocSubdocumentKind, DocTableMark, DocWithImages, extract_doc_text,
-    extract_doc_with_images,
+    DocParagraph, DocPicture, DocSubdocument, DocSubdocumentKind, DocTableMark, DocWithImages, extract_doc_with_limits,
 };
 use crate::extractors::security::SecurityBudget;
 use crate::plugins::{InternalDocumentExtractor, Plugin};
@@ -74,12 +73,11 @@ impl InternalDocumentExtractor for DocExtractor {
         mime_type: &str,
         config: &ExtractionConfig,
     ) -> Result<InternalDocument> {
-        let image_limits = config
-            .needs_image_data()
-            .then(|| config.security_limits.clone().unwrap_or_default());
+        let image_data = config.needs_image_data();
+        let limits = config.security_limits.clone().unwrap_or_default();
         let extracted = {
             #[cfg(feature = "tokio-runtime")]
-            if crate::core::batch_mode::is_batch_mode() || image_limits.is_some() {
+            if crate::core::batch_mode::is_batch_mode() || image_data {
                 if config.cancel_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
                     return Err(crate::error::XbergError::Cancelled);
                 }
@@ -87,12 +85,12 @@ impl InternalDocumentExtractor for DocExtractor {
                 let span = tracing::Span::current();
                 tokio::task::spawn_blocking(move || -> crate::error::Result<_> {
                     let _guard = span.entered();
-                    parse_doc(&content_owned, image_limits.as_ref())
+                    parse_doc(&content_owned, &limits, image_data)
                 })
                 .await
                 .map_err(|e| crate::error::XbergError::parsing(format!("DOC extraction task failed: {e}")))?
             } else {
-                parse_doc(content, image_limits.as_ref())
+                parse_doc(content, &limits, image_data)
             }
 
             #[cfg(not(feature = "tokio-runtime"))]
@@ -100,7 +98,7 @@ impl InternalDocumentExtractor for DocExtractor {
                 if config.cancel_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
                     return Err(crate::error::XbergError::Cancelled);
                 }
-                parse_doc(content, image_limits.as_ref())
+                parse_doc(content, &limits, image_data)
             }
         }?;
 
@@ -299,11 +297,18 @@ fn push_paragraph_elements_with_images(
                 Some(level) => ElementKind::Heading { level },
                 None => ElementKind::Paragraph,
             };
-            push_paragraph_runs(doc, kind, text, paragraph_pictures, visible_images);
+            push_paragraph_runs(
+                doc,
+                kind,
+                text,
+                &paragraph.annotations,
+                paragraph_pictures,
+                visible_images,
+            );
             continue;
         };
 
-        push_list_paragraph(doc, &mut open, list, text);
+        push_list_paragraph(doc, &mut open, list, text, &paragraph.annotations);
     }
 
     table.flush(doc, budget)?;
@@ -319,6 +324,7 @@ fn push_list_paragraph(
     open: &mut Vec<bool>,
     list: crate::extraction::doc::DocListMembership,
     text: &str,
+    annotations: &[crate::types::TextAnnotation],
 ) {
     let depth = usize::from(list.level) + 1;
     close_lists(doc, open, depth);
@@ -336,11 +342,9 @@ fn push_list_paragraph(
     }
 
     let element_depth = u16::try_from(open.len()).unwrap_or(u16::MAX);
-    doc.push_element(InternalElement::text(
-        ElementKind::ListItem { ordered: list.ordered },
-        text,
-        element_depth,
-    ));
+    let mut element = InternalElement::text(ElementKind::ListItem { ordered: list.ordered }, text, element_depth);
+    element.annotations = annotations.to_vec();
+    doc.push_element(element);
 }
 
 /// Emit header, footer, footnote, comment and text-box text after the body, the
@@ -991,5 +995,6 @@ mod tests {
         );
     }
 
+    mod scripts;
     mod tables;
 }

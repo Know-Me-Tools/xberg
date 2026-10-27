@@ -5,14 +5,19 @@
 //!
 //! Supports Word 97, 2000, XP, and 2003 (.doc) files.
 
+mod chpx;
 mod images;
 mod papx;
 pub(crate) use images::{DocPicture, DocWithImages};
 
 #[cfg(test)]
+mod test_chpx;
+#[cfg(test)]
 mod test_floating_images;
 #[cfg(test)]
 pub(crate) mod test_images;
+#[cfg(all(test, feature = "tokio-runtime"))]
+mod test_scripts;
 
 use crate::error::{Result, XbergError};
 use crate::types::ProcessingWarning;
@@ -30,6 +35,8 @@ const DOC_WARNING_SOURCE: &str = "doc";
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct DocParagraph {
     pub content: String,
+    #[serde(default)]
+    pub annotations: Vec<crate::types::TextAnnotation>,
     /// `Some(..)` when the paragraph is bound to an automatic list. `None`
     /// means ordinary prose.
     pub list: Option<DocListMembership>,
@@ -149,14 +156,25 @@ pub(crate) struct DocMetadata {
 ///
 /// Parses the OLE/CFB compound document, reads the FIB (File Information Block),
 /// and extracts text from the piece table.
+#[cfg(test)]
 pub(crate) fn extract_doc_text(content: &[u8]) -> Result<DocExtractionResult> {
     extract_doc_with_images(content, None).map(|result| result.text)
 }
 
+#[cfg(test)]
 pub(crate) fn extract_doc_with_images(
     content: &[u8],
     image_limits: Option<&crate::extractors::security::SecurityLimits>,
 ) -> Result<images::DocWithImages> {
+    extract_doc_with_limits(content, image_limits, image_limits.unwrap_or(&Default::default()))
+}
+
+pub(crate) fn extract_doc_with_limits(
+    content: &[u8],
+    image_limits: Option<&crate::extractors::security::SecurityLimits>,
+    limits: &crate::extractors::security::SecurityLimits,
+) -> Result<images::DocWithImages> {
+    let mut budget = crate::extractors::security::SecurityBudget::from_limits(limits);
     let cursor = Cursor::new(content);
     let mut comp = cfb::CompoundFile::open(cursor)
         .map_err(|e| XbergError::parsing(format!("Failed to open DOC as OLE container: {e}")))?;
@@ -164,6 +182,44 @@ pub(crate) fn extract_doc_with_images(
     let metadata = extract_doc_metadata(&mut comp);
 
     let word_doc = read_stream(&mut comp, "/WordDocument")?;
+    let (legacy, flags_a) = read_doc_header(&word_doc)?;
+    if legacy {
+        return extract_legacy_doc(&word_doc, flags_a, metadata, image_limits.is_some());
+    }
+    let table_stream_name = if flags_a & 0x0200 != 0 { "/1Table" } else { "/0Table" };
+
+    let table_stream = read_stream(&mut comp, table_stream_name)?;
+
+    let mut processing_warnings = Vec::new();
+
+    let main = extract_text_word97(
+        &word_doc,
+        &table_stream,
+        &mut processing_warnings,
+        image_limits,
+        &mut budget,
+    )?;
+    let pictures = extract_main_pictures(
+        &mut comp,
+        &word_doc,
+        &table_stream,
+        &main,
+        image_limits,
+        &mut processing_warnings,
+    )?;
+    Ok(images::DocWithImages {
+        text: DocExtractionResult {
+            content: main.content,
+            metadata,
+            processing_warnings,
+            paragraphs: main.paragraphs,
+            subdocuments: main.subdocuments,
+        },
+        pictures,
+    })
+}
+
+fn read_doc_header(word_doc: &[u8]) -> Result<(bool, u16)> {
     if word_doc.len() < 12 {
         return Err(XbergError::parsing("WordDocument stream too short"));
     }
@@ -177,59 +233,60 @@ pub(crate) fn extract_doc_with_images(
 
     let n_fib = u16::from_le_bytes([word_doc[2], word_doc[3]]);
     let flags_a = u16::from_le_bytes([word_doc[0x0A], word_doc[0x0B]]);
-    if w_ident == 0xA5DC || (0x0065..=0x0068).contains(&n_fib) {
-        if flags_a & 0x0004 != 0 {
-            return Err(XbergError::parsing(
-                "Fast-saved Word 6/95 documents are not supported; save the document without fast-save history and retry",
-            ));
-        }
-        let mut processing_warnings = Vec::new();
-        images::warn_unsupported_fallback(image_limits.is_some(), &mut processing_warnings, "Word 6/95 documents");
-        return extract_text_word6(&word_doc).map(|text| images::DocWithImages {
-            text: DocExtractionResult {
-                content: text,
-                metadata,
-                processing_warnings,
-                paragraphs: Vec::new(),
-                subdocuments: Vec::new(),
-            },
-            pictures: Vec::new(),
-        });
-    }
-    let table_stream_name = if flags_a & 0x0200 != 0 { "/1Table" } else { "/0Table" };
+    Ok((w_ident == 0xA5DC || (0x0065..=0x0068).contains(&n_fib), flags_a))
+}
 
-    let table_stream = read_stream(&mut comp, table_stream_name)?;
-
-    let mut processing_warnings = Vec::new();
-
-    let main = extract_text_word97(&word_doc, &table_stream, &mut processing_warnings, image_limits)?;
+fn extract_main_pictures(
+    comp: &mut cfb::CompoundFile<Cursor<&[u8]>>,
+    word_doc: &[u8],
+    table_stream: &[u8],
+    main: &MainText,
+    image_limits: Option<&crate::extractors::security::SecurityLimits>,
+    processing_warnings: &mut Vec<ProcessingWarning>,
+) -> Result<Vec<DocPicture>> {
     let pictures = if let Some(limits) = image_limits {
         if main.unsupported_pictures {
             images::warn(
-                &mut processing_warnings,
+                processing_warnings,
                 "Embedded pictures in DOC subdocuments are not extracted",
             );
         }
         images::extract_pictures(
-            &mut comp,
-            &word_doc,
-            &table_stream,
+            comp,
+            word_doc,
+            table_stream,
             &main.picture_positions,
             limits,
-            &mut processing_warnings,
+            processing_warnings,
         )?
     } else {
         Vec::new()
     };
-    Ok(images::DocWithImages {
+    Ok(pictures)
+}
+
+fn extract_legacy_doc(
+    word_doc: &[u8],
+    flags_a: u16,
+    metadata: DocMetadata,
+    images_requested: bool,
+) -> Result<images::DocWithImages> {
+    if flags_a & 0x0004 != 0 {
+        return Err(XbergError::parsing(
+            "Fast-saved Word 6/95 documents are not supported; save the document without fast-save history and retry",
+        ));
+    }
+    let mut processing_warnings = Vec::new();
+    images::warn_unsupported_fallback(images_requested, &mut processing_warnings, "Word 6/95 documents");
+    extract_text_word6(word_doc).map(|text| images::DocWithImages {
         text: DocExtractionResult {
-            content: main.content,
+            content: text,
             metadata,
             processing_warnings,
-            paragraphs: main.paragraphs,
-            subdocuments: main.subdocuments,
+            paragraphs: Vec::new(),
+            subdocuments: Vec::new(),
         },
-        pictures,
+        pictures: Vec::new(),
     })
 }
 
@@ -405,8 +462,11 @@ struct SubdocumentText {
     /// Floating pictures are anchored by CP (`PlcSpaMom`). ~keep
     main_cps: Vec<u32>,
     footnote: String,
+    footnote_cps: Vec<u32>,
     header: String,
+    header_cps: Vec<u32>,
     annotation: String,
+    annotation_cps: Vec<u32>,
     textbox: String,
 }
 
@@ -420,6 +480,89 @@ const PARAGRAPH_MARK: char = '\r';
 
 /// Word's cell mark, which ends a cell's last paragraph and a table row.
 const CELL_MARK: char = '\x07';
+
+#[derive(Default)]
+struct ParagraphBuffer {
+    raw: String,
+    scripts: Vec<chpx::Script>,
+}
+
+struct ParagraphContext<'a> {
+    lists: &'a papx::ListTables,
+    picture_limits: Option<&'a crate::extractors::security::SecurityLimits>,
+    scripts: &'a chpx::ScriptIndex,
+}
+
+#[derive(Default)]
+struct ParagraphOutput {
+    paragraphs: Vec<DocParagraph>,
+    pictures: Vec<images::PicturePosition>,
+    pending_pictures: Vec<(images::PictureReference, usize)>,
+    buffer: ParagraphBuffer,
+    picture_count: usize,
+}
+
+impl ParagraphOutput {
+    fn finish(
+        &mut self,
+        mark_fc_end: Option<u32>,
+        table: Option<DocTableMark>,
+        lists: &papx::ListTables,
+        budget: &mut crate::extractors::security::SecurityBudget,
+    ) -> Result<()> {
+        let index = self.paragraphs.len();
+        let supported = push_paragraph(&mut self.paragraphs, &self.buffer, mark_fc_end, table, lists, budget)?;
+        images::place_pictures(
+            &mut self.pictures,
+            &mut self.pending_pictures,
+            &self.buffer.raw,
+            index,
+            self.paragraphs.get(index),
+            supported,
+        );
+        self.buffer.raw.clear();
+        self.buffer.scripts.clear();
+        Ok(())
+    }
+
+    fn consume(
+        &mut self,
+        value: char,
+        is_markup: bool,
+        position: (Option<u32>, Option<u32>),
+        context: &ParagraphContext<'_>,
+        budget: &mut crate::extractors::security::SecurityBudget,
+    ) -> Result<bool> {
+        let (fc_end, cp) = position;
+        if value == PARAGRAPH_MARK || value == CELL_MARK {
+            let table = fc_end.and_then(|fc| context.lists.table_for_paragraph_end(fc));
+            if value == PARAGRAPH_MARK || table.is_some() {
+                let table = table.map(|table| DocTableMark {
+                    cell_end: value == CELL_MARK && !table.row_end,
+                    row_end: value == CELL_MARK && table.row_end,
+                });
+                self.finish(fc_end, table, context.lists, budget)?;
+                return Ok(false);
+            }
+        }
+        if matches!(value, '\x01' | '\x08') && !is_markup {
+            images::record_position(
+                &mut self.pending_pictures,
+                images::PictureReference::new(value, fc_end, cp),
+                self.buffer.raw.len(),
+                context.picture_limits,
+                &mut self.picture_count,
+            )?;
+        }
+        if !is_markup {
+            self.buffer.raw.push(value);
+            self.buffer
+                .scripts
+                .push(fc_end.map_or(chpx::Script::Normal, |fc| context.scripts.at(fc)));
+        }
+        Ok(true)
+    }
+}
 
 /// Split the raw main text into paragraphs and attach each one's list binding.
 ///
@@ -441,81 +584,39 @@ fn split_paragraphs_and_pictures(
     main: &str,
     main_fc_ends: &[u32],
     main_cps: &[u32],
-    list_tables: &papx::ListTables,
-    picture_limits: Option<&crate::extractors::security::SecurityLimits>,
+    context: &ParagraphContext<'_>,
+    budget: &mut crate::extractors::security::SecurityBudget,
 ) -> Result<(Vec<DocParagraph>, Vec<images::PicturePosition>)> {
     let markup = field_markup_mask(main);
-    let mut paragraphs = Vec::new();
-    let mut pictures = Vec::new();
-    let mut pending_pictures = Vec::new();
-    let mut raw = String::new();
+    let mut output = ParagraphOutput::default();
     let mut after_last_mark = false;
     let mut char_count = 0usize;
-    let mut picture_budget = picture_limits.map(crate::extractors::security::SecurityBudget::from_limits);
-    let mut picture_count = 0;
-
+    let mut picture_budget = context
+        .picture_limits
+        .map(crate::extractors::security::SecurityBudget::from_limits);
     for (i, (c, is_markup)) in main.chars().zip(markup).enumerate() {
         char_count = i + 1;
+        budget
+            .step()
+            .map_err(|error| XbergError::validation(error.to_string()))?;
         if let Some(budget) = picture_budget.as_mut() {
             budget
                 .step()
                 .map_err(|error| XbergError::validation(error.to_string()))?;
         }
-        if c == PARAGRAPH_MARK || c == CELL_MARK {
-            let mark_fc_end = main_fc_ends.get(i).copied();
-            let table = mark_fc_end.and_then(|fc_end| list_tables.table_for_paragraph_end(fc_end));
-            if c == PARAGRAPH_MARK || table.is_some() {
-                let table = table.map(|table| DocTableMark {
-                    cell_end: c == CELL_MARK && !table.row_end,
-                    row_end: c == CELL_MARK && table.row_end,
-                });
-                let index = paragraphs.len();
-                let supported = push_paragraph(&mut paragraphs, &raw, mark_fc_end, table, list_tables);
-                images::place_pictures(
-                    &mut pictures,
-                    &mut pending_pictures,
-                    &raw,
-                    index,
-                    paragraphs.get(index),
-                    supported,
-                );
-                raw.clear();
-                after_last_mark = false;
-                continue;
-            }
-        }
-        after_last_mark = true;
-        if matches!(c, '\x01' | '\x08') && !is_markup {
-            images::record_position(
-                &mut pending_pictures,
-                images::PictureReference::new(c, main_fc_ends.get(i).copied(), main_cps.get(i).copied()),
-                raw.len(),
-                picture_limits,
-                &mut picture_count,
-            )?;
-        }
-        if !is_markup {
-            raw.push(c);
-        }
+        after_last_mark = output.consume(
+            c,
+            is_markup,
+            (main_fc_ends.get(i).copied(), main_cps.get(i).copied()),
+            context,
+            budget,
+        )?;
     }
-
     if after_last_mark {
-        // A final run with no paragraph mark still has properties keyed on the
-        // FC one past its last character.
         let last_fc = main_fc_ends.get(char_count.saturating_sub(1)).copied();
-        let index = paragraphs.len();
-        let supported = push_paragraph(&mut paragraphs, &raw, last_fc, None, list_tables);
-        images::place_pictures(
-            &mut pictures,
-            &mut pending_pictures,
-            &raw,
-            index,
-            paragraphs.get(index),
-            supported,
-        );
+        output.finish(last_fc, None, context.lists, budget)?;
     }
-
-    Ok((paragraphs, pictures))
+    Ok((output.paragraphs, output.pictures))
 }
 
 /// Normalize one paragraph's raw text, field markup already taken out, and
@@ -523,12 +624,13 @@ fn split_paragraphs_and_pictures(
 /// still holds its column, and a row's end mark is empty.
 fn push_paragraph(
     out: &mut Vec<DocParagraph>,
-    raw: &str,
+    buffer: &ParagraphBuffer,
     mark_fc_end: Option<u32>,
     table: Option<DocTableMark>,
     list_tables: &papx::ListTables,
-) -> bool {
-    let content = normalize_doc_text(raw);
+    budget: &mut crate::extractors::security::SecurityBudget,
+) -> Result<bool> {
+    let (content, annotations) = chpx::normalize(&buffer.raw, &buffer.scripts, budget)?;
     // Word keys a paragraph's PAPX on the FC one past its paragraph mark,
     // which is exactly what `fc_ends` recorded for that character.
     let list = mark_fc_end
@@ -536,16 +638,17 @@ fn push_paragraph(
         .map(|(level, ordered)| DocListMembership { level, ordered });
     let supported = table.is_none() && list.is_none();
     if content.is_empty() && table.is_none() {
-        return supported;
+        return Ok(supported);
     }
     let heading_level = mark_fc_end.and_then(|fc_end| list_tables.heading_level_for_paragraph_end(fc_end));
     out.push(DocParagraph {
         content,
+        annotations,
         list,
         heading_level,
         table,
     });
-    supported
+    Ok(supported)
 }
 
 /// Extract text from a "simple" DOC file where text is stored contiguously.

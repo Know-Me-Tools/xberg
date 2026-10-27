@@ -113,6 +113,23 @@ fn sprm_operand_len(sprm: u16) -> Option<usize> {
     }
 }
 
+// Shared with CHPX so operands containing opcode-like bytes remain opaque. ~keep
+pub(super) fn sprm_operand_length(sprm: u16, operand: &[u8]) -> Option<usize> {
+    match sprm {
+        SPRM_T_DEF_TABLE | SPRM_T_DEF_TABLE_10 => {
+            let bytes = operand.get(..2)?;
+            Some(usize::from(u16::from_le_bytes([bytes[0], bytes[1]])) + 1)
+        }
+        SPRM_P_CHG_TABS if operand.first() == Some(&255) => {
+            let deleted = usize::from(*operand.get(1)?);
+            let added = usize::from(*operand.get(2 + 4 * deleted)?);
+            Some(3 + 4 * deleted + 3 * added)
+        }
+        _ if sprm >> 13 == 6 => Some(usize::from(*operand.first()?) + 1),
+        _ => sprm_operand_len(sprm),
+    }
+}
+
 /// Call `visit` with each sprm in a `grpprl` and its operand, stopping at the
 /// first one whose length cannot be read.
 fn for_each_sprm(grpprl: &[u8], mut visit: impl FnMut(u16, &[u8])) {
@@ -122,30 +139,8 @@ fn for_each_sprm(grpprl: &[u8], mut visit: impl FnMut(u16, &[u8])) {
         let sprm = u16::from_le_bytes([grpprl[pos], grpprl[pos + 1]]);
         pos += 2;
 
-        let len = match sprm {
-            // sprmTDefTable and sprmTDefTable10 hold a 2-byte length, plus one. ~keep
-            SPRM_T_DEF_TABLE | SPRM_T_DEF_TABLE_10 => match grpprl.get(pos..pos + 2) {
-                Some(cb) => usize::from(u16::from_le_bytes([cb[0], cb[1]])) + 1,
-                None => break,
-            },
-            // sprmPChgTabs with a length byte of 255 is sized by its counts: ~keep
-            // tabs deleted (4 bytes each), then tabs added (3 bytes each). ~keep
-            SPRM_P_CHG_TABS if grpprl.get(pos) == Some(&255) => {
-                let Some(&deleted) = grpprl.get(pos + 1) else { break };
-                let Some(&added) = grpprl.get(pos + 2 + 4 * usize::from(deleted)) else {
-                    break;
-                };
-                3 + 4 * usize::from(deleted) + 3 * usize::from(added)
-            }
-            _ => match sprm_operand_len(sprm) {
-                Some(len) => len,
-                // spra 6: variable, first operand byte is the length. ~keep
-                None if sprm >> 13 == 6 => match grpprl.get(pos) {
-                    Some(&cb) => usize::from(cb) + 1,
-                    None => break,
-                },
-                None => break,
-            },
+        let Some(len) = sprm_operand_length(sprm, &grpprl[pos..]) else {
+            break;
         };
 
         let operand = match grpprl.get(pos..pos + len) {

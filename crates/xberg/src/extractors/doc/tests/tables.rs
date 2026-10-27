@@ -3,6 +3,7 @@ use super::*;
 fn paragraph(content: &str, table: Option<DocTableMark>) -> DocParagraph {
     DocParagraph {
         content: content.to_string(),
+        annotations: Vec::new(),
         list: None,
         heading_level: None,
         table,
