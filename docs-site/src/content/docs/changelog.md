@@ -67,6 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(pdf): Read two-up pages one half at a time.** (#2227)
+- **(pdf): Preserve native regions unless VLM answers retain their content; report table-model load failures.** (#2259, #2269)
 - **(djot): Preserve smart punctuation, table captions, line breaks and image alt text.** (#2254)
 - **(djot): Drop caption footnote references when an empty table is omitted.** (#2248)
 - **(docx, odt): Preserve equation placement, limits, function names and surrounding text.** (#2258)
