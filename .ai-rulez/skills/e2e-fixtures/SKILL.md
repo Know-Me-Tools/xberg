@@ -34,6 +34,7 @@ overrides it and names the generated test file (e.g. `fixtures/plugin_api/list_r
   `not_error`, `error`, `equals`, `min_length`, `count_min`, `count_equals`, `contains`, `contains_any`,
   `contains_all`, `not_contains`, `not_empty`, `greater_than_or_equal`, `less_than_or_equal`. Example `field`:
   `results[0].mime_type`.
+- Assertion shape and generation: the shared `e2e-generation` skill.
 - `skip`: `{languages: [...], reason: "..."}`.
 - Directories: `smoke`, `extract`, `batch`, `contract`, `error`, `format_specific`, `pdf`, `code`, `url`, `plugin_api`,
   `registry`, `summarization`. Field-only categories (all under `plugin_api/`): `ocr_backend_management`,
