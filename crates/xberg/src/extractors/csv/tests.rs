@@ -504,7 +504,6 @@ async fn plain_csv_with_no_pipes_or_newlines_produces_zero_warnings() {
     );
 }
 
-
 #[test]
 fn should_reject_padded_csv_before_building_the_table_gh2296() {
     let config = ExtractionConfig {
@@ -545,7 +544,34 @@ fn should_stop_csv_parsing_at_the_first_rejected_row_gh2296() {
             return Err(crate::XbergError::validation("stop before the third row".to_string()));
         }
         Ok(())
-    }).unwrap_err();
+    })
+    .unwrap_err();
     assert_eq!(visited, ["a", "b"]);
     assert!(error.to_string().contains("stop before the third row"));
+}
+
+#[tokio::test]
+async fn should_enforce_rectangular_cells_on_the_extractor_path_gh2296() {
+    let extractor = CsvExtractor::new();
+    let mut config = ExtractionConfig {
+        security_limits: Some(crate::extractors::security::SecurityLimits {
+            max_table_cells: 9,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let input = b"a,b,c\nx\ny\n";
+    let accepted = extractor.extract_content(input, "text/csv", &config).await.unwrap();
+    assert_eq!(accepted.tables.len(), 1);
+    assert_eq!(accepted.tables[0].cells.len(), 3);
+    assert_eq!(accepted.tables[0].cells, [vec!["a", "b", "c"], vec!["x"], vec!["y"]]);
+    let column_boundaries: Vec<_> = accepted.tables[0]
+        .markdown
+        .lines()
+        .map(|line| line.matches('|').count())
+        .collect();
+    assert_eq!(column_boundaries, vec![4; 4]);
+    config.security_limits.as_mut().unwrap().max_table_cells = 8;
+    let error = extractor.extract_content(input, "text/csv", &config).await.unwrap_err();
+    assert!(error.to_string().contains("observed 9 cells"), "{error}");
 }
