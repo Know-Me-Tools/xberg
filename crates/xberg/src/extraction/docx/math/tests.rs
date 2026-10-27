@@ -197,7 +197,28 @@ fn should_keep_structural_superscripts_and_accents_when_escaping_run_text() {
 #[test]
 fn test_run_unicode_pi() {
     let latex = omml_to_latex("<m:r><m:t>\u{03C0}</m:t></m:r>");
-    assert_eq!(latex, "\\pi ");
+    assert_eq!(latex, "\\pi");
+}
+
+#[test]
+fn should_trim_inline_and_display_latex() {
+    assert_eq!(omml_to_latex("<m:r><m:t>&#x3B1;</m:t></m:r>"), "\\alpha");
+    assert_eq!(omml_to_latex(r#"<m:r><m:t xml:space="preserve">  </m:t></m:r>"#), "");
+    let xml = "<m:oMathPara><m:oMath><m:r><m:t>&#x3B1;</m:t></m:r></m:oMath><m:oMath><m:r><m:t>&#x3B2;</m:t></m:r></m:oMath></m:oMathPara>";
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) if e.name().as_ref() == "m:oMathPara" => break,
+            Ok(Event::Eof) => panic!("unexpected EOF"),
+            _ => {}
+        }
+        buf.clear();
+    }
+    let mut budget = SecurityBudget::with_defaults();
+    let latex = collect_and_convert_omath_para(&mut reader, &mut budget).expect("conversion ok");
+    assert_eq!(latex, "\\alpha \\\\ \\beta");
 }
 
 #[test]
@@ -554,7 +575,7 @@ fn test_limlow() {
                 <m:lim><m:r><m:t>n→∞</m:t></m:r></m:lim>
             </m:limLow>"#,
     );
-    assert_eq!(latex, "\\underset{n\\rightarrow \\infty }{lim}");
+    assert_eq!(latex, "\\lim_{n\\rightarrow \\infty }");
 }
 
 #[test]
@@ -717,4 +738,125 @@ fn should_keep_group_character_position_independent_of_vertical_justification() 
             assert_eq!(omml_to_latex(&xml), expected);
         }
     }
+}
+
+fn mathml_to_latex(body: &str) -> String {
+    let xml = format!(r#"<math xmlns="http://www.w3.org/1998/Math/MathML">{body}</math>"#);
+    let mut budget = SecurityBudget::with_defaults();
+    let latex = crate::extraction::mathml::convert_mathml_str_to_latex(&xml, &mut budget).expect("conversion ok");
+    latex.trim().to_string()
+}
+
+fn omml_func(name: &str, body: &str) -> String {
+    format!("<m:func><m:fName>{name}</m:fName><m:e><m:r><m:t>{body}</m:t></m:r></m:e></m:func>")
+}
+
+fn omml_lim_low(base: &str, lim: &str) -> String {
+    format!("<m:limLow><m:e><m:r><m:t>{base}</m:t></m:r></m:e><m:lim><m:r><m:t>{lim}</m:t></m:r></m:lim></m:limLow>")
+}
+
+fn omml_nary(chr: &str, pr: &str) -> String {
+    format!(
+        r#"<m:nary><m:naryPr><m:chr m:val="{chr}"/>{pr}</m:naryPr>
+            <m:sub><m:r><m:t>a</m:t></m:r></m:sub><m:sup><m:r><m:t>b</m:t></m:r></m:sup>
+            <m:e><m:r><m:t>x</m:t></m:r></m:e></m:nary>"#
+    )
+}
+
+#[test]
+fn should_render_every_shared_function_name_as_its_command() {
+    let names = [
+        "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "coth", "exp",
+        "ln", "lg", "log", "deg", "dim", "hom", "ker", "arg", "lim", "liminf", "limsup", "max", "min", "sup", "inf",
+        "det", "gcd", "Pr",
+    ];
+    for name in names {
+        let latex = omml_to_latex(&omml_func(&format!("<m:r><m:t>{name}</m:t></m:r>"), "x"));
+        assert_eq!(latex, format!("\\{name}{{x}}"));
+    }
+    let latex = omml_to_latex(&omml_func("<m:r><m:t>lim inf</m:t></m:r>", "x"));
+    assert_eq!(latex, "\\liminf{x}");
+    let latex = omml_to_latex(&omml_func("<m:r><m:t>foo</m:t></m:r>", "x"));
+    assert_eq!(latex, "\\mathrm{foo}{x}");
+}
+
+#[test]
+fn should_render_a_limit_under_a_function_name_as_limits() {
+    let latex = omml_to_latex(&omml_func(&omml_lim_low("lim", "n&#x2192;&#x221E;"), "f(n)"));
+    assert_eq!(latex, "\\lim_{n\\rightarrow \\infty }{f(n)}");
+    let nested = omml_func("<m:r><m:t>sin</m:t></m:r>", "x");
+    let latex = omml_to_latex(&format!(
+        "<m:func><m:fName>{}</m:fName><m:e>{nested}</m:e></m:func>",
+        omml_lim_low("max", "x")
+    ));
+    assert_eq!(latex, "\\max_{x}{\\sin{x}}");
+    let latex = omml_to_latex(&omml_func(&omml_lim_low("f", "x"), "y"));
+    assert_eq!(latex, "\\mathrm{\\underset{x}{f}}{y}");
+}
+
+#[test]
+fn should_render_limits_on_names_and_big_operators_like_mathml() {
+    for (base, op) in [
+        ("lim", "\\lim"),
+        ("liminf", "\\liminf"),
+        ("limsup", "\\limsup"),
+        ("max", "\\max"),
+        ("min", "\\min"),
+        ("sup", "\\sup"),
+        ("inf", "\\inf"),
+        ("det", "\\det"),
+        ("gcd", "\\gcd"),
+        ("Pr", "\\Pr"),
+        ("&#x2211;", "\\sum"),
+        ("&#x220F;", "\\prod"),
+        ("&#x22C3;", "\\bigcup"),
+        ("&#x222B;", "\\int\\limits"),
+        ("&#x222E;", "\\oint\\limits"),
+    ] {
+        let lower = omml_to_latex(&omml_lim_low(base, "n"));
+        assert_eq!(lower, format!("{op}_{{n}}"));
+        assert_eq!(
+            lower,
+            mathml_to_latex(&format!("<munder><mo>{base}</mo><mi>n</mi></munder>"))
+        );
+        let upper = omml_to_latex(&format!(
+            "<m:limUpp><m:e><m:r><m:t>{base}</m:t></m:r></m:e><m:lim><m:r><m:t>n</m:t></m:r></m:lim></m:limUpp>"
+        ));
+        assert_eq!(upper, format!("{op}^{{n}}"));
+        assert_eq!(
+            upper,
+            mathml_to_latex(&format!("<mover><mo>{base}</mo><mi>n</mi></mover>"))
+        );
+    }
+    assert_eq!(omml_to_latex(&omml_lim_low("sin", "n")), "\\underset{n}{sin}");
+    assert_eq!(omml_to_latex(&omml_lim_low("x", "n")), "\\underset{n}{x}");
+}
+
+#[test]
+fn should_stack_integral_limits_only_when_lim_loc_is_und_ovr() {
+    let cases = [
+        ("&#x2211;", "\\sum", "\\sum"),
+        ("&#x220F;", "\\prod", "\\prod"),
+        ("&#x222B;", "\\int\\limits", "\\int"),
+        ("&#x222E;", "\\oint\\limits", "\\oint"),
+    ];
+    for (chr, stacked, side) in cases {
+        let und_ovr = omml_to_latex(&omml_nary(chr, r#"<m:limLoc m:val="undOvr"/>"#));
+        assert_eq!(und_ovr, format!("{stacked}_{{a}}^{{b}}{{x}}"));
+        let mathml = mathml_to_latex(&format!("<munderover><mo>{chr}</mo><mi>a</mi><mi>b</mi></munderover>"));
+        assert_eq!(und_ovr, format!("{mathml}{{x}}"));
+        let sub_sup = omml_to_latex(&omml_nary(chr, r#"<m:limLoc m:val="subSup"/>"#));
+        assert_eq!(sub_sup, format!("{side}_{{a}}^{{b}}{{x}}"));
+        assert_eq!(omml_to_latex(&omml_nary(chr, "")), sub_sup);
+    }
+    let und_ovr = r#"<m:limLoc m:val="undOvr"/>"#;
+    let sub_hidden = omml_to_latex(&omml_nary("&#x222B;", &format!(r#"{und_ovr}<m:subHide m:val="1"/>"#)));
+    assert_eq!(sub_hidden, "\\int\\limits^{b}{x}");
+    let sup_hidden = omml_to_latex(&omml_nary("&#x222B;", &format!(r#"{und_ovr}<m:supHide m:val="1"/>"#)));
+    assert_eq!(sup_hidden, "\\int\\limits_{a}{x}");
+    let both_hidden = omml_to_latex(&omml_nary(
+        "&#x222B;",
+        &format!(r#"{und_ovr}<m:subHide m:val="1"/><m:supHide m:val="1"/>"#),
+    ));
+    assert_eq!(both_hidden, "\\int{x}");
 }

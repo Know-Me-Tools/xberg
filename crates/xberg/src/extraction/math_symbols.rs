@@ -70,14 +70,29 @@ fn combining_accent_to_latex(ch: char) -> Option<&'static str> {
     }
 }
 
+/// The byte offset of the control word (`\` and ASCII letters) that `latex` ends with, if any.
+fn trailing_control_word(latex: &str) -> Option<usize> {
+    let start = latex.rfind('\\')?;
+    let word = &latex[start + 1..];
+    (!word.is_empty() && word.chars().all(|c| c.is_ascii_alphabetic())).then_some(start)
+}
+
+/// Whether `next` needs a space after `latex`: a letter right after a trailing control word would
+/// read as one longer command (`\alpha` then `b` is `\alphab`). Any letter counts, since XeTeX and
+/// LuaTeX read non-ASCII letters into a control word too.
+#[cfg(feature = "office")]
+pub(crate) fn needs_space_after_latex(latex: &str, next: &str) -> bool {
+    trailing_control_word(latex).is_some() && next.starts_with(char::is_alphabetic)
+}
+
 /// Wrap the trailing atom of `out` (one trailing LaTeX command, else one
 /// trailing char) in `cmd{...}`. No-op on empty output.
 fn wrap_trailing_atom(cmd: &str, out: &mut String) {
     let trimmed_len = out.trim_end().len();
     let trailing_ws = out.split_off(trimmed_len);
-    let atom_start = match out.rfind('\\') {
-        Some(i) if out[i + 1..].chars().all(|c| c.is_ascii_alphabetic()) && i + 1 < out.len() => i,
-        _ => match out.chars().last() {
+    let atom_start = match trailing_control_word(out) {
+        Some(i) => i,
+        None => match out.chars().last() {
             Some(last) => out.len() - last.len_utf8(),
             None => {
                 out.push_str(&trailing_ws);
@@ -283,7 +298,8 @@ pub(crate) fn operator_name_to_latex(name: &str) -> Option<(&'static str, bool)>
         "inf" => ("\\inf", true),
         "det" => ("\\det", true),
         "gcd" => ("\\gcd", true),
-        // Only presentation MathML reaches this case-sensitive arm; content names arrive lowercased.
+        // Content MathML names arrive lowercased, so only presentation MathML and OMML reach this
+        // case-sensitive arm. ~keep
         "Pr" => ("\\Pr", true),
         "sin" => ("\\sin", false),
         "cos" => ("\\cos", false),
@@ -310,6 +326,30 @@ pub(crate) fn operator_name_to_latex(name: &str) -> Option<(&'static str, bool)>
         _ => return None,
     };
     Some(latex)
+}
+
+/// The LaTeX of an operator whose under and over scripts are its limits: a big operator (a sum, an integral) or
+/// a name that takes limits (`lim`, `max`, `det`).
+///
+/// MathML's operator dictionary gives integrals no `movablelimits`, so their limits stack in every style,
+/// while TeX sets `\int_{a}^{b}` to the side; the integral family therefore carries `\limits`. An `mi`
+/// `lim` also stacks in every style, but is left as `\lim_{n}`, which matches it in display style.
+pub(crate) fn limits_operator_to_latex(text: &str) -> Option<&'static str> {
+    if let Some((latex, true)) = operator_name_to_latex(text) {
+        return Some(latex);
+    }
+    let mut chars = text.chars();
+    let first = chars.next()?;
+    if chars.next().is_some() {
+        return None;
+    }
+    match first {
+        '\u{222B}' => Some("\\int\\limits"),
+        '\u{222C}' => Some("\\iint\\limits"),
+        '\u{222D}' => Some("\\iiint\\limits"),
+        '\u{222E}' => Some("\\oint\\limits"),
+        _ => big_operator_to_latex(first).map(str::trim_end),
+    }
 }
 
 /// N-ary big operators (sums, products, integrals, and their "big" logic/set variants).
