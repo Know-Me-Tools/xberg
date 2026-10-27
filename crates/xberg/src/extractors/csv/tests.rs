@@ -503,3 +503,49 @@ async fn plain_csv_with_no_pipes_or_newlines_produces_zero_warnings() {
         result.processing_warnings
     );
 }
+
+
+#[test]
+fn should_reject_padded_csv_before_building_the_table_gh2296() {
+    let config = ExtractionConfig {
+        security_limits: Some(crate::extractors::security::SecurityLimits {
+            max_table_cells: 8,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    for csv in ["a,b,c\nx\ny\n", "x\ny\na,b,c\n"] {
+        let mut budget = SecurityBudget::from_config(&config);
+        let error = parse_budgeted_csv(csv.as_bytes(), "text/csv", &config, &mut budget).unwrap_err();
+        assert!(error.to_string().contains("observed 9 cells"), "{error}");
+    }
+}
+
+#[test]
+fn should_accept_the_exact_rectangular_csv_budget_gh2296() {
+    let config = ExtractionConfig {
+        security_limits: Some(crate::extractors::security::SecurityLimits {
+            max_table_cells: 9,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut budget = SecurityBudget::from_config(&config);
+    let (rows, delimiter) = parse_budgeted_csv(b"a,b,c\nx\ny\n", "text/csv", &config, &mut budget).unwrap();
+    assert_eq!(delimiter, ',');
+    assert_eq!(rows, [vec!["a", "b", "c"], vec!["x"], vec!["y"]]);
+}
+
+#[test]
+fn should_stop_csv_parsing_at_the_first_rejected_row_gh2296() {
+    let mut visited = Vec::new();
+    let error = parse_csv_rows("a\nb\nc\n", ',', |row, count| {
+        visited.push(row[0].clone());
+        if count == 2 {
+            return Err(crate::XbergError::validation("stop before the third row".to_string()));
+        }
+        Ok(())
+    }).unwrap_err();
+    assert_eq!(visited, ["a", "b"]);
+    assert!(error.to_string().contains("stop before the third row"));
+}

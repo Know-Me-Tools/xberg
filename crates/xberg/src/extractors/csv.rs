@@ -150,16 +150,23 @@ fn parse_budgeted_csv(
         detect_delimiter(&filtered_text)
     };
 
-    let rows = parse_csv(&filtered_text, delimiter);
-
-    for row in &rows {
+    let mut widest_row = 0usize;
+    let mut charged_cells = 0usize;
+    let rows = parse_csv_rows(&filtered_text, delimiter, |row, row_count| {
         budget.step()?;
-        budget.add_cells(row.len())?;
+        widest_row = widest_row.max(row.len());
+        let rectangular_cells = row_count.checked_mul(widest_row).ok_or_else(|| {
+            crate::XbergError::validation("CSV table dimensions overflow the supported size".to_string())
+        })?;
+        // ~keep Markdown pads every prior row when a wider row appears; charge that growth before retaining it (#2296).
+        budget.add_cells(rectangular_cells - charged_cells)?;
+        charged_cells = rectangular_cells;
         for cell in row {
             budget.check_entity(cell)?;
             budget.account_text(cell.len())?;
         }
-    }
+        Ok(())
+    })?;
 
     Ok((rows, delimiter))
 }
@@ -279,7 +286,16 @@ fn strip_comment_lines<'a>(text: &'a str, prefixes: &[String]) -> Cow<'a, str> {
 }
 
 /// Parse CSV text into rows of fields, handling RFC 4180 quoted fields.
+#[cfg(test)]
 fn parse_csv(text: &str, delimiter: char) -> Vec<Vec<String>> {
+    parse_csv_rows(text, delimiter, |_, _| Ok(())).expect("unbudgeted CSV parsing cannot fail")
+}
+
+fn parse_csv_rows(
+    text: &str,
+    delimiter: char,
+    mut account_row: impl FnMut(&[String], usize) -> Result<()>,
+) -> Result<Vec<Vec<String>>> {
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut current_row: Vec<String> = Vec::new();
     let mut current_field = String::new();
@@ -315,12 +331,14 @@ fn parse_csv(text: &str, delimiter: char) -> Vec<Vec<String>> {
                     current_field.clear();
                     // A genuinely blank line (e.g. a spacer row mid-file) must be kept as its
                     // own row so subsequent row indices don't shift (xberg-io/xberg#164).
+                    account_row(&current_row, rows.len() + 1)?;
                     rows.push(current_row);
                     current_row = Vec::new();
                 }
                 '\n' => {
                     current_row.push(current_field.clone());
                     current_field.clear();
+                    account_row(&current_row, rows.len() + 1)?;
                     rows.push(current_row);
                     current_row = Vec::new();
                 }
@@ -333,10 +351,11 @@ fn parse_csv(text: &str, delimiter: char) -> Vec<Vec<String>> {
 
     if !current_field.is_empty() || !current_row.is_empty() {
         current_row.push(current_field);
+        account_row(&current_row, rows.len() + 1)?;
         rows.push(current_row);
     }
 
-    rows
+    Ok(rows)
 }
 
 /// Decode raw CSV bytes with encoding detection.
