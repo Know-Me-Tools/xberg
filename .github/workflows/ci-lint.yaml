@@ -50,7 +50,7 @@ jobs:
       - name: Install Task
         uses: xberg-io/actions/install-task@793d3a4d37a17009d91cce29f2825eda570d2abd
       - name: Install reviewed ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/setup-ai-rulez@v1
         with:
           ai-rulez-version: "latest"
       - name: Validate AI governance inputs
@@ -91,7 +91,7 @@ jobs:
       # generates them; bump in lockstep with the generator. Regenerate with
       # `task plugin:generate`. ~keep
       - name: Install ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/setup-ai-rulez@v1
         with:
           ai-rulez-version: "latest"
       - name: Verify generated plugin bundles are current

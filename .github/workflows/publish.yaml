@@ -5365,7 +5365,7 @@ jobs:
       # Plain ESM adapter — no build step. Skip if this version is already on npm so a
       # release re-run is idempotent (publish-npm has no built-in skip-existing). ~keep
       - name: Install ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/setup-ai-rulez@v1
         with:
           ai-rulez-version: "latest"
       - name: Verify plugin bundles match the pinned generator
@@ -5411,11 +5411,11 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
       - name: Install ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/setup-ai-rulez@v1
         with:
           ai-rulez-version: "latest"
       - name: Verify plugin source and generated artifacts
-        uses: xberg-io/actions/verify-ai-rulez-plugin@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
           config-directory: .ai-rulez
           version-sync-script: scripts/sync_integration_versions.py
@@ -5445,7 +5445,7 @@ jobs:
           ref: ${{ needs.prepare.outputs.tag }}
           fetch-depth: 0
       - name: Install ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/setup-ai-rulez@v1
         with:
           ai-rulez-version: "latest"
       - name: Verify public skill exports
@@ -5516,11 +5516,11 @@ jobs:
         with:
           ref: ${{ github.sha }}
       - name: Install reviewed ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/setup-ai-rulez@v1
         with:
           ai-rulez-version: "latest"
       - name: Verify plugin versions and generated resources
-        uses: xberg-io/actions/verify-ai-rulez-plugin@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
           version-sync-script: scripts/sync_integration_versions.py
       - uses: actions/setup-node@v7
@@ -5590,11 +5590,11 @@ jobs:
         with:
           ref: ${{ github.sha }}
       - name: Install reviewed ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/setup-ai-rulez@v1
         with:
           ai-rulez-version: "latest"
       - name: Verify plugin versions and generated resources
-        uses: xberg-io/actions/verify-ai-rulez-plugin@793d3a4d37a17009d91cce29f2825eda570d2abd
+        uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
           version-sync-script: scripts/sync_integration_versions.py
       - uses: astral-sh/setup-uv@v10.3.0

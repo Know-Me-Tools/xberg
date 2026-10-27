@@ -19,42 +19,42 @@ compact = true
 [[includes]]
 name = 'xberg-core'
 source = 'https://github.com/xberg-io/agent-conventions.git'
-ref = "6e7f6a6793ea7380b916367e10a8acd13c3afbc3"
+version = "^1"
 path = 'modules/core'
 merge_strategy = 'local-override'
 
 [[includes]]
 name = 'xberg-languages'
 source = 'https://github.com/xberg-io/agent-conventions.git'
-ref = "6e7f6a6793ea7380b916367e10a8acd13c3afbc3"
+version = "^1"
 path = 'modules/languages'
 merge_strategy = 'local-override'
 
 [[includes]]
 name = 'xberg-cicd'
 source = 'https://github.com/xberg-io/agent-conventions.git'
-ref = "6e7f6a6793ea7380b916367e10a8acd13c3afbc3"
+version = "^1"
 path = 'modules/cicd'
 merge_strategy = 'local-override'
 
 [[includes]]
 name = 'xberg-infrastructure'
 source = 'https://github.com/xberg-io/agent-conventions.git'
-ref = "6e7f6a6793ea7380b916367e10a8acd13c3afbc3"
+version = "^1"
 path = 'modules/infrastructure'
 merge_strategy = 'local-override'
 
 [[includes]]
 name = 'xberg-bindings'
 source = 'https://github.com/xberg-io/agent-conventions.git'
-ref = "6e7f6a6793ea7380b916367e10a8acd13c3afbc3"
+version = "^1"
 path = 'modules/bindings'
 merge_strategy = 'local-override'
 
 [[includes]]
 name = 'xberg-document-corpora'
 source = 'https://github.com/xberg-io/agent-conventions.git'
-ref = "6e7f6a6793ea7380b916367e10a8acd13c3afbc3"
+version = "^1"
 path = 'modules/document-corpora'
 merge_strategy = 'local-override'
 
@@ -62,7 +62,7 @@ merge_strategy = 'local-override'
 name = 'alef'
 source = 'https://github.com/xberg-io/alef.git'
 
-ref = "8fd2cf190d7f1523e3aec8753a850d37e5acccc9"
+ref = "50a5863c602ea5087293edec3f3836ae46338ac8"
 [[mcp_servers]]
 name = 'playwright'
 description = 'Playwright browser automation for E2E testing and docs verification'
