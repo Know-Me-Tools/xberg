@@ -22,13 +22,14 @@ overrides it and names the generated test file (e.g. `fixtures/plugin_api/list_r
   `description`, `side_effects`), `assertions`; optional `category`, `tags`, `input`, `config`, `args`, `skip`.
 - `call`: `extract` (most fixtures), `extract_batch`, `pdf_page_count`, `extract_with_external_redaction`, and the
   plugin-registry calls (`list_*`, `register_*`, `unregister_*`, `clear_*` for OCR, embedding, tokenizer, reranker
-  backends, renderers, validators, post-processors).
+  backends, renderers, validators, post-processors; `ocr_backend_supports_language`).
 - `input`: `extract_input` (`kind: "uri"` with `$mock_url/...`, or `bytes` + `filename` + `mime_type`) plus
   `mock_responses` (`path`, `status_code`, `headers`, optional `method`, and a body: `body_file` resolved against
   a `responses` subdirectory of `fixtures/` (none exists yet), then `fixtures/` itself, so `../test_documents/...` is
   the in-repo submodule; or `body_inline`).
   Batch calls take `inputs`. A bytes input can also sit at the top level of `input` (`kind: "bytes"`, `bytes`,
-  `filename`, `mime_type`) without `extract_input`.
+  `filename`, `mime_type`) without `extract_input`. Other calls take call-specific `input` fields
+  (`pdf_bytes`/`password`, `findings_json`, registry `name`/`backend`); copy an existing fixture of that call.
 - `assertions` is a list of `{type, field, value}`; `contains_any` and `contains_all` take `values` (a list). Types:
   `not_error`, `error`, `equals`, `min_length`, `count_min`, `count_equals`, `contains`, `contains_any`,
   `contains_all`, `not_contains`, `not_empty`, `greater_than_or_equal`, `less_than_or_equal`. `field` is a path into
