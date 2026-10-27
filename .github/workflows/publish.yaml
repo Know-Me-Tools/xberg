@@ -3799,7 +3799,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: xberg-io/actions
-          ref: cc89740654cef67b752113ddd87d4f0d23dda3f5
+          ref: v1
           path: .python-publication-actions
           persist-credentials: false
       - name: Install task runner
