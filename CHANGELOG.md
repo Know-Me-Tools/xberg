@@ -62,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(email): Keep HTML head metadata and scripts out of message text, and recover malformed base64 parts.**
+  Body text and attachments decode stray characters without decoding nested messages twice. (#2252, #2253)
+
 - **(plugin): Restore all seven Pi skills advertised by the root package.**
   Resource paths match the packaged skills and prompts, with checks that reject missing or mismatched entries. (#2257, #2246)
 

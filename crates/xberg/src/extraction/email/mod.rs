@@ -350,3 +350,6 @@ pub(crate) use rtf::{decompress_rtf_compressed, strip_rtf_to_plain_text};
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod base64_tests;
