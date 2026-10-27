@@ -78,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wide character that an overwrite cuts becomes a space. The 8-bit CSI character (`U+009B`) and its parameters stayed
   in the text; they are removed like `ESC [`. Combining marks now stay with their base character when output is
   overwritten. (#2245)
+- **(pdf): A long, narrow table with a column of values is no longer flattened as columned prose.**
+  A grid of more than 20 rows and at most 3 columns was read as prose laid out in columns when, in more than half of
+  its rows that fill at least two cells, those cells averaged four or more words. A column holding a number in more
+  than half of those rows now exempts the grid from that rejection.
 - **(djot): The footnote reference in the caption of a table without rows is dropped with the caption.**
   A table without rows, such as a lone `|---|` line, is not written and its caption is dropped. The footnote
   reference in that caption used to stay and appeared before the next table.
@@ -388,7 +392,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **(ocr): Tesseract C API declarations match the native return types.**
   Fixes the WASM link failure and a crash in `process_pages`; borrowed text is no longer freed. (#2145)
 - **(ocr): Table reconstruction keeps columns that sit close together.**
-  A repeated column edge less than about one space width from its neighbour is no longer merged into the neighbouring cell. (#2140)
+  A repeated column edge less than about one space width from its neighbour is no longer merged into the neighbouring cell; each edge spans at most that tolerance, so it no longer chains across a text column. (#2140)
 - **(images): TIFF pixel density (`XResolution`, `YResolution`, `ResolutionUnit`) is used as the source DPI instead of assuming 72.** (#2143)
 - **(ocr): Preserve ordered text and explicit HTML raw blocks returned by custom OCR backends.**
   Single-backend and pipeline image/PDF handoffs retain flat structured contributions, source-image references
