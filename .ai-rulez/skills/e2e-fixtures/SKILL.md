@@ -25,7 +25,8 @@ overrides it and names the generated test file (e.g. `fixtures/plugin_api/list_r
   backends, renderers, validators, post-processors).
 - `input`: `extract_input` (`kind: "uri"` with `$mock_url/...`, or `bytes` + `filename` + `mime_type`) plus
   `mock_responses` (`path`, `status_code`, `headers`, optional `method`, and a body: `body_file` resolved against
-  `fixtures/responses/` then `fixtures/`, so `../test_documents/...` is the in-repo submodule; or `body_inline`).
+  a `responses` subdirectory of `fixtures/` (none exists yet), then `fixtures/` itself, so `../test_documents/...` is
+  the in-repo submodule; or `body_inline`).
   Batch calls take `inputs`. A bytes input can also sit at the top level of `input` (`kind: "bytes"`, `bytes`,
   `filename`, `mime_type`) without `extract_input`.
 - `assertions` is a list of `{type, field, value}`; `contains_any` and `contains_all` take `values` (a list). Types:
