@@ -120,8 +120,7 @@ same pushed SHA. A successful older run does not validate newer local commits.
 - Before pushing, `git fetch` and inspect divergence. Do not merge or rebase after committing without the user's
   direction.
 - Push one coherent state. Do not repeatedly push while intentional CI is still running merely to get newer diagnostics.
-- After the push, dispatch CI, Publish Release with dry-run inputs, and Benchmarks against that pushed SHA. Follow the
-  shared `github-workflow-conventions` skill for monitoring and retries.
+- After the push, dispatch CI, Publish Release with dry-run inputs, and Benchmarks against that pushed SHA.
 - Retry only after identifying and addressing the cause. Cancellation alone is not a defect; a repeated actual
   failure is.
 - Close addressed issues only after the fixing commit is reachable remotely, and state the intended release when
