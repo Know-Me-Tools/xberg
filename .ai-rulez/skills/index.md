@@ -8,7 +8,7 @@
 * [crate-structure](crate-structure/index.md)
 * [e2e-fixtures](e2e-fixtures/index.md)
 * [extraction-pipeline-patterns](extraction-pipeline-patterns/index.md)
-* [feature-flag-policy](feature-flag-policy/index.md)
+* [feature-flag-conventions](feature-flag-conventions/index.md)
 * [format-specific-extraction](format-specific-extraction/index.md)
 * [mime-detection-routing](mime-detection-routing/index.md)
 * [ocr-pipeline-and-quality](ocr-pipeline-and-quality/index.md)

@@ -115,4 +115,4 @@ WASM-safe.
 
 - **extraction-pipeline-patterns** — text extraction preceding chunking
 - **config-loading-precedence** — how `ChunkingConfig` is resolved and why typos are silent
-- **feature-flag-policy** — `embeddings` vs `static-embeddings` vs `embedding-presets`
+- **feature-flag-conventions** — `embeddings` vs `static-embeddings` vs `embedding-presets`

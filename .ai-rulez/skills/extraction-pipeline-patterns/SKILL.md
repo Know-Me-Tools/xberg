@@ -112,7 +112,7 @@ All features live in `crates/xberg/Cargo.toml`; there is no `FEATURE_MATRIX.md`.
 
 Bindings are separate crates, not features of `crates/xberg`. The one mutually-exclusive pair
 is `ort-bundled` / `ort-dynamic`. WASM excludes ORT-backed `embeddings`, but **does** carry
-`ocr-wasm`, `keywords` and `static-embeddings`. Full detail in `feature-flag-policy`.
+`ocr-wasm`, `keywords` and `static-embeddings`. Full detail in `feature-flag-conventions`.
 
 ## Critical Rules
 

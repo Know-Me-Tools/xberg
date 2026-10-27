@@ -79,7 +79,9 @@ tools = ["find_skill", "load_skill"]
 include_outputs = false
 
 [lint]
-allow_overrides = ["python-conventions"]
+# ~keep The local feature-flag-conventions skill carries core's shared flag contract verbatim plus the
+# Xberg feature sets, so one skill is listed instead of two. Re-copy the shared part when core changes it.
+allow_overrides = ["feature-flag-conventions"]
 
 [rules]
 # ~keep Glob-scoped rules stay out of AGENTS.md: rule files for Claude, path-gated skills for Codex.

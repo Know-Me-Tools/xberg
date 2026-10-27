@@ -1,23 +1,47 @@
 ---
 type: Playbook
-title: Feature Flag Policy
-description: "Xberg's own Cargo features in crates/xberg: ORT-free targets (WASM, Android), tract and type-only variants, PDF backend, aggregates, CI parity guard, build profiles. Use when adding or debugging a feature or a target build."
+title: Feature Flag Conventions
+description: "Cargo features: shared otel/mcp/allocator contract, then Xberg's ORT-free targets, aggregates, PDF backend, parity guard. Use when editing [features]."
 paths:
-  - "Cargo.toml"
-  - "crates/*/Cargo.toml"
+  - "**/Cargo.toml"
   - "scripts/ci/check-feature-parity.py"
 x-ai-rulez:
   kind: skill
-  id: feature-flag-policy
+  id: feature-flag-conventions
   metadata:
-    name: feature-flag-policy
+    name: feature-flag-conventions
 ---
 
-# Feature Flag Policy
+# Feature-flag conventions
 
-All features in `crates/xberg/Cargo.toml`.
+Shared concerns use the **same flag name with the same semantics** in every library. A consumer that learns `otel` or `mcp` once should get identical behavior across every library and its bindings. Repo-specific flags stay local — this contract governs only shared concerns.
 
-## ORT-Incompatible Targets (WASM, Android x86_64 emulator)
+## Standard flags
+
+| Flag | Meaning | Default | Notes |
+|------|---------|---------|-------|
+| *(none)* `tracing` | Structured tracing is **always-on**, never a feature. | — | `tracing` is a non-optional dependency. Do not gate span emission. Un-gate any legacy optional `tracing` feature. |
+| `otel` | Opt-in OpenTelemetry / OTLP export layer, on top of always-on tracing. | off | Pulls `tracing-opentelemetry` + the `opentelemetry*` stack. This is the only observability feature. Reconcile any always-on OTLP deps behind it. |
+| `mcp` | Embedded Model Context Protocol server (stdio transport). | off | |
+| `mcp-http` | MCP Streamable HTTP transport; implies `mcp`. | off | `mcp-http = ["mcp", ...]`. |
+| `mimalloc` | Select the mimalloc global allocator. | off | Mutually exclusive with `jemalloc` — guard with a `compile_error!` if both are set. |
+| `jemalloc` | Select the jemalloc global allocator. | off | Mutually exclusive with `mimalloc`. |
+| `cuda` / `metal` / `mkl` / `accelerate` | Device / BLAS acceleration backends where a crate exposes them. | off | Same names wherever acceleration is offered. |
+
+## Rules
+
+- **Names are the contract.** Never invent a synonym for a shared concern (`opentelemetry`, `observability`, `otlp` for what is `otel`; `model-context-protocol` for `mcp`). Rename divergent flags to match.
+- **Semantics travel with the name.** `otel` must mean the OTLP export layer everywhere, not "enable tracing" (tracing is always-on) and not a metrics-only subset.
+- **Always-on tracing, opt-in export.** Do not force the `opentelemetry` dependency tree on library consumers — keep it behind `otel` so a plain dependency stays lean.
+- **Implication edges are fixed**: `mcp-http` ⇒ `mcp`; `otel` ⇒ (always-on) tracing.
+- **Mutually-exclusive allocators** always carry the both-enabled `compile_error!` guard.
+- Adding a shared flag to a new library? Copy the name, default, and implication edges from this table rather than redefining them. Coordinate a change to this contract across all libraries before landing it — no repo diverges unilaterally.
+
+## Xberg features
+
+All Xberg features are in `crates/xberg/Cargo.toml`.
+
+### ORT-Incompatible Targets (WASM, Android x86_64 emulator)
 
 Only ORT-dependent paths are incompatible. The same paths block both WASM (no native ORT linkage at all) and the `x86_64-linux-android` emulator triple (no pyke prebuilt; `aarch64-linux-android` does ship a prebuilt and gets full ORT):
 
@@ -53,25 +77,25 @@ WASM/Android-safe variants:
 
 The `no-ort-target` aggregate is the shared no-ORT base used by both `wasm-target` and `android-target`. `wasm-target = no-ort-target + excel-wasm + ocr-wasm + layout-tract + auto-rotate-tract + ner-candle-wasm` (NO tree-sitter — see above). `android-target` adds to `no-ort-target`: `excel`, `tree-sitter`, `ocr`, `sceptre-ocr-tract`, `paddle-ocr-tract`, `layout-tract`, `auto-rotate-tract`, `api`, `mcp`, `liter-llm`, `structured`, `hwpx`, `diff`, `classification`, `captioning`, `ner-llm`, `url-ingestion`. Read the manifest before assuming a member — both lists are edited often.
 
-## PDF Backend
+### PDF Backend
 
 - `pdf` — the canonical PDF feature. It is a pure alias: `pdf = ["pdf-native"]`, and `pdf-native` carries the dependency set (`dep:xberg-native-pdf`, lopdf, image, flate2, html, image-encode). There is no feature literally named `xberg-native-pdf`. Included in `formats`, `full`, `no-ort-target`, and `wasm-target`.
 - `pdf-pdfium` — the pdfium FFI comparison backend (`crates/xberg-pdfium-render`). Implies `tokio-runtime` because the pdfium calls are synchronous and must run under `spawn_blocking`. Opt-in; in no aggregate. Without it, selecting the pdfium backend fails loudly rather than falling back.
 
 Config value, not feature: `PdfConfig.backend` (`core/config/pdf.rs`) parses exactly `"native"` and `"pdfium"`. The pre-1.1.0 spelling `"pdf_oxide"` is **rejected, not aliased** — deliberately, so it cannot survive in configs. Omitting the field defaults to `Native`.
 
-## ORT Variants (Mutually Exclusive)
+### ORT Variants (Mutually Exclusive)
 
 - `ort-bundled` — downloads official Microsoft ORT binaries; default when OCR/ML features active
 - `ort-dynamic` — load ORT from system; only when system ORT is guaranteed present
 
-## Platform-Conditional
+### Platform-Conditional
 
 - `xberg-paddle-ocr`, `hf-hub`, `pprof` — excluded on `wasm32`
 - `ureq`: `rustls` on non-Windows; `native-tls` on Windows
 - `xberg-ffi` and `xberg-dart` cargo dependencies are target-conditional: `cfg(target_os = "android")` (**both** ABIs — `aarch64` and `x86_64`) and `cfg(target_os = "ios")` select `android-target`, the pure-Rust tract ML surface with no ONNX Runtime; `cfg(target_os = "windows")` selects `windows-target` (full ORT ML via `ort-bundled`); `cfg(all(target_os = "macos", target_arch = "x86_64"))` selects `macos-intel-target`. All other targets (Linux, macOS arm64) get the full ORT-enabled feature set. Android and iOS run inference through `tract`, not ORT, on every ABI — there is no arch split that gives arm64 Android phones a native ORT build.
 
-## Aggregate Sets
+### Aggregate Sets
 
 | Feature | Description |
 | --- | --- |
@@ -91,7 +115,7 @@ Config value, not feature: `PdfConfig.backend` (`core/config/pdf.rs`) parses exa
 Member lists change often. Read `crates/xberg/Cargo.toml` before relying on any of these
 descriptions for a specific feature.
 
-## CI parity guard (GH#1443)
+### CI parity guard (GH#1443)
 
 `task verify:feature-parity` runs
 `python3 scripts/ci/check-feature-parity.py crates/xberg/Cargo.toml`.
@@ -116,7 +140,7 @@ turn the check into a change-detector that fires on every legitimate edit.
 
 Consequence: adding a feature to `full` without adding it to `windows-target` fails CI.
 
-## Build Profiles
+### Build Profiles
 
 - `release` — LTO thin, codegen-units=1, strip
 - `profiling` — inherits release, retains debug info
