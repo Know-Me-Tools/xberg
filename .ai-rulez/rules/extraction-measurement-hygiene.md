@@ -53,5 +53,6 @@ never ran" render identically.
 box; report elapsed time as contended, or measure it when the box is quiet. Peak RSS is per-process
 and is safe to compare.
 
+<!-- ai-rulez-lint-ignore: AR301 ~keep the plugin bundle omits the document-corpora module this skill comes from -->
 **Fetching, citing or committing corpus material** (partner or public-record documents, sha256 sharing, opaque ids,
 exact-bytes commit gates): the `document-corpus-handling` skill.

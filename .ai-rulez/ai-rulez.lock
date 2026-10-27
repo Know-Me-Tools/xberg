@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.7.0'
 scope = 'all'
-tree = 'sha256:2d1d6a6c1825c1eb8d9a0c62eefcc231d1be7ee4b80f4c4d7c10204deaf421fe'
+tree = 'sha256:ba5ea69a2c617c5e6abe20e0d69be7acf8ecc2a5a38356646761975f1bb1b7ac'
 
 [[include]]
 name = 'xberg-bindings'
@@ -617,7 +617,7 @@ digest = 'sha256:32d11c388e79b63c6cee096881b8c8badf8deae326cea9ed269dcb02da5da7c
 kind = 'rule'
 id = 'extraction-measurement-hygiene'
 path = 'rules/extraction-measurement-hygiene.md'
-digest = 'sha256:e9ea18629abd5fad998c6e867622d006a51870d22e7b95d70b3e08e44950c212'
+digest = 'sha256:6fcc74844fa57a2780c1bb27da53900038ed792f32a9a4e4df5fde52cf5af8c4'
 
 [[item]]
 kind = 'rule'
