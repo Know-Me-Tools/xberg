@@ -31,10 +31,11 @@ a version in a package manifest.
    version = core version). Targets are listed in `alef.toml` `[workspace.sync] extra_paths`
    (packages/python, packages/ruby, crates/xberg-node, packages/go, cli-proxy, …).
 2. `python3 scripts/sync_integration_versions.py` — the **integrations** under
-   `integrations/`, the Helm chart, and `plugin/.ai-rulez/config.toml` `[plugin].version`.
+   `integrations/`, the Helm chart, and `plugin/.ai-rulez/config.plugins.toml` `[plugin].version`.
    These are NOT alef-managed, so alef never touches them.
-3. `ai-rulez generate --plugin` — regenerates the per-runtime coding-agent plugin bundles
-   under `plugin/` from the just-synced config.
+3. `task plugin:generate` — `ai-rulez generate --plugin` (bundles under `plugin/`) plus
+   `scripts/sync_public_skills.py` (root `skills/`). CI Lint fails on drift in either
+   (`task plugin:verify`).
 
 Bump/set helpers chain both automatically:
 `task version:bump:major|minor|patch`, `task version:set -- <version>`.
