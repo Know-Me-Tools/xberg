@@ -4,7 +4,7 @@
 
 use crate::Result;
 use crate::core::config::ExtractionConfig;
-use crate::extraction::{cells_to_markdown, office_metadata};
+use crate::extraction::office_metadata;
 use crate::extractors::security::SecurityBudget;
 use crate::plugins::{InternalDocumentExtractor, Plugin};
 use crate::types::ExtractedImage;
@@ -331,14 +331,18 @@ fn build_internal_document(
                 // consumer sees must not diverge from the one `Table::to_markdown` already
                 // renders correctly (xberg-io/xberg#1549). ~keep
                 let table_note_refs = doc.note_refs_by_table.get(idx);
-                let cells = match table_note_refs {
-                    Some(_) => table_without_note_markers(table)
-                        .to_cell_grid(crate::extraction::docx::parser::Paragraph::runs_to_markdown),
-                    None => table.to_cell_grid(crate::extraction::docx::parser::Paragraph::runs_to_markdown),
+                let grid = match table_note_refs {
+                    Some(_) => table_without_note_markers(table).to_markdown_cell_grid_with_math(),
+                    None => table.to_markdown_cell_grid_with_math(),
                 };
+                let (cells, math) = crate::rendering::table_math::split_cell_grid(grid);
                 if !cells.is_empty() {
                     let cell_styles = resolve_table_cell_styles(doc, table);
-                    builder.push_table_from_cells_with_styles(&cells, &cell_styles, Some(current_page), None);
+                    let element_index =
+                        builder.push_table_from_cells_with_styles(&cells, &cell_styles, Some(current_page), None);
+                    if let Some(encoded) = math {
+                        builder.set_table_math_annotations(element_index, encoded);
+                    }
                 }
                 push_note_refs(&mut builder, table_note_refs, current_page);
             }
@@ -911,9 +915,8 @@ fn convert_docx_table_to_table(
     // Same grid as the element builder's Table arm above, and the same reason: a
     // gridSpan/vMerge cell must appear once, not cloned per covered column/row
     // (xberg-io/xberg#1549). ~keep
-    let cells = docx_table.to_cell_grid(crate::extraction::docx::parser::Paragraph::runs_to_markdown);
-
-    let markdown = cells_to_markdown(&cells);
+    let (cells, math) = crate::rendering::table_math::split_cell_grid(docx_table.to_markdown_cell_grid_with_math());
+    let markdown = crate::rendering::table_math::render_table_markdown(&cells, math.as_deref());
 
     Table {
         cells,
@@ -5027,6 +5030,86 @@ mod tests {
             crate::core::config::OutputFormat::Markdown,
         );
         (elements, result)
+    }
+
+    #[tokio::test]
+    async fn should_render_genuine_table_cell_math_without_escaping_gh2256() {
+        let body = r#"<w:tbl><w:tr>
+            <w:tc><w:p><w:r><w:t>Angle</w:t></w:r></w:p></w:tc>
+            <w:tc><w:p><m:oMath><m:r><m:t>α</m:t></m:r></m:oMath></w:p></w:tc>
+            </w:tr></w:tbl>"#;
+        let (_, result) = extract_math_docx(body).await;
+        assert_eq!(result.tables.len(), 1);
+        let table = &result.tables[0];
+        assert_eq!(table.cells[0][0], "Angle");
+        assert_eq!(table.cells[0][1].trim(), "$\\alpha$");
+        assert!(result.content.contains("\\alpha"), "{}", result.content);
+        assert!(!result.content.contains("\\\\alpha"), "{}", result.content);
+        assert_eq!(table.markdown.trim(), result.content.trim());
+        assert!(!serde_json::to_string(&result).unwrap().contains("xberg:internal:table-cell-math"));
+    }
+
+    #[tokio::test]
+    async fn should_keep_cell_math_and_literal_dollars_distinct_gh2256() {
+        let body = r#"<w:tbl><w:tr><w:tc><w:p>
+            <w:r><w:t xml:space="preserve">Équation $cash$ </w:t></w:r>
+            <m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>
+            <w:r><w:t xml:space="preserve"> then </w:t></w:r>
+            <m:oMath><m:r><m:t>y</m:t></m:r></m:oMath>
+            </w:p><w:p><m:oMathPara><m:oMath><m:r><m:t>z</m:t></m:r></m:oMath></m:oMathPara>
+            </w:p></w:tc></w:tr></w:tbl>"#;
+        let (elements, result) = extract_math_docx(body).await;
+        let table = elements.iter().find(|element| {
+            matches!(element.kind, crate::types::internal::ElementKind::Table { .. })
+        }).unwrap();
+        let annotations = crate::rendering::table_math::read_annotations(table.attributes.as_ref(), &result.tables[0].cells);
+        let spans = &annotations[&(0, 0)];
+        assert_eq!(spans.len(), 3);
+        let cell = &result.tables[0].cells[0][0];
+        let math: Vec<_> = spans.iter().map(|span| &cell[span.start as usize..span.end as usize]).collect();
+        assert_eq!(math, ["$x$", "$y$", "$$z$$"]);
+        assert_eq!(spans.iter().map(|span| span.kind.math_display()).collect::<Vec<_>>(), [Some(false), Some(false), Some(true)]);
+        assert!(cell.starts_with("Équation $cash$ "));
+        assert!(table.public_attributes().is_none());
+    }
+
+    #[tokio::test]
+    async fn should_record_merged_cell_math_only_at_its_origin_gh2256() {
+        let body = r#"<w:tbl><w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/><w:vMerge w:val="restart"/></w:tcPr>
+            <w:p><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></w:p></w:tc></w:tr>
+            <w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr><w:p/></w:tc></w:tr></w:tbl>"#;
+        let (elements, result) = extract_math_docx(body).await;
+        let table = elements.iter().find(|element| {
+            matches!(element.kind, crate::types::internal::ElementKind::Table { .. })
+        }).unwrap();
+        assert_eq!(result.tables[0].cells, [vec!["$x$".to_string(), String::new()], vec![String::new(), String::new()]]);
+        let annotations = crate::rendering::table_math::read_annotations(table.attributes.as_ref(), &result.tables[0].cells);
+        assert_eq!(annotations.len(), 1);
+        assert_eq!(annotations[&(0, 0)].len(), 1);
+    }
+
+    #[tokio::test]
+    async fn should_publish_the_same_math_in_page_table_markdown_gh2256() {
+        let xml = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>
+            <w:tbl><w:tr><w:tc><w:p><m:oMath><m:r><m:t>α</m:t></m:r></m:oMath>
+            </w:p></w:tc></w:tr></w:tbl></w:body></w:document>"#;
+        let config = ExtractionConfig {
+            output_format: crate::core::config::OutputFormat::Markdown,
+            pages: Some(crate::core::config::PageConfig { extract_pages: true, ..Default::default() }),
+            use_cache: false,
+            ..Default::default()
+        };
+        let result = crate::core::extractor::extract_bytes(
+            &build_test_docx(xml),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            &config,
+        ).await.unwrap();
+        let pages = result.pages.as_ref().unwrap();
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].tables.len(), 1);
+        assert_eq!(pages[0].tables[0].markdown, result.tables[0].markdown);
+        assert!(!pages[0].tables[0].markdown.contains("\\\\alpha"));
     }
 
     fn math_blocks(elements: &[crate::types::internal::InternalElement]) -> Vec<(&'static str, &str)> {

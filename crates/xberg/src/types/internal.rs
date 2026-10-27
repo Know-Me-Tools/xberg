@@ -782,6 +782,7 @@ fn is_internal_only_attribute(key: &str) -> bool {
         || key == IMAGE_OCR_TEXT_ANCHOR_ATTRIBUTE
         || key == MEASURED_FONT_SIZE_ATTRIBUTE
         || key == NATIVE_TABLE_GRID_ATTRIBUTE
+        || key == crate::rendering::table_math::TABLE_CELL_MATH_ATTRIBUTE
 }
 
 /// [`InternalElement::list_item_source_label`], for renderers that flatten an

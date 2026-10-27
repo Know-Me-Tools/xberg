@@ -746,12 +746,18 @@ fn append_annotated_span<'a>(
 /// `|` line — not a valid GFM table, and not parseable as one on re-read.
 /// Callers should fall back to something else (e.g. the table's flat
 /// `markdown` field) rather than emit that.
-fn build_table<'a>(arena: &'a comrak::Arena<'a>, cells: &[Vec<String>], has_header: bool) -> Option<&'a AstNode<'a>> {
+fn build_table<'a>(
+    arena: &'a comrak::Arena<'a>,
+    cells: &[Vec<String>],
+    has_header: bool,
+    attributes: Option<&ahash::AHashMap<String, String>>,
+) -> Option<&'a AstNode<'a>> {
     let num_cols = cells.iter().map(|r| r.len()).max().unwrap_or(0);
     if num_cols == 0 {
         return None;
     }
     let synthetic_header_rows = usize::from(!has_header);
+    let annotations = super::table_math::read_annotations(attributes, cells);
 
     let table_node = mk(
         arena,
@@ -779,7 +785,8 @@ fn build_table<'a>(arena: &'a comrak::Arena<'a>, cells: &[Vec<String>], has_head
             let cell_node = mk(arena, NodeValue::TableCell);
             let content = row.get(col).map(|s| s.as_str()).unwrap_or("");
             if !content.is_empty() {
-                cell_node.append(mk_text(arena, content));
+                let cell_annotations = annotations.get(&(row_idx, col)).map(Vec::as_slice).unwrap_or(&[]);
+                build_inlines(arena, cell_node, content, cell_annotations);
             }
             row_node.append(cell_node);
         }
@@ -1108,7 +1115,7 @@ pub(crate) fn build_comrak_ast<'a>(doc: &InternalDocument, arena: &'a comrak::Ar
                     }
                     let has_header =
                         !matches!(doc.source_format.as_str(), "csv" | "orgmode" | "typst") || table.columns.is_some();
-                    match build_table(arena, &table.cells, has_header) {
+                    match build_table(arena, &table.cells, has_header, elem_attributes) {
                         Some(table_node) => {
                             tracing::trace!(table_index, rows = table.cells.len(), "rendering table");
                             parent.append(table_node);

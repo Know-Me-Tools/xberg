@@ -232,6 +232,21 @@ impl InternalDocumentBuilder {
         self.push_table(table, page, bbox)
     }
 
+    pub(crate) fn set_table_math_annotations(&mut self, element_index: u32, encoded: String) {
+        let Some(ElementKind::Table { table_index }) = self.doc.elements.get(element_index as usize).map(|e| e.kind)
+        else {
+            return;
+        };
+        if let Some(table) = self.doc.tables.get_mut(table_index as usize) {
+            table.markdown = crate::rendering::table_math::render_table_markdown(&table.cells, Some(&encoded));
+        }
+        self.merge_attribute(
+            element_index,
+            crate::rendering::table_math::TABLE_CELL_MATH_ATTRIBUTE,
+            encoded,
+        );
+    }
+
     /// Push an image element. The image data is stored separately in
     /// `InternalDocument::images` and referenced by index.
     pub fn push_image(

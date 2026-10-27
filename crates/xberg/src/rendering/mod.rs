@@ -24,6 +24,7 @@ mod markdown;
 #[cfg(feature = "pdf")]
 mod pdf;
 mod plain;
+pub(crate) mod table_math;
 
 pub(crate) use djot::render_djot;
 pub(crate) use doctags::render_doctags;
