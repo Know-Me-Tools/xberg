@@ -6,6 +6,7 @@
 * [chunking-embeddings](chunking-embeddings/index.md)
 * [config-loading-precedence](config-loading-precedence/index.md)
 * [crate-structure](crate-structure/index.md)
+* [e2e-fixtures](e2e-fixtures/index.md)
 * [extraction-pipeline-patterns](extraction-pipeline-patterns/index.md)
 * [feature-flag-policy](feature-flag-policy/index.md)
 * [format-specific-extraction](format-specific-extraction/index.md)
