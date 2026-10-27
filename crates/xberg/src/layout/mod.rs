@@ -159,6 +159,15 @@ impl<T> DerefMut for ConfiguredModel<T> {
 
 #[cfg(all(feature = "layout-detection", feature = "pdf"))]
 pub(crate) type TatrLease = ModelLease<'static, ConfiguredModel<models::tatr::TatrModel>>;
+/// The function an extraction route calls to check out a TATR model. Production passes
+/// [`take_or_create_tatr`]; a test passes a loader that returns no model.
+#[cfg(all(
+    feature = "layout-detection",
+    feature = "pdf",
+    any(feature = "ocr", feature = "ocr-wasm", feature = "ocr-pipeline")
+))]
+pub(crate) type TatrLoader =
+    fn(Option<&crate::core::config::acceleration::AccelerationConfig>, usize) -> Option<TatrLease>;
 #[cfg(all(feature = "layout-detection", feature = "pdf"))]
 pub(crate) type SlanetLease = ModelLease<'static, ConfiguredModel<models::slanet::SlanetModel>>;
 #[cfg(all(feature = "layout-detection", feature = "pdf"))]
@@ -476,6 +485,22 @@ pub(crate) fn take_or_create_slanet(
             }
             None
         }
+    }
+}
+
+/// The processing warning for a document whose layout pass found table regions while the table model
+/// is not available. `source` names the extraction path that skipped table recognition.
+#[cfg(all(feature = "layout-detection", feature = "pdf"))]
+pub(crate) fn table_model_unavailable_warning(
+    source: &'static str,
+    model_name: &str,
+) -> crate::types::ProcessingWarning {
+    crate::types::ProcessingWarning {
+        source: std::borrow::Cow::Borrowed(source),
+        message: std::borrow::Cow::Owned(format!(
+            "layout detection found table regions but the {model_name} table model is not available; \
+             table structure recognition was skipped; check that the model is downloaded"
+        )),
     }
 }
 

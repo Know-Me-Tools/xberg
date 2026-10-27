@@ -5380,6 +5380,107 @@ pub(super) mod tests {
         }
     }
 
+    /// Goes through the force-OCR page route with a table-model loader that returns no model. The
+    /// warning must be on the document the route returns: the helper that builds it is tested on
+    /// its own, but only this test fails when the route stops adding it.
+    #[cfg(all(feature = "layout-detection", feature = "ocr"))]
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn force_ocr_route_puts_the_table_model_warning_on_the_returned_document() {
+        use crate::core::config::OcrConfig;
+        use crate::layout::{BBox, DetectionResult, LayoutClass, LayoutDetection};
+        use crate::plugins::{ConfidenceSemantics, OcrBackend, OcrBackendType, Plugin};
+        use crate::types::ExtractedDocument;
+        use std::sync::Arc;
+
+        const BACKEND_NAME: &str = "missing-table-model-warning-test-backend";
+
+        struct TextBackend;
+
+        #[async_trait::async_trait]
+        impl OcrBackend for TextBackend {
+            fn backend_type(&self) -> OcrBackendType {
+                OcrBackendType::Custom
+            }
+            fn supports_language(&self, _: &str) -> bool {
+                true
+            }
+            async fn process_image(&self, _: &[u8], _: &OcrConfig) -> crate::Result<ExtractedDocument> {
+                Ok(ExtractedDocument {
+                    content: "Name Price Apple 3 Pear 4".to_string(),
+                    ..Default::default()
+                })
+            }
+            fn confidence_semantics(&self) -> ConfidenceSemantics {
+                ConfidenceSemantics::Uncalibrated
+            }
+        }
+
+        impl Plugin for TextBackend {
+            fn name(&self) -> &str {
+                BACKEND_NAME
+            }
+            fn version(&self) -> String {
+                "1.0.0".to_string()
+            }
+            fn initialize(&self) -> crate::Result<()> {
+                Ok(())
+            }
+            fn shutdown(&self) -> crate::Result<()> {
+                Ok(())
+            }
+        }
+
+        crate::plugins::register_ocr_backend(Arc::new(TextBackend)).unwrap();
+
+        let config = ExtractionConfig {
+            ocr: Some(OcrConfig {
+                backend: BACKEND_NAME.to_string(),
+                ..Default::default()
+            }),
+            layout: Some(crate::core::config::layout::LayoutDetectionConfig::default()),
+            ..Default::default()
+        };
+        let images = [image::DynamicImage::new_rgb8(100, 100)];
+        let detections = [DetectionResult {
+            page_width: 100,
+            page_height: 100,
+            detections: vec![LayoutDetection::new(
+                LayoutClass::Table,
+                0.9,
+                BBox::new(0.0, 0.0, 100.0, 100.0),
+            )],
+        }];
+
+        let result = extract_with_ocr_for_page(
+            None,
+            Some(&images),
+            Some(&detections),
+            &config,
+            None,
+            0,
+            false,
+            None,
+            None,
+            0,
+            None,
+            |_, _| None,
+        )
+        .await;
+
+        crate::plugins::unregister_ocr_backend(BACKEND_NAME).unwrap();
+        let doc = result
+            .unwrap()
+            .4
+            .expect("the route returns a document carrying the warning");
+        let warnings: Vec<_> = doc
+            .processing_warnings
+            .iter()
+            .filter(|warning| warning.source == "pdf_tables")
+            .collect();
+        assert_eq!(warnings.len(), 1, "got {:?}", doc.processing_warnings);
+    }
+
     /// The recognition-noise verdict computed inside `accept_or_reject_ocr_page` used to be
     /// discarded one frame before `run_ocr_pipeline_for_page`'s accept/reject decision --
     /// `extract_with_ocr_for_page` returned only a warning string, never the numbers that
@@ -5464,6 +5565,8 @@ pub(super) mod tests {
             None,
             0,
             None,
+            #[cfg(feature = "layout-detection")]
+            crate::layout::take_or_create_tatr,
         )
         .await
         .unwrap();
@@ -5588,6 +5691,8 @@ pub(super) mod tests {
             None,
             0,
             None,
+            #[cfg(feature = "layout-detection")]
+            crate::layout::take_or_create_tatr,
         )
         .await
         .unwrap();
@@ -6773,6 +6878,39 @@ Name: ___
 
         assert_eq!((scaled.page_width, scaled.page_height), (200, 100));
         assert_eq!((bbox.x1, bbox.y1, bbox.x2, bbox.y2), (20.0, 70.0, 60.0, 90.0));
+    }
+
+    #[cfg(feature = "layout-detection")]
+    #[test]
+    fn missing_table_model_on_the_force_ocr_route_warns_once_per_cause() {
+        use crate::core::config::layout::{LayoutDetectionConfig, TableModel};
+        use crate::layout::{BBox, DetectionResult, LayoutClass, LayoutDetection};
+
+        let pages = |class| {
+            vec![DetectionResult {
+                page_width: 100,
+                page_height: 100,
+                detections: vec![LayoutDetection::new(class, 0.9, BBox::new(0.0, 0.0, 50.0, 50.0))],
+            }]
+        };
+        let config = |table_model| ExtractionConfig {
+            layout: Some(LayoutDetectionConfig {
+                table_model,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let table_pages = pages(LayoutClass::Table);
+
+        let warning = tatr_unavailable_warning(&config(TableModel::Tatr), Some(&table_pages), false)
+            .expect("a table region and no model must warn");
+        assert_eq!(warning.source, "pdf_tables");
+        assert!(warning.message.contains("the TATR table model is not available"));
+
+        assert!(tatr_unavailable_warning(&config(TableModel::Tatr), Some(&table_pages), true).is_none());
+        assert!(tatr_unavailable_warning(&config(TableModel::Disabled), Some(&table_pages), false).is_none());
+        assert!(tatr_unavailable_warning(&config(TableModel::Tatr), Some(&pages(LayoutClass::Text)), false).is_none());
+        assert!(tatr_unavailable_warning(&config(TableModel::Tatr), None, false).is_none());
     }
 
     /// GH#1813: the force-OCR PDF route gated TATR on `layout_detections.is_some()` alone, so a

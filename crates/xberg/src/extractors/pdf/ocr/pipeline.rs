@@ -118,6 +118,25 @@ pub(super) fn pdf_ocr_table_recognition_enabled(config: &ExtractionConfig) -> bo
         .is_none_or(|layout| layout.table_model != crate::core::config::layout::TableModel::Disabled)
 }
 
+/// The warning for a force-OCR extraction whose table model could not be checked out although
+/// layout detection found table regions and table recognition is on. `None` when a model is held,
+/// recognition is off, or no page has a table region.
+#[cfg(all(any(feature = "ocr", feature = "ocr-pipeline"), feature = "layout-detection"))]
+pub(super) fn tatr_unavailable_warning(
+    config: &ExtractionConfig,
+    layout_detections: Option<&[crate::layout::DetectionResult]>,
+    model_held: bool,
+) -> Option<crate::types::ProcessingWarning> {
+    let has_table_region = layout_detections.is_some_and(|pages| {
+        pages
+            .iter()
+            .flat_map(|page| &page.detections)
+            .any(|detection| detection.class_name == crate::layout::LayoutClass::Table)
+    });
+    (!model_held && has_table_region && pdf_ocr_table_recognition_enabled(config))
+        .then(|| crate::layout::table_model_unavailable_warning("pdf_tables", "TATR"))
+}
+
 /// GH#1789's numeric-token repair, applied to every string representation of an OCR'd page that
 /// `merge_structured_ocr_pages_into_internal_document` carries into the final document.
 ///
@@ -2236,6 +2255,8 @@ pub(crate) async fn extract_with_ocr_with_page_hints(
         page_ocr_hints,
         0,
         None,
+        #[cfg(feature = "layout-detection")]
+        crate::layout::take_or_create_tatr,
     ))
     .await?;
     Ok((
@@ -2353,6 +2374,7 @@ pub(super) async fn extract_with_ocr_for_page(
     page_ocr_hints: Option<PageOcrHints>,
     page_index_offset: usize,
     xobject_document: Option<&xberg_native_pdf::PdfDocument>,
+    #[cfg(feature = "layout-detection")] load_tatr: crate::layout::TatrLoader,
 ) -> OcrRunResult<(
     String,
     Option<f64>,
@@ -2740,7 +2762,7 @@ pub(super) async fn extract_with_ocr_for_page(
         let span = tracing::Span::current();
         tokio::task::spawn_blocking(move || {
             let _entered = span.entered();
-            crate::layout::take_or_create_tatr(tatr_acceleration.as_ref(), tatr_thread_budget)
+            load_tatr(tatr_acceleration.as_ref(), tatr_thread_budget)
         })
         .await
         .map_err(|e| crate::XbergError::Plugin {
@@ -2750,6 +2772,10 @@ pub(super) async fn extract_with_ocr_for_page(
     } else {
         None
     };
+    #[cfg(feature = "layout-detection")]
+    if let Some(warning) = tatr_unavailable_warning(config, layout_detections, tatr_model.is_some()) {
+        crate::core::diagnostics::push_warning_deduped(&mut backend_page_warnings, warning);
+    }
 
     for batch_start in (0..total_pages).step_by(batch_size) {
         let batch_end = (batch_start + batch_size).min(total_pages);
@@ -5040,6 +5066,8 @@ async fn run_ocr_pipeline_stages(
             inputs.page_ocr_hints.clone(),
             inputs.page_index_offset,
             inputs.xobject_document,
+            #[cfg(feature = "layout-detection")]
+            crate::layout::take_or_create_tatr,
         ))
         .await;
 

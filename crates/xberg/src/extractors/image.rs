@@ -2671,22 +2671,23 @@ async fn recognize_cached_image_tables(
     rgb: &std::sync::Arc<image::RgbImage>,
     detections: &[crate::layout::LayoutDetection],
     config: &ExtractionConfig,
-) -> Vec<crate::RecognizedTable> {
+    load_model: crate::layout::TatrLoader,
+) -> (Vec<crate::RecognizedTable>, Option<crate::types::ProcessingWarning>) {
     let Some(layout_config) = config.layout.as_ref() else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
     if !uses_tatr_image_table_recognition(layout_config.table_model) {
-        return Vec::new();
+        return (Vec::new(), None);
     }
     let Some(source_elements) = whole_image_doc.prebuilt_ocr_elements.as_ref() else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
     let Some(transform) = whole_image_ocr_coordinate_transform(whole_image_doc, rgb.width(), rgb.height()) else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
     let Some(elements) = transformed_ocr_elements(source_elements, transform, crate::types::OcrElementLevel::Word)
     else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
 
     let page_image = std::sync::Arc::clone(rgb);
@@ -2697,17 +2698,30 @@ async fn recognize_cached_image_tables(
     };
     let acceleration = config.resolved_layout_acceleration().cloned();
     let thread_budget = crate::core::config::concurrency::resolve_thread_budget(config.concurrency.as_ref());
-    tokio::task::spawn_blocking(move || {
-        let Some(mut model) = crate::layout::take_or_create_tatr(acceleration.as_ref(), thread_budget) else {
-            return Vec::new();
-        };
-        crate::ocr::layout_assembly::recognize_page_tables(&page_image, &detection, &elements, &mut model)
+    let has_table_region = detections
+        .iter()
+        .any(|detection| detection.class_name == crate::layout::LayoutClass::Table);
+    let recognized = tokio::task::spawn_blocking(move || {
+        let mut model = load_model(acceleration.as_ref(), thread_budget)?;
+        Some(crate::ocr::layout_assembly::recognize_page_tables(
+            &page_image,
+            &detection,
+            &elements,
+            &mut model,
+        ))
     })
-    .await
-    .unwrap_or_else(|error| {
-        tracing::warn!(%error, "Image table recognition worker failed; retaining OCR fallback");
-        Vec::new()
-    })
+    .await;
+    match recognized {
+        Ok(Some(tables)) => (tables, None),
+        Ok(None) => (
+            Vec::new(),
+            has_table_region.then(|| crate::layout::table_model_unavailable_warning("image_tables", "TATR")),
+        ),
+        Err(error) => {
+            tracing::warn!(%error, "Image table recognition worker failed; retaining OCR fallback");
+            (Vec::new(), None)
+        }
+    }
 }
 
 /// Returns `true` when the OCR backend configured in `config` self-declares that it
@@ -3313,12 +3327,64 @@ impl ImageExtractor {
             source: None,
         })?;
 
-        let ocr_config = config.ocr.as_ref().ok_or_else(|| crate::XbergError::Parsing {
+        config.ocr.as_ref().ok_or_else(|| crate::XbergError::Parsing {
             message: "OCR config required for layout-enhanced OCR".to_string(),
             source: None,
         })?;
 
         let preparation = prepare_layout_ocr(self, content, mime_type, config, layout_config.clone()).await?;
+        self.complete_layout_ocr(
+            content,
+            mime_type,
+            config,
+            preparation,
+            #[cfg(feature = "pdf")]
+            crate::layout::take_or_create_tatr,
+        )
+        .await
+    }
+
+    /// Runs the layout OCR route after layout detection, then adds the warning for a table model
+    /// that could not be loaded to whichever document the route returns.
+    #[cfg(all(feature = "layout-detection", any(feature = "ocr", feature = "ocr-wasm")))]
+    async fn complete_layout_ocr(
+        &self,
+        content: &[u8],
+        mime_type: &str,
+        config: &ExtractionConfig,
+        preparation: LayoutOcrPreparation,
+        #[cfg(feature = "pdf")] load_model: crate::layout::TatrLoader,
+    ) -> Result<InternalDocument> {
+        let mut table_warning = None;
+        let mut doc = self
+            .complete_layout_ocr_inner(
+                content,
+                mime_type,
+                config,
+                preparation,
+                #[cfg(feature = "pdf")]
+                load_model,
+                &mut table_warning,
+            )
+            .await?;
+        if let Some(warning) = table_warning {
+            crate::core::diagnostics::push_warning_deduped(&mut doc.processing_warnings, warning);
+        }
+        Ok(doc)
+    }
+
+    /// `table_warning` receives the warning for a table model that could not be loaded.
+    #[cfg(all(feature = "layout-detection", any(feature = "ocr", feature = "ocr-wasm")))]
+    #[cfg_attr(not(feature = "pdf"), allow(unused_variables))]
+    async fn complete_layout_ocr_inner(
+        &self,
+        content: &[u8],
+        mime_type: &str,
+        config: &ExtractionConfig,
+        preparation: LayoutOcrPreparation,
+        #[cfg(feature = "pdf")] load_model: crate::layout::TatrLoader,
+        table_warning: &mut Option<crate::types::ProcessingWarning>,
+    ) -> Result<InternalDocument> {
         let (whole_image_result, rgb, detections) = match preparation {
             LayoutOcrPreparation::Complete(doc) => return Ok(doc),
             LayoutOcrPreparation::Detected {
@@ -3329,7 +3395,12 @@ impl ImageExtractor {
         };
         #[cfg(feature = "pdf")]
         let recognized_tables = match &whole_image_result {
-            Ok(whole_image_doc) => recognize_cached_image_tables(whole_image_doc, &rgb, &detections, config).await,
+            Ok(whole_image_doc) => {
+                let (tables, warning) =
+                    recognize_cached_image_tables(whole_image_doc, &rgb, &detections, config, load_model).await;
+                *table_warning = warning;
+                tables
+            }
             Err(_) => Vec::new(),
         };
         #[cfg(not(feature = "pdf"))]
@@ -3373,7 +3444,15 @@ impl ImageExtractor {
             return Ok(structured);
         }
 
-        let (backend, region_ocr_config) = match configured_region_ocr(config, ocr_config) {
+        let configured = config
+            .ocr
+            .as_ref()
+            .ok_or_else(|| crate::XbergError::Parsing {
+                message: "OCR config required for layout-enhanced OCR".to_string(),
+                source: None,
+            })
+            .and_then(|ocr_config| configured_region_ocr(config, ocr_config));
+        let (backend, region_ocr_config) = match configured {
             Ok(configured) => configured,
             Err(error) => return cached_whole_image_after_layout_error(&whole_image_result, error),
         };
@@ -6489,6 +6568,108 @@ mod tests {
         );
 
         assert!(try_assemble_cached_layout_document(&whole, &detections, &[], 100, 100).is_none());
+    }
+
+    #[cfg(all(feature = "layout-detection", feature = "pdf", feature = "ocr"))]
+    async fn recognize_image_tables_with_missing_model(
+        class: crate::layout::LayoutClass,
+        table_model: crate::core::config::layout::TableModel,
+    ) -> (Vec<crate::RecognizedTable>, Option<crate::types::ProcessingWarning>) {
+        let mut whole = whole_image_doc_with_elements("cell", vec![positioned_word("cell", 10, 10)], 100, 100);
+        for key in [
+            crate::ocr_metadata_keys::OCR_PROCESSED_IMAGE_WIDTH_METADATA_KEY,
+            crate::ocr_metadata_keys::OCR_PROCESSED_IMAGE_HEIGHT_METADATA_KEY,
+        ] {
+            whole
+                .metadata
+                .additional
+                .insert(std::borrow::Cow::Borrowed(key), serde_json::json!(100));
+        }
+        let detections = vec![crate::layout::LayoutDetection::new(
+            class,
+            0.98,
+            crate::layout::BBox::new(0.0, 0.0, 100.0, 100.0),
+        )];
+        let config = ExtractionConfig {
+            layout: Some(crate::core::config::LayoutDetectionConfig {
+                table_model,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let rgb = std::sync::Arc::new(image::RgbImage::new(100, 100));
+        recognize_cached_image_tables(&whole, &rgb, &detections, &config, |_, _| None).await
+    }
+
+    #[cfg(all(feature = "layout-detection", feature = "pdf", feature = "ocr"))]
+    #[tokio::test]
+    async fn should_warn_when_the_table_model_cannot_load_for_an_image_with_a_table() {
+        use crate::core::config::layout::TableModel;
+
+        let (tables, warning) =
+            recognize_image_tables_with_missing_model(crate::layout::LayoutClass::Table, TableModel::Tatr).await;
+
+        assert!(tables.is_empty());
+        let warning = warning.expect("a missing table model must warn");
+        assert_eq!(warning.source, "image_tables");
+        assert!(warning.message.contains("the TATR table model is not available"));
+    }
+
+    #[cfg(all(feature = "layout-detection", feature = "pdf", feature = "ocr"))]
+    #[tokio::test]
+    async fn should_not_warn_about_the_table_model_without_a_table_region_or_when_disabled() {
+        use crate::core::config::layout::TableModel;
+
+        let (_, no_table) =
+            recognize_image_tables_with_missing_model(crate::layout::LayoutClass::Text, TableModel::Tatr).await;
+        assert!(no_table.is_none(), "no table region, nothing was skipped");
+
+        let (_, disabled) =
+            recognize_image_tables_with_missing_model(crate::layout::LayoutClass::Table, TableModel::Disabled).await;
+        assert!(disabled.is_none(), "a disabled table model is a choice, not a failure");
+    }
+
+    /// Goes through the layout OCR route itself, not the table helper: the warning must be on the
+    /// document the route returns, whichever of its exits that document comes from.
+    #[cfg(all(feature = "layout-detection", feature = "pdf", feature = "ocr"))]
+    #[tokio::test]
+    async fn should_put_the_table_model_warning_on_the_document_the_layout_route_returns() {
+        let mut whole = whole_image_doc_with_elements("cell", vec![positioned_word("cell", 10, 10)], 100, 100);
+        for key in [
+            crate::ocr_metadata_keys::OCR_PROCESSED_IMAGE_WIDTH_METADATA_KEY,
+            crate::ocr_metadata_keys::OCR_PROCESSED_IMAGE_HEIGHT_METADATA_KEY,
+        ] {
+            whole
+                .metadata
+                .additional
+                .insert(std::borrow::Cow::Borrowed(key), serde_json::json!(100));
+        }
+        let preparation = LayoutOcrPreparation::Detected {
+            whole_image_result: Ok(whole),
+            rgb: std::sync::Arc::new(image::RgbImage::new(100, 100)),
+            detections: vec![crate::layout::LayoutDetection::new(
+                crate::layout::LayoutClass::Table,
+                0.98,
+                crate::layout::BBox::new(0.0, 0.0, 100.0, 100.0),
+            )],
+        };
+        let config = ExtractionConfig {
+            layout: Some(crate::core::config::LayoutDetectionConfig::default()),
+            ocr: Some(crate::core::config::OcrConfig::default()),
+            ..Default::default()
+        };
+
+        let doc = ImageExtractor::new()
+            .complete_layout_ocr(b"", "image/png", &config, preparation, |_, _| None)
+            .await
+            .expect("the route keeps the whole-image text when the table model is missing");
+
+        let warnings: Vec<_> = doc
+            .processing_warnings
+            .iter()
+            .filter(|warning| warning.source == "image_tables")
+            .collect();
+        assert_eq!(warnings.len(), 1, "got {:?}", doc.processing_warnings);
     }
 
     #[cfg(all(feature = "layout-detection", feature = "pdf", feature = "ocr"))]
