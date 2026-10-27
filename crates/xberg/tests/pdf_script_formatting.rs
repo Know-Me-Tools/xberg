@@ -47,13 +47,17 @@ fn script_pdf(content: &str) -> Vec<u8> {
 }
 
 fn markdown(bytes: &[u8]) -> String {
+    markdown_with_tables(bytes, false)
+}
+
+fn markdown_with_tables(bytes: &[u8], extract_tables: bool) -> String {
     let config = ExtractionConfig {
         output_format: OutputFormat::Markdown,
         disable_ocr: true,
         use_cache: false,
         pdf_options: Some(PdfConfig {
             backend: PdfBackend::Native,
-            extract_tables: false,
+            extract_tables,
             ..Default::default()
         }),
         ..Default::default()
@@ -152,6 +156,40 @@ fn should_preserve_numeric_superscripts_on_their_own_visual_lines() {
 #[test]
 fn should_preserve_subscript_between_base_and_suffix() {
     assert_eq!(markdown(&script_pdf(SUBSCRIPT)).trim(), "H~2~O");
+}
+
+#[test]
+fn should_preserve_prose_scripts_when_heuristic_table_detection_is_enabled() {
+    let cases = [
+        (SUPERSCRIPTS, "7,2 x 10^9^/l", 4),
+        (POSITIONED_SUPERSCRIPTS, "7,2 x 10^9^/l", 4),
+        (SUBSCRIPT, "H~2~O", 2),
+    ];
+    assert_eq!(cases.len(), 3);
+    for (content, expected, expected_markers) in cases {
+        let bytes = script_pdf(content);
+        let without_tables = markdown_with_tables(&bytes, false);
+        let with_tables = markdown_with_tables(&bytes, true);
+        assert_eq!(
+            with_tables.matches(expected).count(),
+            1,
+            "table detection must preserve the script exactly once: {with_tables:?}"
+        );
+        let marker = if content == SUBSCRIPT { '~' } else { '^' };
+        assert_eq!(with_tables.matches(marker).count(), expected_markers);
+        assert_eq!(with_tables, without_tables, "table detection must not change prose");
+    }
+}
+
+#[test]
+fn should_keep_same_baseline_digits_plain_with_table_detection_enabled() {
+    let bytes = script_pdf(ON_BASELINE);
+    let without_tables = markdown_with_tables(&bytes, false);
+    let with_tables = markdown_with_tables(&bytes, true);
+    assert_eq!(with_tables, without_tables);
+    assert_eq!(with_tables.matches('9').count(), 1);
+    assert_eq!(with_tables.matches('^').count(), 0);
+    assert_eq!(with_tables.matches('~').count(), 0);
 }
 
 #[test]

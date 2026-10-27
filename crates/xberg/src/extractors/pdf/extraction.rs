@@ -617,7 +617,21 @@ pub(crate) fn extract_all_from_native_document(
                     Ok(extraction) => {
                         native_grids.resize_with(combined.len() + extraction.tables.len(), || None);
                         combined.extend(extraction.tables);
-                        retain_hierarchy_segments.then_some(extraction.hierarchy_segments)
+                        let mut hierarchy_segments = extraction.hierarchy_segments;
+                        if retain_hierarchy_segments {
+                            // Table cells use flattened script geometry; structured prose must
+                            // retain the original font sizes and baselines even when no table survives. ~keep
+                            let (pages, used_structure_tree) = crate::pdf::native::hierarchy::extract_all_segments(
+                                &mut doc,
+                                artifacts,
+                            )
+                            .map_err(|error| crate::XbergError::parsing(format!(
+                                "PDF hierarchy extraction failed: {error}"
+                            )))?;
+                            hierarchy_segments.pages = pages;
+                            hierarchy_segments.used_structure_tree = used_structure_tree;
+                        }
+                        retain_hierarchy_segments.then_some(hierarchy_segments)
                     }
                     Err(error) => {
                         tracing::warn!("xberg_native_pdf heuristic table extraction failed, skipping tables: {error}");
