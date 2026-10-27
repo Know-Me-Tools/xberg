@@ -17,7 +17,7 @@ Xberg is a Rust document intelligence library with polyglot bindings.
 - `crates/xberg-{py,node,php,wasm,ffi,jni}/` — binding crates (`alef-generated-bindings` skill)
 - `crates/xberg-*/` — other crates: OCR, PDF, NER, format backends
 - `packages/<lang>/` — generated language packages
-- `e2e/<lang>/`, `fixtures/` — generated e2e suites and fixtures
+- `fixtures/` — hand-written e2e fixtures; `e2e/<lang>/` — suites generated from them
 - `integrations/` — framework integrations
 - `tools/` — benchmark, OCR measurement, perf tooling
 - `test_documents/` — corpus submodule (`test-corpus` skill)
