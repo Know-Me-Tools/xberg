@@ -51,3 +51,6 @@ never ran" render identically.
 **Timings from a shared machine are upper bounds only.** Peer agents compile and sweep on the same
 box; report elapsed time as contended, or measure it when the box is quiet. Peak RSS is per-process
 and is safe to compare.
+
+**Fetching, citing or committing corpus material** (partner or public-record documents, sha256 sharing, opaque ids,
+exact-bytes commit gates): the `document-corpus-handling` skill.
