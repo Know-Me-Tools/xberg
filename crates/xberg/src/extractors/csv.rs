@@ -286,7 +286,6 @@ fn strip_comment_lines<'a>(text: &'a str, prefixes: &[String]) -> Cow<'a, str> {
 }
 
 /// Parse CSV text into rows of fields, handling RFC 4180 quoted fields.
-#[cfg(test)]
 fn parse_csv(text: &str, delimiter: char) -> Vec<Vec<String>> {
     parse_csv_rows(text, delimiter, |_, _| Ok(())).expect("unbudgeted CSV parsing cannot fail")
 }
