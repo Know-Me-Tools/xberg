@@ -30,6 +30,11 @@ tasks:
       - python3 -m unittest tools/benchmark-harness/tests/test_mineru_extract.py
       - tools/benchmark-harness/tests/test_restore_corpus_cache.sh
 
+  validate:layout-annotations:
+    desc: "Validate independent layout ground-truth preservation and identity checks"
+    cmds:
+      - uv run --no-sync python -m pytest -q tools/benchmark-harness/tests/test_import_omnidocbench.py
+
   run:
     desc: "Run the benchmark through the CI-compatible wrapper"
     requires:
@@ -168,8 +173,6 @@ tasks:
     deps: ["download:omnidocbench"]
     cmds:
       - python3 tools/benchmark-harness/scripts/import_omnidocbench.py tools/benchmark-harness/datasets/omnidocbench .
-    status:
-      - test -f tools/benchmark-harness/fixtures/pdf/omnidoc_*.json
 
   clean-results:
     desc: "Clean up benchmark results and profiles"

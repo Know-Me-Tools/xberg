@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **(benchmarks): Preserve independent layout annotations when importing evaluation documents.**
+  PDF-bound sidecars retain regions and reading order, reject changed inputs, and backfill existing fixtures. (#2284)
+
 - **(pdf): Native Rust consumers can retain script baselines with `extract_page_text_with_script_geometry`.**
 
 - **(api): Set `include_image_data: false` to omit raw image byte arrays from extraction responses.**

@@ -56,6 +56,42 @@ CLI (clap)
 | `embed_benchmark.rs`                | Embedding throughput benchmarks                                                                                            |
 | `sizes.rs`                          | Framework installation footprint measurement                                                                               |
 
+## Detector evaluation ground truth
+
+PP-DocLayoutV3 qualification is tracked in #2284 as an optional secondary detector;
+RT-DETR remains the default. `model-benchmark` currently times **table-model**
+configurations, counts Markdown headings, and does not enforce its page limit.
+It must not be used as detector identity, region-count or PP-DocLayoutV3 quality evidence.
+
+The existing OmniDocBench importer preserves each imported document's complete
+original page records in a `.layout.json` sidecar alongside the text/Markdown
+projections. `fixture.metadata.layout_ground_truth` records the relative sidecar
+path and its SHA256. The sidecar binds the PDF SHA256/size, canonical original
+annotation hash, page count and block-annotation count. Original category IDs,
+polygons, reading order, ignored elements, blank pages, span annotations and
+relations remain available for independent detector scoring; the text projection
+still applies its existing exclusions. Reimport backfills old fixtures without
+rewriting reviewed text. A changed existing PDF, annotation or sidecar identity
+fails instead of silently replacing frozen evaluation inputs. Sidecars retain
+upstream coordinates; consumers must verify the render-to-annotation transform.
+
+Run `task benchmark:validate:layout-annotations` with the root Python development
+environment installed. These importer contract tests use controlled synthetic
+records; they establish annotation preservation, not model quality or export parity.
+No detector evaluator or adoption threshold is implied by a successful import.
+
+Before downloading evaluation data, verify its exact revision and terms.
+[OmniDocBench's current dataset card](https://huggingface.co/datasets/opendatalab/OmniDocBench#copyright-statement)
+states research-only, noncommercial use; existing download/import commands do not
+establish permission for a commercial evaluation. The official
+[DocLayNet license](https://github.com/DS4SD/DocLayNet/blob/main/LICENSE) is
+CDLA-Permissive-1.0, with attribution and publication conditions. Its predefined
+splits and source-document identifiers can support document-level separation,
+but training overlap with both detectors must still be audited. Neither dataset
+is automatically an uncontaminated held-out set. Keep all downloaded data and
+annotations outside tracked fixture output until licensing, provenance and
+split ownership have been verified; do not use either model's predictions as truth.
+
 ## Quality Scoring
 
 ### TF1 (Text F1)

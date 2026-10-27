@@ -4,6 +4,7 @@ Converts OmniDocBench's element-level JSON annotations into:
   - Per-document fixture JSON files (tools/benchmark-harness/fixtures/pdf/omnidoc_NNN.json)
   - Ground truth markdown files (test_documents/ground_truth/pdf/omnidoc_NNN.md)
   - Ground truth text files (test_documents/ground_truth/pdf/omnidoc_NNN.txt)
+  - Original layout annotation sidecars (test_documents/ground_truth/pdf/omnidoc_NNN.layout.json)
 
 OmniDocBench groups pages by document. Each multi-page document produces one fixture.
 Single-page documents produce one fixture per page.
@@ -18,6 +19,7 @@ Where:
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import os
@@ -270,6 +272,42 @@ IMPORT_STATUS_EMPTY = "empty"
 IMPORT_STATUS_CREATED = "created"
 
 
+def layout_ground_truth(pdf_path: Path, pages: list[dict]) -> bytes:
+    """Retain independent annotations before lossy text/Markdown projection."""
+    annotations = json.dumps(pages, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    digest = hashlib.sha256()
+    with pdf_path.open("rb") as document:
+        for chunk in iter(lambda: document.read(1024 * 1024), b""):
+            digest.update(chunk)
+    payload = {
+        "schema_version": 1,
+        "source": "omnidocbench",
+        "document": {"sha256": digest.hexdigest(), "size_bytes": pdf_path.stat().st_size},
+        "annotations_sha256": hashlib.sha256(annotations.encode("utf-8")).hexdigest(),
+        "page_count": len(pages),
+        "annotation_count": sum(len(page.get("layout_dets", [])) for page in pages),
+        "pages": pages,
+    }
+    return (json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
+
+
+def attach_layout_ground_truth(fixture: dict, fixture_path: Path, layout_path: Path, payload: bytes) -> None:
+    """Backfill old fixtures while rejecting changes to an already frozen identity."""
+    identity = {
+        "file": os.path.relpath(layout_path, fixture_path.parent),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+    metadata = fixture.setdefault("metadata", {})
+    previous = metadata.get("layout_ground_truth")
+    if previous is not None and previous != identity:
+        raise ValueError(f"layout ground truth identity mismatch: {fixture_path}")
+    if layout_path.exists() and layout_path.read_bytes() != payload:
+        raise ValueError(f"layout ground truth identity mismatch: {layout_path}")
+    if not layout_path.exists():
+        layout_path.write_bytes(payload)
+    metadata["layout_ground_truth"] = identity
+
+
 def import_single_document(
     pdf_name: str,
     doc_pages: list[dict],
@@ -284,12 +322,22 @@ def import_single_document(
     gt_md_path = gt_dir / f"{fixture_name}.md"
     gt_txt_path = gt_dir / f"{fixture_name}.txt"
 
-    if fixture_path.exists():
-        return IMPORT_STATUS_EXISTS
+    layout_path = gt_dir / f"{fixture_name}.layout.json"
 
     pdf_path = find_pdf_for_document(pdf_name, doc_pages, ori_pdfs_dir)
     if pdf_path is None:
         return IMPORT_STATUS_NO_PDF
+
+    layout_payload = layout_ground_truth(pdf_path, doc_pages)
+    if fixture_path.exists():
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        if (fixtures_dir / fixture["document"]).resolve() != pdf_path.resolve():
+            raise ValueError(f"layout ground truth identity mismatch: {fixture_path}")
+        before = json.dumps(fixture, sort_keys=True)
+        attach_layout_ground_truth(fixture, fixture_path, layout_path, layout_payload)
+        if json.dumps(fixture, sort_keys=True) != before:
+            fixture_path.write_text(json.dumps(fixture, indent=2) + "\n", encoding="utf-8")
+        return IMPORT_STATUS_EXISTS
 
     page_markdowns = []
     for page in doc_pages:
@@ -302,9 +350,6 @@ def import_single_document(
 
     full_markdown = "\n\n".join(page_markdowns)
     full_text = strip_markdown_to_text(full_markdown)
-
-    gt_md_path.write_text(full_markdown)
-    gt_txt_path.write_text(full_text)
 
     doc_rel = os.path.relpath(pdf_path, fixtures_dir)
     gt_md_rel = os.path.relpath(gt_md_path, fixtures_dir)
@@ -334,6 +379,9 @@ def import_single_document(
         },
     }
 
+    attach_layout_ground_truth(fixture, fixture_path, layout_path, layout_payload)
+    gt_md_path.write_text(full_markdown)
+    gt_txt_path.write_text(full_text)
     fixture_path.write_text(json.dumps(fixture, indent=2) + "\n")
     return IMPORT_STATUS_CREATED
 
@@ -393,7 +441,7 @@ def main() -> None:
 
     print("\nDone:", file=sys.stderr)
     print(f"  Created: {created}", file=sys.stderr)
-    print(f"  Skipped (already exists): {skipped_exists}", file=sys.stderr)
+    print(f"  Existing text fixtures (layout verified/backfilled): {skipped_exists}", file=sys.stderr)
     print(f"  Skipped (no PDF found): {skipped_no_pdf}", file=sys.stderr)
     print(f"  Skipped (empty content): {skipped_empty}", file=sys.stderr)
     print(f"  Fixtures: {fixtures_dir}", file=sys.stderr)
