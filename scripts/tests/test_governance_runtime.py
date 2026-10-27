@@ -104,6 +104,19 @@ class GovernanceRuntimeTests(unittest.TestCase):
                 assert f"requires ai-rulez 5.7.0 or newer; found ai-rulez version {version}" in result.stderr
                 assert self.calls.read_text().splitlines() == ["--version"]
 
+    def test_should_reject_prereleases_of_the_minimum(self) -> None:
+        """A prerelease or prefixed version never satisfies the floor, even when it sorts after it."""
+        for version in ("5.7.0-rc.1", "5.8.0-beta.2", "v5.7.0"):
+            with self.subTest(version=version):
+                self.calls.unlink(missing_ok=True)
+                self.environment["RUNTIME_VERSION"] = version
+                result = self.run_task("governance:validate")
+                assert result.returncode != 0, result.stdout + result.stderr
+                assert f"requires an ai-rulez X.Y.Z release, not a prerelease; found ai-rulez version {version}" in (
+                    result.stderr
+                )
+                assert self.calls.read_text().splitlines() == ["--version"]
+
 
 if __name__ == "__main__":
     unittest.main()

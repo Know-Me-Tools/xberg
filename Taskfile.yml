@@ -291,8 +291,14 @@ tasks:
       - |
         installed_version="$("{{.AI_RULEZ}}" --version)"
         found="${installed_version#ai-rulez version }"
-        lowest="$(printf '%s\n%s\n' "{{.AI_RULEZ_MIN_VERSION}}" "$found" | sort -V | head -n 1)"
-        if [ "$found" = "$installed_version" ] || [ "$lowest" != "{{.AI_RULEZ_MIN_VERSION}}" ]; then
+        if ! printf '%s\n' "$found" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+'; then
+          printf '%s\n' "This checkout requires an ai-rulez X.Y.Z release, not a prerelease; found $installed_version" >&2
+          exit 1
+        fi
+        if ! awk -v found="$found" -v wanted="{{.AI_RULEZ_MIN_VERSION}}" 'BEGIN {
+          split(found, f, "."); split(wanted, w, ".")
+          for (i = 1; i <= 3; i++) if (f[i] + 0 != w[i] + 0) exit (f[i] + 0 < w[i] + 0)
+        }'; then
           printf '%s\n' "This checkout requires ai-rulez {{.AI_RULEZ_MIN_VERSION}} or newer; found $installed_version" >&2
           exit 1
         fi
