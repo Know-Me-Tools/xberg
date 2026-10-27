@@ -12,7 +12,7 @@ x-ai-rulez:
 # Test corpus
 
 `test_documents` is a git submodule (`.gitmodules` → `xberg-io/test_documents`). Its binary
-fixtures — 654 objects, ~581 MiB per `test_documents/corpus.lock.json` — are **not committed**.
+fixtures (about 1000 objects, ~0.6 GiB; see `test_documents/corpus.lock.json`) are **not committed**.
 They are materialised from a public GCS bucket over anonymous HTTPS, with no credentials and no
 SDK.
 
@@ -54,9 +54,9 @@ A `None` is **"not run"**, never "passed".
 vacuous control inverts the verdict. The tell is the runtime: `finished in 0.00s` means the
 binary did nothing.
 
-Two more worktree traps: a relative `[patch.crates-io]` path dependency (the root
-`Cargo.toml` currently patches `liter-llm` to `../liter-llm/…`) resolves relative to the
-*worktree*, not the main checkout; and a shared `CARGO_TARGET_DIR` will thrash.
+Two more worktree traps: a relative `[patch.crates-io]` path dependency, if one is ever added
+(the root `Cargo.toml` forbids out-of-tree overrides), resolves relative to the *worktree*, not
+the main checkout; and a shared `CARGO_TARGET_DIR` will thrash.
 
 Working setup:
 
