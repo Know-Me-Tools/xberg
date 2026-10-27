@@ -5045,8 +5045,15 @@ mod tests {
         assert_eq!(table.cells[0][1].trim(), "$\\alpha$");
         assert!(result.content.contains("\\alpha"), "{}", result.content);
         assert!(!result.content.contains("\\\\alpha"), "{}", result.content);
-        assert_eq!(table.markdown.trim(), result.content.trim());
-        assert!(!serde_json::to_string(&result).unwrap().contains("xberg:internal:table-cell-math"));
+        assert_eq!(
+            table.markdown.trim(),
+            result.formatted_content.as_deref().unwrap().trim()
+        );
+        assert!(
+            !serde_json::to_string(&result)
+                .unwrap()
+                .contains("xberg:internal:table-cell-math")
+        );
     }
 
     #[tokio::test]
@@ -5059,16 +5066,24 @@ mod tests {
             </w:p><w:p><m:oMathPara><m:oMath><m:r><m:t>z</m:t></m:r></m:oMath></m:oMathPara>
             </w:p></w:tc></w:tr></w:tbl>"#;
         let (elements, result) = extract_math_docx(body).await;
-        let table = elements.iter().find(|element| {
-            matches!(element.kind, crate::types::internal::ElementKind::Table { .. })
-        }).unwrap();
-        let annotations = crate::rendering::table_math::read_annotations(table.attributes.as_ref(), &result.tables[0].cells);
+        let table = elements
+            .iter()
+            .find(|element| matches!(element.kind, crate::types::internal::ElementKind::Table { .. }))
+            .unwrap();
+        let annotations =
+            crate::rendering::table_math::read_annotations(table.attributes.as_ref(), &result.tables[0].cells);
         let spans = &annotations[&(0, 0)];
         assert_eq!(spans.len(), 3);
         let cell = &result.tables[0].cells[0][0];
-        let math: Vec<_> = spans.iter().map(|span| &cell[span.start as usize..span.end as usize]).collect();
+        let math: Vec<_> = spans
+            .iter()
+            .map(|span| &cell[span.start as usize..span.end as usize])
+            .collect();
         assert_eq!(math, ["$x$", "$y$", "$$z$$"]);
-        assert_eq!(spans.iter().map(|span| span.kind.math_display()).collect::<Vec<_>>(), [Some(false), Some(false), Some(true)]);
+        assert_eq!(
+            spans.iter().map(|span| span.kind.math_display()).collect::<Vec<_>>(),
+            [Some(false), Some(false), Some(true)]
+        );
         assert!(cell.starts_with("Équation $cash$ "));
         assert!(table.public_attributes().is_none());
     }
@@ -5079,11 +5094,19 @@ mod tests {
             <w:p><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></w:p></w:tc></w:tr>
             <w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr><w:p/></w:tc></w:tr></w:tbl>"#;
         let (elements, result) = extract_math_docx(body).await;
-        let table = elements.iter().find(|element| {
-            matches!(element.kind, crate::types::internal::ElementKind::Table { .. })
-        }).unwrap();
-        assert_eq!(result.tables[0].cells, [vec!["$x$".to_string(), String::new()], vec![String::new(), String::new()]]);
-        let annotations = crate::rendering::table_math::read_annotations(table.attributes.as_ref(), &result.tables[0].cells);
+        let table = elements
+            .iter()
+            .find(|element| matches!(element.kind, crate::types::internal::ElementKind::Table { .. }))
+            .unwrap();
+        assert_eq!(
+            result.tables[0].cells,
+            [
+                vec!["$x$".to_string(), String::new()],
+                vec![String::new(), String::new()]
+            ]
+        );
+        let annotations =
+            crate::rendering::table_math::read_annotations(table.attributes.as_ref(), &result.tables[0].cells);
         assert_eq!(annotations.len(), 1);
         assert_eq!(annotations[&(0, 0)].len(), 1);
     }
@@ -5096,7 +5119,10 @@ mod tests {
             </w:p></w:tc></w:tr></w:tbl></w:body></w:document>"#;
         let config = ExtractionConfig {
             output_format: crate::core::config::OutputFormat::Markdown,
-            pages: Some(crate::core::config::PageConfig { extract_pages: true, ..Default::default() }),
+            pages: Some(crate::core::config::PageConfig {
+                extract_pages: true,
+                ..Default::default()
+            }),
             use_cache: false,
             ..Default::default()
         };
@@ -5104,7 +5130,9 @@ mod tests {
             &build_test_docx(xml),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             &config,
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let pages = result.pages.as_ref().unwrap();
         assert_eq!(pages.len(), 1);
         assert_eq!(pages[0].tables.len(), 1);

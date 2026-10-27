@@ -44,9 +44,8 @@ pub(crate) fn split_cell_grid(grid: Vec<Vec<MathCell>>) -> (Vec<Vec<String>>, Op
                 .collect()
         })
         .collect();
-    let encoded = (!annotations.is_empty()).then(|| {
-        serde_json::to_string(&annotations).expect("table math annotations contain only serializable values")
-    });
+    let encoded = (!annotations.is_empty())
+        .then(|| serde_json::to_string(&annotations).expect("table math annotations contain only serializable values"));
     (cells, encoded)
 }
 
@@ -107,26 +106,31 @@ mod tests {
         let document = builder.build();
         let arena = comrak::Arena::new();
         let ast = super::super::comrak_bridge::build_comrak_ast(&document, &arena);
-        let math: Vec<_> = ast.descendants().filter_map(|node| {
-            match &node.data.borrow().value {
+        let math: Vec<_> = ast
+            .descendants()
+            .filter_map(|node| match &node.data.borrow().value {
                 comrak::nodes::NodeValue::Math(value) => Some(value.literal.clone()),
                 _ => None,
-            }
-        }).collect();
+            })
+            .collect();
         assert_eq!(math, ["\\alpha"]);
         let rendered = super::super::render_markdown(&document);
         let parsed_arena = comrak::Arena::new();
         let parsed = comrak::parse_document(&parsed_arena, &rendered, &super::super::markdown::comrak_options());
-        let reparsed_math: Vec<_> = parsed.descendants().filter_map(|node| {
-            match &node.data.borrow().value {
+        let reparsed_math: Vec<_> = parsed
+            .descendants()
+            .filter_map(|node| match &node.data.borrow().value {
                 comrak::nodes::NodeValue::Math(value) => Some(value.literal.clone()),
                 _ => None,
-            }
-        }).collect();
+            })
+            .collect();
         assert!(reparsed_math.iter().any(|literal| literal == "\\alpha"), "{rendered}");
         assert!(document.elements[0].public_attributes().is_none());
         let restored = serde_json::from_str(&serde_json::to_string(&document).unwrap()).unwrap();
-        assert_eq!(super::super::render_markdown(&document), super::super::render_markdown(&restored));
+        assert_eq!(
+            super::super::render_markdown(&document),
+            super::super::render_markdown(&restored)
+        );
     }
 
     #[test]
@@ -154,6 +158,9 @@ mod tests {
     fn should_not_treat_plain_dollar_text_as_cell_math_gh2256() {
         let cells = vec![vec!["$\\alpha$ and $5".to_string()]];
         assert!(read_annotations(None, &cells).is_empty());
-        assert_eq!(render_table_markdown(&cells, None), super::super::common::render_table_markdown(&cells));
+        assert_eq!(
+            render_table_markdown(&cells, None),
+            super::super::common::render_table_markdown(&cells)
+        );
     }
 }

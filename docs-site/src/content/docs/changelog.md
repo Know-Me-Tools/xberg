@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(docx): Preserve equations as math in table cells and table Markdown without changing public structs.** (#2256)
 - **(html): Preserve YAML metadata blocks when normalizing Markdown output.** (#2295)
 - **(llm): Forward configured provider options to hosted embedding and reranking requests.**
 - **(pdf): Read two-up pages one half at a time.** (#2227)
