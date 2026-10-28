@@ -708,7 +708,8 @@ impl InternalElement {
     /// `"(a)"`, `"iv."`).
     ///
     /// PDF structure assembly and image layout extraction attach the marker through
-    /// `InternalDocumentBuilder::set_list_item_source_label` after removing it from text.
+    /// `InternalDocumentBuilder::set_list_item_source_label` after removing it from text;
+    /// the DOCX extractor attaches the label Word paints from the document's numbering.
     pub(crate) fn set_list_item_source_label(&mut self, label: impl Into<String>) {
         let label = label.into();
         if label.is_empty() {

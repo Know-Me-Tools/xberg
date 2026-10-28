@@ -109,6 +109,8 @@ fn build_internal_document(
     // `push_heading` generates intact.
     let mut bookmark_elements: AHashMap<String, u32> = AHashMap::new();
     let mut pending_anchor_links: Vec<(u32, String, RelationshipKind)> = Vec::new();
+    // The label Word paints on each list item, attached once the lists are built. ~keep
+    let mut word_list_labels: AHashMap<u32, &str> = AHashMap::new();
 
     for element in &doc.elements {
         match element {
@@ -228,6 +230,9 @@ fn build_internal_document(
                             Some(current_page),
                             None,
                         );
+                        if let Some(label) = doc.list_labels.get(idx) {
+                            word_list_labels.insert(li_idx, label.as_str());
+                        }
                         Some(li_idx)
                     } else {
                         formula_idx
@@ -488,7 +493,44 @@ fn build_internal_document(
         builder.push_relationship(*source, target, *kind);
     }
 
-    builder.build()
+    let mut document = builder.build();
+    attach_word_list_labels(&mut document, &word_list_labels);
+    document
+}
+
+/// Attach the label Word paints to each list item whose number the renderers would not write.
+///
+/// The number Word paints is not in a paragraph's text. Without a label the renderers number
+/// an ordered list's items from 1, and they write a labelled item as a bullet led by its label.
+/// So a plain `N.` on the Nth item of its list is left off, as it would only turn `1. Item`
+/// into `- 1\. Item`; every other label is kept: `Q4.`, `(b)`, `3.1`, or a list Word starts
+/// at 3 or carries on across a heading.
+fn attach_word_list_labels(document: &mut InternalDocument, labels: &AHashMap<u32, &str>) {
+    use crate::types::internal::ElementKind;
+
+    let mut positions: Vec<u32> = Vec::new();
+    for (index, element) in document.elements.iter_mut().enumerate() {
+        match element.kind {
+            ElementKind::ListStart { .. } => positions.push(0),
+            ElementKind::ListEnd => {
+                positions.pop();
+            }
+            ElementKind::ListItem { ordered } => {
+                let position = positions.last_mut().map(|position| {
+                    *position += 1;
+                    *position
+                });
+                let Some(label) = u32::try_from(index).ok().and_then(|index| labels.get(&index)) else {
+                    continue;
+                };
+                let rendered_anyway = ordered && position.is_some_and(|position| *label == format!("{position}."));
+                if !rendered_anyway {
+                    element.set_list_item_source_label(*label);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Push a header's or footer's paragraphs and tables (#85 — headers/footers now

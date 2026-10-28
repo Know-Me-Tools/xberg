@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(docx): Keep the number Word paints on each numbered list item.**
+  Labels such as `Q4.`, `(b)` and `3.2` are computed from `word/numbering.xml` as Word counts them, with start
+  values, level and start overrides, level restarts, lists that share a definition, and letter and roman
+  formats, and reach `list_marker` and the Markdown. A plain `1.`, `2.` list is written as before. (#2293)
+
 - **(csv): Enforce table-cell limits against padded dimensions before retaining rows.** (#2296)
 - **(pdf): Preserve prose superscripts and subscripts when table detection is enabled.** (#2275)
 - **(docx): Preserve equations as math in table cells and table Markdown without changing public structs.** (#2256)
