@@ -3,6 +3,9 @@
 
 use super::*;
 
+#[path = "clx.rs"]
+mod clx;
+
 /// Read a little-endian `u16` at `offset`, or an error naming `what` when `data` is too
 /// short to contain it.
 fn read_u16_checked(data: &[u8], offset: usize, what: &str) -> Result<u16> {
@@ -94,46 +97,22 @@ pub(super) fn extract_text_word97(
 
     let clx = &table_stream[fib.clx_start..fib.clx_start + fib.clx_length];
 
-    if let Some(plc_pcd) = read_piece_table(clx)? {
+    if let Some(piece_table) = clx::read_piece_table(clx, budget)? {
         let scripts = chpx::ScriptIndex::read(word_doc, table_stream, fib.pairs, budget, warnings)?;
         let tables = DocTables {
             lists: papx::ListTables::build(word_doc, table_stream, fib.pairs),
             stories: StoryTables::read(word_doc, table_stream, fib.pairs, &fib.ranges),
             picture_limits,
             scripts,
+            piece_scripts: piece_table.scripts,
             ranges: &fib.ranges,
             total_cp: fib.total_cp,
         };
-        return extract_text_from_piece_table(word_doc, plc_pcd, warnings, &tables, budget);
+        return extract_text_from_piece_table(word_doc, piece_table.plc_pcd, warnings, &tables, budget);
     }
 
     images::warn_unsupported_fallback(picture_limits.is_some(), warnings, "unavailable-piece-table fallback");
     extract_text_fallback(word_doc, fib.ranges.main.len()).map(MainText::text_only)
-}
-
-fn read_piece_table(clx: &[u8]) -> Result<Option<&[u8]>> {
-    let mut pos = 0;
-    while pos < clx.len() {
-        let clxt = clx[pos];
-        if clxt == 0x02 {
-            pos += 1;
-            if pos + 4 > clx.len() {
-                return Err(XbergError::parsing("Pcdt truncated at lcb"));
-            }
-            let _ = u32::from_le_bytes([clx[pos], clx[pos + 1], clx[pos + 2], clx[pos + 3]]) as usize;
-            return Ok(Some(&clx[pos + 4..]));
-        } else if clxt == 0x01 {
-            pos += 1;
-            if pos + 2 > clx.len() {
-                break;
-            }
-            let cb_grpprl = u16::from_le_bytes([clx[pos], clx[pos + 1]]) as usize;
-            pos += 2 + cb_grpprl;
-        } else {
-            break;
-        }
-    }
-    Ok(None)
 }
 
 /// Record that a piece's declared byte range runs past the end of the
@@ -312,6 +291,7 @@ struct PieceTableContext<'a> {
     total_cp: usize,
     ranges: &'a SubdocRanges,
     scripts: &'a chpx::ScriptIndex,
+    piece_scripts: &'a [chpx::ScriptProperty],
 }
 
 /// Process one entry of the piece table (`PlcPcd`), appending its decoded characters to
@@ -365,7 +345,7 @@ fn process_piece(
     }
 
     let prm = u16::from_le_bytes([plc_pcd[pcd_off + 6], plc_pcd[pcd_off + 7]]);
-    let override_script = chpx::compact_prm_script(prm);
+    let override_script = piece_script_override(prm, ctx.piece_scripts, warnings);
     piece.scripts = piece
         .fc_ends
         .iter()
@@ -373,6 +353,28 @@ fn process_piece(
         .collect();
     append_piece_to_stories(&piece, cp_start, ctx.ranges, text);
     true
+}
+
+fn piece_script_override(
+    prm: u16,
+    groups: &[chpx::ScriptProperty],
+    warnings: &mut Vec<ProcessingWarning>,
+) -> Option<chpx::Script> {
+    if prm & 1 == 0 {
+        return chpx::compact_prm_script(prm);
+    }
+    match groups.get(usize::from(prm >> 1)).copied() {
+        Some(chpx::ScriptProperty::Override(script)) => Some(script),
+        Some(chpx::ScriptProperty::Unchanged) => None,
+        Some(chpx::ScriptProperty::Malformed) | None => {
+            crate::core::diagnostics::push_warning(
+                warnings,
+                DOC_WARNING_SOURCE,
+                "Missing or malformed DOC piece character properties were ignored; text and CHPX formatting were preserved",
+            );
+            None
+        }
+    }
 }
 
 fn read_piece_value(plc: &[u8], offset: usize) -> u32 {
@@ -468,6 +470,7 @@ fn extract_text_from_piece_table(
         total_cp: tables.total_cp,
         ranges,
         scripts: &tables.scripts,
+        piece_scripts: &tables.piece_scripts,
     };
 
     for i in 0..n {
@@ -546,6 +549,7 @@ struct DocTables<'a> {
     lists: papx::ListTables,
     stories: StoryTables,
     scripts: chpx::ScriptIndex,
+    piece_scripts: Vec<chpx::ScriptProperty>,
     ranges: &'a SubdocRanges,
     total_cp: usize,
 }

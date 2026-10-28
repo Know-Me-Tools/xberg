@@ -1,4 +1,4 @@
-//! DOC character scripts from authoritative CHPX runs and compact piece properties. ~keep
+//! DOC character scripts from authoritative CHPX runs and piece properties. ~keep
 
 use super::{DOC_WARNING_SOURCE, normalized_doc_character, papx};
 use crate::error::{Result, XbergError};
@@ -31,6 +31,13 @@ pub(super) fn compact_prm_script(prm: u16) -> Option<Script> {
         2 => Some(Script::Subscript),
         _ => None,
     }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ScriptProperty {
+    Unchanged,
+    Override(Script),
+    Malformed,
 }
 
 struct ScriptRun {
@@ -158,31 +165,39 @@ fn step(budget: &mut SecurityBudget) -> Result<()> {
     budget.step().map_err(|error| XbergError::validation(error.to_string()))
 }
 
-fn script_property(mut properties: &[u8], budget: &mut SecurityBudget) -> Result<Option<Script>> {
-    let mut script = Script::Normal;
+fn script_property(properties: &[u8], budget: &mut SecurityBudget) -> Result<Option<Script>> {
+    Ok(match piece_script_property(properties, budget)? {
+        ScriptProperty::Unchanged => Some(Script::Normal),
+        ScriptProperty::Override(script) => Some(script),
+        ScriptProperty::Malformed => None,
+    })
+}
+
+pub(super) fn piece_script_property(mut properties: &[u8], budget: &mut SecurityBudget) -> Result<ScriptProperty> {
+    let mut script = None;
     while !properties.is_empty() {
         step(budget)?;
         let Some(opcode) = properties.get(..2) else {
-            return Ok(None);
+            return Ok(ScriptProperty::Malformed);
         };
         let opcode = u16::from_le_bytes([opcode[0], opcode[1]]);
         properties = &properties[2..];
         let Some(length) = papx::sprm_operand_length(opcode, properties) else {
-            return Ok(None);
+            return Ok(ScriptProperty::Malformed);
         };
         let Some(operand) = properties.get(..length) else {
-            return Ok(None);
+            return Ok(ScriptProperty::Malformed);
         };
         if opcode == SPRM_C_ISS {
-            script = match operand[0] {
+            script = Some(match operand[0] {
                 1 => Script::Superscript,
                 2 => Script::Subscript,
                 _ => Script::Normal,
-            };
+            });
         }
         properties = &properties[length..];
     }
-    Ok(Some(script))
+    Ok(script.map_or(ScriptProperty::Unchanged, ScriptProperty::Override))
 }
 
 pub(super) fn normalize(
