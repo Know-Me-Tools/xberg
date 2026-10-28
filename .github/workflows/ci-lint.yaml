@@ -42,6 +42,13 @@ permissions:
   contents: read
 
 jobs:
+  toolchain:
+    name: Toolchain baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: xberg-io/actions/check-toolchain@v1
+
   governance-validation:
     name: AI governance validation
     runs-on: ubuntu-latest
