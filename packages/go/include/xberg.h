@@ -20,6 +20,7 @@
 #define XBERG_FEATURE_ENRICHMENT 1
 #define XBERG_FEATURE_EXCEL 1
 #define XBERG_FEATURE_FORMULA_RECOGNITION 1
+#define XBERG_FEATURE_FULL_NO_HEIC 1
 #define XBERG_FEATURE_HEURISTICS 1
 #define XBERG_FEATURE_HTML 1
 #define XBERG_FEATURE_HWP 1
@@ -3182,6 +3183,39 @@ typedef struct XBERGXbergOcrBackendVTable {
    *
    * An `ExtractedDocument` containing the extracted text and metadata.
    *
+   * Image and PDF page OCR also accept an explicit `document` contribution:
+   * a flat, ordered list of `Title`, `Heading` (levels 1–6), `Paragraph`,
+   * `Code`, `Formula`, `Footnote`, `Comment`, `Citation` and HTML `RawBlock`
+   * nodes. Keep `content` as the page transcript: the existing quality and
+   * whole-page replacement decisions still use it. Literal markup in ordinary
+   * paragraph text is not promoted to raw HTML.
+   * HTML raw blocks are emitted verbatim: supply trusted markup, not an
+   * ordinary OCR transcript relabeled as HTML.
+   * Unsupported nested/container, table-grid and image nodes fail with
+   * `Validation`, rather than flattening.
+   * For string-only output leave `document` unset; a nonempty transcript with
+   * an empty explicit structure is invalid, not a request to flatten it.
+   *
+   * Node annotation ranges must be UTF-8 byte boundaries; relationship indices
+   * must reference nodes in this contribution. Optional boxes are top-left OCR
+   * raster coordinates (the processed dimensions in backend metadata, when
+   * supplied); absent boxes/confidence are not fabricated. PDF owners convert
+   * the boxes to their page coordinate frame. The image extractor retains its
+   * own source format and source-image reference, not `document.source_format`.
+   * Node IDs, node types and result counts are derived by the host extractor.
+   *
+   * Structured contributions do not accept backend table/image/URI inventories,
+   * document-level annotations, pre-rendered output or derived enrichment/page
+   * fields. Leave those fields unset; they fail explicitly instead of being
+   * discarded. Inline node annotations, `metadata`, `processing_warnings`,
+   * `ocr_elements`, `formulas` and `llm_usage` remain subject to their existing
+   * extractor aggregation/selection policies. A selected whole-page
+   * contribution replaces superseded native flow, not retained native asset
+   * inventories. Security limits bound serialized payload size, recursive
+   * metadata nesting and node/annotation/reference work. These checks apply
+   * only when `document` is present; string-only results and built-in private
+   * hOCR results retain their existing contract.
+   *
    * # Errors
    *
    * - `XbergError::Ocr` - OCR processing failed
@@ -4894,6 +4928,27 @@ char *xberg_browser_config_chrome_path(XBERGAlefHandle handle);
 char *xberg_browser_config_chrome_args(XBERGAlefHandle handle);
 
 /**
+ * Get the `scroll_containers` field from a `BrowserConfig`.
+ * # Safety
+ * Pointer must be a valid handle returned by this library.
+ */
+int32_t xberg_browser_config_scroll_containers(XBERGAlefHandle handle);
+
+/**
+ * Get the `dom_quiet_window` field from a `BrowserConfig`.
+ * # Safety
+ * Pointer must be a valid handle returned by this library.
+ */
+uint64_t xberg_browser_config_dom_quiet_window(XBERGAlefHandle handle);
+
+/**
+ * Get the `dom_quiet_cap` field from a `BrowserConfig`.
+ * # Safety
+ * Pointer must be a valid handle returned by this library.
+ */
+uint64_t xberg_browser_config_dom_quiet_cap(XBERGAlefHandle handle);
+
+/**
  * Create a `CacheStats` from a JSON string. Returns null on failure.
  * # Safety
  * JSON string must be valid UTF-8 and null-terminated.
@@ -6413,6 +6468,34 @@ char *xberg_content_config_keep_inline_images_in(XBERGAlefHandle handle);
 int32_t xberg_content_config_keep_hidden(XBERGAlefHandle handle);
 
 /**
+ * Get the `expand_abbreviations` field from a `ContentConfig`.
+ * # Safety
+ * Pointer must be a valid handle returned by this library.
+ */
+int32_t xberg_content_config_expand_abbreviations(XBERGAlefHandle handle);
+
+/**
+ * Get the `escape_misc` field from a `ContentConfig`.
+ * # Safety
+ * Pointer must be a valid handle returned by this library.
+ */
+int32_t xberg_content_config_escape_misc(XBERGAlefHandle handle);
+
+/**
+ * Get the `escape_asterisks` field from a `ContentConfig`.
+ * # Safety
+ * Pointer must be a valid handle returned by this library.
+ */
+int32_t xberg_content_config_escape_asterisks(XBERGAlefHandle handle);
+
+/**
+ * Get the `include_icon_labels` field from a `ContentConfig`.
+ * # Safety
+ * Pointer must be a valid handle returned by this library.
+ */
+int32_t xberg_content_config_include_icon_labels(XBERGAlefHandle handle);
+
+/**
  * Create a `ContentFilterConfig` from a JSON string. Returns null on failure.
  * # Safety
  * JSON string must be valid UTF-8 and null-terminated.
@@ -7772,6 +7855,22 @@ int32_t xberg_crawl_config_ssrf_deny_private_explicit(XBERGAlefHandle handle);
  */
 int32_t
 xberg_crawl_config_has_ssrf_deny_private_explicit(XBERGAlefHandle handle);
+
+/**
+ * Get the `danger_accept_invalid_certs` field from a `CrawlConfig`.
+ * # Safety
+ * Pointer must be a valid handle returned by this library.
+ */
+int32_t xberg_crawl_config_danger_accept_invalid_certs(XBERGAlefHandle handle);
+
+/**
+ * Get the `subdomain_header_allowlist` field from a `CrawlConfig`.
+ * A non-null returned pointer is owned by the caller.
+ * It must be freed with `xberg_free_string`.
+ * # Safety
+ * Pointer must be a valid handle returned by this library.
+ */
+char *xberg_crawl_config_subdomain_header_allowlist(XBERGAlefHandle handle);
 
 /**
  * Create a `CsvConfig` from a JSON string. Returns null on failure.
@@ -30731,6 +30830,49 @@ XBERGAlefHandle xberg_extract_with_external_redaction(
 XBERGAlefHandle xberg_extract_with_external_redaction_cancellable(
     XBERGAlefHandle input, XBERGAlefHandle config, const char *findings_json,
     const char *offset_encoding, uint32_t max_findings,
+    XBERGAlefHandle alef_cancel_token);
+#endif
+
+#if (defined(XBERG_FEATURE_PDF) && defined(XBERG_FEATURE_LAYOUT_DETECTION))
+/**
+ * Extract one PDF bytes input with layout inference restricted to explicit
+ * 1-based pages.
+ *
+ * This call enables layout on the native PDF route even when ordinary
+ * extraction leaves it disabled. Selected pages override the automatic layout
+ * gate; an empty list skips layout inference. Invalid pages are ignored with
+ * processing warnings. Both extraction caches are bypassed. This additive entry
+ * point leaves existing extraction configuration structs unchanged.
+ * \note SAFETY: Caller must ensure all pointer arguments are valid or null.
+ * Returned pointers must be freed with the appropriate free function.
+ */
+XBERGAlefHandle xberg_extract_with_layout_pages(XBERGAlefHandle input,
+                                                XBERGAlefHandle config,
+                                                const char *pages);
+#endif
+
+#if (defined(XBERG_FEATURE_PDF) && defined(XBERG_FEATURE_LAYOUT_DETECTION))
+/**
+ * Cancellable variant of `xberg_extract_with_layout_pages`.
+ *
+ * Takes a trailing `alef_cancel_token` created by `xberg_cancel_token_new`.
+ * Tripping it with `xberg_cancel_token_cancel` from any thread aborts the
+ * blocking call, which then fails with the `Cancelled` error code. Pass `0` for
+ * a call that is never cancelled.
+ *
+ * Extract one PDF bytes input with layout inference restricted to explicit
+ * 1-based pages.
+ *
+ * This call enables layout on the native PDF route even when ordinary
+ * extraction leaves it disabled. Selected pages override the automatic layout
+ * gate; an empty list skips layout inference. Invalid pages are ignored with
+ * processing warnings. Both extraction caches are bypassed. This additive entry
+ * point leaves existing extraction configuration structs unchanged.
+ * \note SAFETY: Caller must ensure all pointer arguments are valid or null.
+ * Returned pointers must be freed with the appropriate free function.
+ */
+XBERGAlefHandle xberg_extract_with_layout_pages_cancellable(
+    XBERGAlefHandle input, XBERGAlefHandle config, const char *pages,
     XBERGAlefHandle alef_cancel_token);
 #endif
 

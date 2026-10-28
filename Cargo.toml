@@ -63,10 +63,9 @@ cc = "1.10"
 cfb = "0.15"
 chrono = "0.4"
 clap = { version = "4.6", features = ["derive", "color", "suggestions"] }
-comrak = { version = "0.57", default-features = false }
+comrak = { version = "0.59", default-features = false }
 console_error_panic_hook = "0.1"
-# Preserve seed-host-only custom headers until a published Crawlberg fix (#2126). ~keep
-crawlberg = { version = "=1.11.1", default-features = false }
+crawlberg = { version = "1.12.3", default-features = false }
 criterion = { version = "0.8", features = ["html_reports"] }
 dbase = "0.8"
 flate2 = "1.1"
@@ -74,14 +73,13 @@ fs2 = "0.4.3"
 futures = "0.3"
 getrandom = { version = "0.4.3", features = ["wasm_js"] }
 hex = "0.4.3"
-html-to-markdown-rs = { version = "3.18.6", default-features = false }
+html-to-markdown-rs = { version = "3.19.0", default-features = false }
 image = { version = "0.25.10", default-features = false }
 itertools = "0.15"
 js-sys = "0.3"
 
 lazy_static = "1.5.1"
-# Crawlberg 1.11.1 pins libc; retain it until the header-scope fix can be adopted. ~keep
-libc = "0.2.189"
+libc = "0.2.191"
 # Builds a bundled zlib from source (`static`) for the target, so the vendored
 # librevenge RVNGZipStream.cpp can `#include <zlib.h>` and link zlib even under
 # cross-compilation (zigbuild aarch64/musl) where no host libz is usable.
@@ -112,8 +110,8 @@ rayon = "1.12.0"
 reqwest = { version = "0.13.5", default-features = false }
 # SVG rendering (resvg re-exports tiny_skia and usvg; default-features = false
 # drops text, system-fonts, memmap-fonts, raster-images — all pure-Rust, WASM-safe).
-resvg = { version = "0.48", default-features = false }
-rusqlite = { version = "0.40", default-features = false, features = ["bundled", "hooks", "serialize"] }
+resvg = { version = "0.49", default-features = false }
+rusqlite = { version = "0.41", default-features = false, features = ["bundled", "hooks", "serialize"] }
 same-file = "1.0.6"
 sceptre = { version = "0.8.2", default-features = false }
 
@@ -150,9 +148,9 @@ tree-sitter-language-pack = { version = "1.22.1", default-features = false, feat
 url = "2.5.8"
 # usvg (re-exported by resvg) with only the `writer` feature so `Tree::to_string`
 # / `WriteOptions` are available for SVG sanitize re-serialization. `writer` pulls
-# just xmlwriter + base64 — pure-Rust, WASM-safe, no fonts. resvg 0.48 forwards no
-# `writer` feature of its own, so usvg is enabled directly; versions unify at 0.48.
-usvg = { version = "0.48", default-features = false, features = ["writer"] }
+# just xmlwriter + base64 — pure-Rust, WASM-safe, no fonts. resvg forwards no
+# `writer` feature, so usvg is enabled directly at the matching version. ~keep
+usvg = { version = "0.49", default-features = false, features = ["writer"] }
 wasm-bindgen = { version = "0.2", features = ["enable-interning"] }
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [

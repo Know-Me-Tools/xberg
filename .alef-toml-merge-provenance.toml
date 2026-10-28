@@ -320,6 +320,16 @@ values = ["MD012", "MD013", "MD024", "MD033", "MD036", "MD041", "MD046", "MD051"
 
 [[entries]]
 relative_path = "poly.toml"
+key_path = "lint.php.mago.ignore"
+values = ["strict-assertions", "use-specific-assertions", "no-redundant-variable", "sensitive-parameter"]
+
+[[entries]]
+relative_path = "poly.toml"
+key_path = "lint.php.mago.select"
+values = ["correctness", "security"]
+
+[[entries]]
+relative_path = "poly.toml"
 key_path = "lint.python.ruff.ignore"
 values = [
   "ANN401",
@@ -1508,11 +1518,6 @@ values = ["cyclomatic-complexity", "file-too-long", "function-too-long"]
 relative_path = "poly.toml"
 key_path = "per-file-ignores.crates/xberg/src/pdf/table_reconstruct.rs"
 values = ["cyclomatic-complexity", "file-too-long", "function-too-long"]
-
-[[entries]]
-relative_path = "poly.toml"
-key_path = "per-file-ignores.crates/xberg/src/plugins/registry/extractor.rs"
-values = ["nesting-too-deep"]
 
 [[entries]]
 relative_path = "poly.toml"

@@ -22,11 +22,12 @@
   "exports": {
     ".": {
       "types": "./index.d.ts",
+      "import": "./index.mjs",
       "require": "./index.js",
       "default": "./index.js"
     }
   },
-  "files": ["index.js", "index.d.ts", "*.node"],
+  "files": ["index.js", "binding.cjs", "index.mjs", "index.d.ts", "*.node"],
   "napi": {
     "packageName": "@xberg-io/xberg",
     "binaryName": "xberg-node",
@@ -40,7 +41,7 @@
     ]
   },
   "scripts": {
-    "build": "napi build --platform --release",
+    "build": "napi build --no-js --platform --release",
     "artifacts": "napi artifacts",
     "test": "node --test tests/*.test.mjs",
     "prepublishOnly": "napi prepublish -t npm --skip-optional-publish"

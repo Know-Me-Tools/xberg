@@ -40,7 +40,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -401557053;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 617887772;
 
 // Section: executor
 
@@ -230,7 +230,7 @@ fn wire__crate__MetaSchema_compile_impl(
             let api_meta_schema_json = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::MetaSchema::compile(api_meta_schema_json)?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -263,7 +263,7 @@ fn wire__crate__MetaSchema_parse_preset_impl(
             let api_raw = <Vec<u8>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let mut api_that_guard = None;
                     let decode_indices_ = flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
                         flutter_rust_bridge::for_generated::LockableOrderInfo::new(&api_that, 0, false),
@@ -432,7 +432,7 @@ fn wire__crate__Registry_extend_from_dir_impl(
             let api_dir = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let mut api_that_guard = None;
                     let decode_indices_ = flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
                         flutter_rust_bridge::for_generated::LockableOrderInfo::new(&api_that, 0, true),
@@ -624,7 +624,7 @@ fn wire__crate__Registry_load_embedded_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::Registry::load_embedded()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -1095,7 +1095,7 @@ fn wire__crate__classify_chunks_owned_impl(
             let api_config = <crate::ChunkClassificationConfig>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, AlefBridgeError>(
                     (move || async move {
                         let output_ok = crate::classify_chunks_owned(api_result, api_config).await?;
                         std::result::Result::Ok(output_ok)
@@ -11367,6 +11367,40 @@ fn wire__crate__extract_with_external_redaction_impl(
         },
     )
 }
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+fn wire__crate__extract_with_layout_pages_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "extract_with_layout_pages",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(ptr_, rust_vec_len_, data_len_)
+            };
+            let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_input = <crate::ExtractInput>::sse_decode(&mut deserializer);
+            let api_config = <crate::ExtractionConfig>::sse_decode(&mut deserializer);
+            let api_pages = <Vec<i64>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::extract_with_layout_pages(api_input, api_config, api_pages).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 #[cfg(feature = "markdown-footnotes")]
 fn wire__crate__find_unmarked_claims_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
@@ -11415,7 +11449,7 @@ fn wire__crate__list_document_extractors_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_document_extractors()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11442,7 +11476,7 @@ fn wire__crate__list_embedding_backends_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_embedding_backends()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11469,7 +11503,7 @@ fn wire__crate__list_ocr_backend_capabilities_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_ocr_backend_capabilities()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11497,7 +11531,7 @@ fn wire__crate__list_ocr_backend_capabilities_for_impl(
             let api_config = <crate::OcrConfig>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_ocr_backend_capabilities_for(api_config)?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11524,7 +11558,7 @@ fn wire__crate__list_ocr_backends_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_ocr_backends()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11551,7 +11585,7 @@ fn wire__crate__list_post_processors_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_post_processors()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11578,7 +11612,7 @@ fn wire__crate__list_renderers_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_renderers()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11605,7 +11639,7 @@ fn wire__crate__list_reranker_backends_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_reranker_backends()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11659,7 +11693,7 @@ fn wire__crate__list_tokenizer_backends_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_tokenizer_backends()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11686,7 +11720,7 @@ fn wire__crate__list_validators_impl(
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::list_validators()?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11814,7 +11848,7 @@ fn wire__crate__ocr_backend_supports_language_impl(
             let api_language = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::ocr_backend_supports_language(api_backend, api_language)?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11844,7 +11878,7 @@ fn wire__crate__ocr_backend_supports_language_for_impl(
             let api_config = <crate::OcrConfig>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::ocr_backend_supports_language_for(api_backend, api_language, api_config)?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11874,7 +11908,7 @@ fn wire__crate__pdf_page_count_impl(
             let api_password = <Option<String>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, AlefBridgeError>((move || {
                     let output_ok = crate::pdf_page_count(api_pdf_bytes, api_password)?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -11907,7 +11941,7 @@ fn wire__crate__redact_external_impl(
             let api_max_findings = <Option<i64>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, AlefBridgeError>(
                     (move || async move {
                         let output_ok = crate::redact_external(
                             api_document,
@@ -12423,7 +12457,7 @@ const _: fn() = || {
         crate::AnnotationKind::Superscript => {}
         crate::AnnotationKind::Link { url, title } => {
             let _: String = url;
-            let _: String = title;
+            let _: Option<String> = title;
         }
         crate::AnnotationKind::Highlight => {}
         crate::AnnotationKind::Color { value } => {
@@ -12434,7 +12468,7 @@ const _: fn() = || {
         }
         crate::AnnotationKind::Custom { name, value } => {
             let _: String = name;
-            let _: String = value;
+            let _: Option<String> = value;
         }
     }
     {
@@ -12528,6 +12562,9 @@ const _: fn() = || {
         let _: bool = BrowserConfig.session_affinity;
         let _: Option<String> = BrowserConfig.chrome_path;
         let _: Vec<String> = BrowserConfig.chrome_args;
+        let _: bool = BrowserConfig.scroll_containers;
+        let _: i64 = BrowserConfig.dom_quiet_window;
+        let _: i64 = BrowserConfig.dom_quiet_cap;
     }
     {
         let CacheStats = None::<crate::CacheStats>.unwrap();
@@ -12599,7 +12636,7 @@ const _: fn() = || {
         crate::ChunkSizing::Characters => {}
         crate::ChunkSizing::Tokenizer { model, cache_dir } => {
             let _: String = model;
-            let _: String = cache_dir;
+            let _: Option<String> = cache_dir;
         }
     }
     {
@@ -12722,6 +12759,10 @@ const _: fn() = || {
         let _: bool = ContentConfig.compact_tables;
         let _: Vec<String> = ContentConfig.keep_inline_images_in;
         let _: bool = ContentConfig.keep_hidden;
+        let _: bool = ContentConfig.expand_abbreviations;
+        let _: bool = ContentConfig.escape_misc;
+        let _: bool = ContentConfig.escape_asterisks;
+        let _: bool = ContentConfig.include_icon_labels;
     }
     {
         let ContentFilterConfig = None::<crate::ContentFilterConfig>.unwrap();
@@ -12863,6 +12904,8 @@ const _: fn() = || {
         let _: bool = CrawlConfig.save_browser_profile;
         let _: crate::SsrfPolicy = CrawlConfig.ssrf;
         let _: Option<bool> = CrawlConfig.ssrf_deny_private_explicit;
+        let _: bool = CrawlConfig.danger_accept_invalid_certs;
+        let _: Vec<String> = CrawlConfig.subdomain_header_allowlist;
     }
     match None::<crate::CredentialProviderConfig>.unwrap() {
         crate::CredentialProviderConfig::AzureAd {
@@ -12874,17 +12917,17 @@ const _: fn() = || {
             let _: String = tenant_id;
             let _: String = client_id;
             let _: String = client_secret;
-            let _: String = scope;
+            let _: Option<String> = scope;
         }
         crate::CredentialProviderConfig::VertexOauth2 {
             service_account_key_file,
             scope,
         } => {
             let _: String = service_account_key_file;
-            let _: String = scope;
+            let _: Option<String> = scope;
         }
         crate::CredentialProviderConfig::VertexAdc { scope } => {
-            let _: String = scope;
+            let _: Option<String> = scope;
         }
         crate::CredentialProviderConfig::BedrockWebIdentity {
             role_arn,
@@ -12894,8 +12937,8 @@ const _: fn() = || {
         } => {
             let _: String = role_arn;
             let _: String = token_file;
-            let _: String = session_name;
-            let _: String = region;
+            let _: Option<String> = session_name;
+            let _: Option<String> = region;
         }
     }
     {
@@ -13862,9 +13905,9 @@ const _: fn() = || {
             max_length,
         } => {
             let _: String = model_id;
-            let _: String = model_file;
+            let _: Option<String> = model_file;
             let _: Vec<String> = additional_files;
-            let _: i64 = max_length;
+            let _: Option<i64> = max_length;
         }
         crate::LateInteractionModelType::Plugin { name } => {
             let _: String = name;
@@ -14133,13 +14176,13 @@ const _: fn() = || {
             image_index,
             src,
         } => {
-            let _: String = description;
-            let _: i64 = image_index;
-            let _: String = src;
+            let _: Option<String> = description;
+            let _: Option<i64> = image_index;
+            let _: Option<String> = src;
         }
         crate::NodeContent::Code { text, language } => {
             let _: String = text;
-            let _: String = language;
+            let _: Option<String> = language;
         }
         crate::NodeContent::Quote => {}
         crate::NodeContent::Formula { text } => {
@@ -14156,14 +14199,14 @@ const _: fn() = || {
             heading_level,
             heading_text,
         } => {
-            let _: String = label;
-            let _: i64 = heading_level;
-            let _: String = heading_text;
+            let _: Option<String> = label;
+            let _: Option<i64> = heading_level;
+            let _: Option<String> = heading_text;
         }
         crate::NodeContent::PageBreak => {}
         crate::NodeContent::Slide { number, title } => {
             let _: i64 = number;
-            let _: String = title;
+            let _: Option<String> = title;
         }
         crate::NodeContent::DefinitionList => {}
         crate::NodeContent::DefinitionItem { term, definition } => {
@@ -14176,7 +14219,7 @@ const _: fn() = || {
         }
         crate::NodeContent::Admonition { kind, title } => {
             let _: String = kind;
-            let _: String = title;
+            let _: Option<String> = title;
         }
         crate::NodeContent::RawBlock { format, content } => {
             let _: String = format;
@@ -14778,9 +14821,9 @@ const _: fn() = || {
             head,
         } => {
             let _: String = model_id;
-            let _: String = model_file;
+            let _: Option<String> = model_file;
             let _: Vec<String> = additional_files;
-            let _: i64 = max_length;
+            let _: Option<i64> = max_length;
             let _: crate::RerankerHead = head;
         }
         crate::RerankerModelType::Llm { llm } => {
@@ -14819,7 +14862,7 @@ const _: fn() = || {
         }
         crate::RevisionAnchor::Sheet { index, name } => {
             let _: i64 = index;
-            let _: String = name;
+            let _: Option<String> = name;
         }
     }
     {
@@ -14883,9 +14926,9 @@ const _: fn() = || {
             max_length,
         } => {
             let _: String = model_id;
-            let _: String = model_file;
+            let _: Option<String> = model_file;
             let _: Vec<String> = additional_files;
-            let _: i64 = max_length;
+            let _: Option<i64> = max_length;
         }
         crate::SparseEmbeddingModelType::Plugin { name } => {
             let _: String = name;
@@ -16057,6 +16100,14 @@ impl SseDecode for ValidatorDartImpl {
     }
 }
 
+impl SseDecode for AlefBridgeError {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <crate::AlefBridgeErrorWire>::sse_decode(deserializer);
+        return crate::alef_decode_bridge_error(inner);
+    }
+}
+
 impl SseDecode for flutter_rust_bridge::DartOpaque {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -16293,6 +16344,42 @@ impl SseDecode for crate::AccelerationConfig {
     }
 }
 
+impl SseDecode for crate::AlefBridgeErrorWire {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_error = <crate::XbergError>::sse_decode(deserializer);
+                return crate::AlefBridgeErrorWire::XbergError { error: var_error };
+            }
+            1 => {
+                let mut var_error = <crate::HeuristicsError>::sse_decode(deserializer);
+                return crate::AlefBridgeErrorWire::HeuristicsError { error: var_error };
+            }
+            2 => {
+                let mut var_error = <crate::LoadError>::sse_decode(deserializer);
+                return crate::AlefBridgeErrorWire::LoadError { error: var_error };
+            }
+            3 => {
+                let mut var_error = <crate::ResolveError>::sse_decode(deserializer);
+                return crate::AlefBridgeErrorWire::ResolveError { error: var_error };
+            }
+            4 => {
+                let mut var_message = <String>::sse_decode(deserializer);
+                return crate::AlefBridgeErrorWire::InvalidInput { message: var_message };
+            }
+            5 => {
+                let mut var_message = <String>::sse_decode(deserializer);
+                return crate::AlefBridgeErrorWire::NativeFailure { message: var_message };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseDecode for crate::AnnotationKind {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -16321,7 +16408,7 @@ impl SseDecode for crate::AnnotationKind {
             }
             7 => {
                 let mut var_url = <String>::sse_decode(deserializer);
-                let mut var_title = <String>::sse_decode(deserializer);
+                let mut var_title = <Option<String>>::sse_decode(deserializer);
                 return crate::AnnotationKind::Link {
                     url: var_url,
                     title: var_title,
@@ -16340,7 +16427,7 @@ impl SseDecode for crate::AnnotationKind {
             }
             11 => {
                 let mut var_name = <String>::sse_decode(deserializer);
-                let mut var_value = <String>::sse_decode(deserializer);
+                let mut var_value = <Option<String>>::sse_decode(deserializer);
                 return crate::AnnotationKind::Custom {
                     name: var_name,
                     value: var_value,
@@ -16619,6 +16706,9 @@ impl SseDecode for crate::BrowserConfig {
         let mut var_sessionAffinity = <bool>::sse_decode(deserializer);
         let mut var_chromePath = <Option<String>>::sse_decode(deserializer);
         let mut var_chromeArgs = <Vec<String>>::sse_decode(deserializer);
+        let mut var_scrollContainers = <bool>::sse_decode(deserializer);
+        let mut var_domQuietWindow = <i64>::sse_decode(deserializer);
+        let mut var_domQuietCap = <i64>::sse_decode(deserializer);
         return crate::BrowserConfig {
             mode: var_mode,
             backend: var_backend,
@@ -16637,6 +16727,9 @@ impl SseDecode for crate::BrowserConfig {
             session_affinity: var_sessionAffinity,
             chrome_path: var_chromePath,
             chrome_args: var_chromeArgs,
+            scroll_containers: var_scrollContainers,
+            dom_quiet_window: var_domQuietWindow,
+            dom_quiet_cap: var_domQuietCap,
         };
     }
 }
@@ -16894,7 +16987,7 @@ impl SseDecode for crate::ChunkSizing {
             }
             1 => {
                 let mut var_model = <String>::sse_decode(deserializer);
-                let mut var_cacheDir = <String>::sse_decode(deserializer);
+                let mut var_cacheDir = <Option<String>>::sse_decode(deserializer);
                 return crate::ChunkSizing::Tokenizer {
                     model: var_model,
                     cache_dir: var_cacheDir,
@@ -17235,6 +17328,10 @@ impl SseDecode for crate::ContentConfig {
         let mut var_compactTables = <bool>::sse_decode(deserializer);
         let mut var_keepInlineImagesIn = <Vec<String>>::sse_decode(deserializer);
         let mut var_keepHidden = <bool>::sse_decode(deserializer);
+        let mut var_expandAbbreviations = <bool>::sse_decode(deserializer);
+        let mut var_escapeMisc = <bool>::sse_decode(deserializer);
+        let mut var_escapeAsterisks = <bool>::sse_decode(deserializer);
+        let mut var_includeIconLabels = <bool>::sse_decode(deserializer);
         return crate::ContentConfig {
             output_format: var_outputFormat,
             preprocessing_preset: var_preprocessingPreset,
@@ -17256,6 +17353,10 @@ impl SseDecode for crate::ContentConfig {
             compact_tables: var_compactTables,
             keep_inline_images_in: var_keepInlineImagesIn,
             keep_hidden: var_keepHidden,
+            expand_abbreviations: var_expandAbbreviations,
+            escape_misc: var_escapeMisc,
+            escape_asterisks: var_escapeAsterisks,
+            include_icon_labels: var_includeIconLabels,
         };
     }
 }
@@ -17517,6 +17618,8 @@ impl SseDecode for crate::CrawlConfig {
         let mut var_saveBrowserProfile = <bool>::sse_decode(deserializer);
         let mut var_ssrf = <crate::SsrfPolicy>::sse_decode(deserializer);
         let mut var_ssrfDenyPrivateExplicit = <Option<bool>>::sse_decode(deserializer);
+        let mut var_dangerAcceptInvalidCerts = <bool>::sse_decode(deserializer);
+        let mut var_subdomainHeaderAllowlist = <Vec<String>>::sse_decode(deserializer);
         return crate::CrawlConfig {
             max_depth: var_maxDepth,
             max_pages: var_maxPages,
@@ -17573,6 +17676,8 @@ impl SseDecode for crate::CrawlConfig {
             save_browser_profile: var_saveBrowserProfile,
             ssrf: var_ssrf,
             ssrf_deny_private_explicit: var_ssrfDenyPrivateExplicit,
+            danger_accept_invalid_certs: var_dangerAcceptInvalidCerts,
+            subdomain_header_allowlist: var_subdomainHeaderAllowlist,
         };
     }
 }
@@ -17600,7 +17705,7 @@ impl SseDecode for crate::CredentialProviderConfig {
                 let mut var_tenantId = <String>::sse_decode(deserializer);
                 let mut var_clientId = <String>::sse_decode(deserializer);
                 let mut var_clientSecret = <String>::sse_decode(deserializer);
-                let mut var_scope = <String>::sse_decode(deserializer);
+                let mut var_scope = <Option<String>>::sse_decode(deserializer);
                 return crate::CredentialProviderConfig::AzureAd {
                     tenant_id: var_tenantId,
                     client_id: var_clientId,
@@ -17610,21 +17715,21 @@ impl SseDecode for crate::CredentialProviderConfig {
             }
             1 => {
                 let mut var_serviceAccountKeyFile = <String>::sse_decode(deserializer);
-                let mut var_scope = <String>::sse_decode(deserializer);
+                let mut var_scope = <Option<String>>::sse_decode(deserializer);
                 return crate::CredentialProviderConfig::VertexOauth2 {
                     service_account_key_file: var_serviceAccountKeyFile,
                     scope: var_scope,
                 };
             }
             2 => {
-                let mut var_scope = <String>::sse_decode(deserializer);
+                let mut var_scope = <Option<String>>::sse_decode(deserializer);
                 return crate::CredentialProviderConfig::VertexAdc { scope: var_scope };
             }
             3 => {
                 let mut var_roleArn = <String>::sse_decode(deserializer);
                 let mut var_tokenFile = <String>::sse_decode(deserializer);
-                let mut var_sessionName = <String>::sse_decode(deserializer);
-                let mut var_region = <String>::sse_decode(deserializer);
+                let mut var_sessionName = <Option<String>>::sse_decode(deserializer);
+                let mut var_region = <Option<String>>::sse_decode(deserializer);
                 return crate::CredentialProviderConfig::BedrockWebIdentity {
                     role_arn: var_roleArn,
                     token_file: var_tokenFile,
@@ -20061,9 +20166,9 @@ impl SseDecode for crate::LateInteractionModelType {
             }
             1 => {
                 let mut var_modelId = <String>::sse_decode(deserializer);
-                let mut var_modelFile = <String>::sse_decode(deserializer);
+                let mut var_modelFile = <Option<String>>::sse_decode(deserializer);
                 let mut var_additionalFiles = <Vec<String>>::sse_decode(deserializer);
-                let mut var_maxLength = <i64>::sse_decode(deserializer);
+                let mut var_maxLength = <Option<i64>>::sse_decode(deserializer);
                 return crate::LateInteractionModelType::Custom {
                     model_id: var_modelId,
                     model_file: var_modelFile,
@@ -21930,9 +22035,9 @@ impl SseDecode for crate::NodeContent {
                 return crate::NodeContent::Table { grid: var_grid };
             }
             6 => {
-                let mut var_description = <String>::sse_decode(deserializer);
-                let mut var_imageIndex = <i64>::sse_decode(deserializer);
-                let mut var_src = <String>::sse_decode(deserializer);
+                let mut var_description = <Option<String>>::sse_decode(deserializer);
+                let mut var_imageIndex = <Option<i64>>::sse_decode(deserializer);
+                let mut var_src = <Option<String>>::sse_decode(deserializer);
                 return crate::NodeContent::Image {
                     description: var_description,
                     image_index: var_imageIndex,
@@ -21941,7 +22046,7 @@ impl SseDecode for crate::NodeContent {
             }
             7 => {
                 let mut var_text = <String>::sse_decode(deserializer);
-                let mut var_language = <String>::sse_decode(deserializer);
+                let mut var_language = <Option<String>>::sse_decode(deserializer);
                 return crate::NodeContent::Code {
                     text: var_text,
                     language: var_language,
@@ -21963,9 +22068,9 @@ impl SseDecode for crate::NodeContent {
                 return crate::NodeContent::Comment { text: var_text };
             }
             12 => {
-                let mut var_label = <String>::sse_decode(deserializer);
-                let mut var_headingLevel = <i64>::sse_decode(deserializer);
-                let mut var_headingText = <String>::sse_decode(deserializer);
+                let mut var_label = <Option<String>>::sse_decode(deserializer);
+                let mut var_headingLevel = <Option<i64>>::sse_decode(deserializer);
+                let mut var_headingText = <Option<String>>::sse_decode(deserializer);
                 return crate::NodeContent::Group {
                     label: var_label,
                     heading_level: var_headingLevel,
@@ -21977,7 +22082,7 @@ impl SseDecode for crate::NodeContent {
             }
             14 => {
                 let mut var_number = <i64>::sse_decode(deserializer);
-                let mut var_title = <String>::sse_decode(deserializer);
+                let mut var_title = <Option<String>>::sse_decode(deserializer);
                 return crate::NodeContent::Slide {
                     number: var_number,
                     title: var_title,
@@ -22004,7 +22109,7 @@ impl SseDecode for crate::NodeContent {
             }
             18 => {
                 let mut var_kind = <String>::sse_decode(deserializer);
-                let mut var_title = <String>::sse_decode(deserializer);
+                let mut var_title = <Option<String>>::sse_decode(deserializer);
                 return crate::NodeContent::Admonition {
                     kind: var_kind,
                     title: var_title,
@@ -25239,9 +25344,9 @@ impl SseDecode for crate::RerankerModelType {
             }
             1 => {
                 let mut var_modelId = <String>::sse_decode(deserializer);
-                let mut var_modelFile = <String>::sse_decode(deserializer);
+                let mut var_modelFile = <Option<String>>::sse_decode(deserializer);
                 let mut var_additionalFiles = <Vec<String>>::sse_decode(deserializer);
-                let mut var_maxLength = <i64>::sse_decode(deserializer);
+                let mut var_maxLength = <Option<i64>>::sse_decode(deserializer);
                 let mut var_head = <crate::RerankerHead>::sse_decode(deserializer);
                 return crate::RerankerModelType::Custom {
                     model_id: var_modelId,
@@ -25344,7 +25449,7 @@ impl SseDecode for crate::RevisionAnchor {
             }
             4 => {
                 let mut var_index = <i64>::sse_decode(deserializer);
-                let mut var_name = <String>::sse_decode(deserializer);
+                let mut var_name = <Option<String>>::sse_decode(deserializer);
                 return crate::RevisionAnchor::Sheet {
                     index: var_index,
                     name: var_name,
@@ -25507,9 +25612,9 @@ impl SseDecode for crate::SparseEmbeddingModelType {
             }
             1 => {
                 let mut var_modelId = <String>::sse_decode(deserializer);
-                let mut var_modelFile = <String>::sse_decode(deserializer);
+                let mut var_modelFile = <Option<String>>::sse_decode(deserializer);
                 let mut var_additionalFiles = <Vec<String>>::sse_decode(deserializer);
-                let mut var_maxLength = <i64>::sse_decode(deserializer);
+                let mut var_maxLength = <Option<i64>>::sse_decode(deserializer);
                 return crate::SparseEmbeddingModelType::Custom {
                     model_id: var_modelId,
                     model_file: var_modelFile,
@@ -26892,55 +26997,57 @@ fn pde_ffi_dispatcher_primary_impl(
         384 => wire__crate__extract_batch_impl(port, ptr, rust_vec_len, data_len),
         #[cfg(feature = "redaction")]
         385 => wire__crate__extract_with_external_redaction_impl(port, ptr, rust_vec_len, data_len),
+        #[cfg(all(feature = "pdf", feature = "layout-detection"))]
+        386 => wire__crate__extract_with_layout_pages_impl(port, ptr, rust_vec_len, data_len),
         #[cfg(feature = "markdown-footnotes")]
-        386 => wire__crate__find_unmarked_claims_impl(port, ptr, rust_vec_len, data_len),
-        387 => wire__crate__list_document_extractors_impl(port, ptr, rust_vec_len, data_len),
-        388 => wire__crate__list_embedding_backends_impl(port, ptr, rust_vec_len, data_len),
-        389 => wire__crate__list_ocr_backend_capabilities_impl(port, ptr, rust_vec_len, data_len),
-        390 => wire__crate__list_ocr_backend_capabilities_for_impl(port, ptr, rust_vec_len, data_len),
-        391 => wire__crate__list_ocr_backends_impl(port, ptr, rust_vec_len, data_len),
-        392 => wire__crate__list_post_processors_impl(port, ptr, rust_vec_len, data_len),
-        393 => wire__crate__list_renderers_impl(port, ptr, rust_vec_len, data_len),
-        394 => wire__crate__list_reranker_backends_impl(port, ptr, rust_vec_len, data_len),
-        395 => wire__crate__list_supported_formats_impl(port, ptr, rust_vec_len, data_len),
-        396 => wire__crate__list_tokenizer_backends_impl(port, ptr, rust_vec_len, data_len),
-        397 => wire__crate__list_validators_impl(port, ptr, rust_vec_len, data_len),
+        387 => wire__crate__find_unmarked_claims_impl(port, ptr, rust_vec_len, data_len),
+        388 => wire__crate__list_document_extractors_impl(port, ptr, rust_vec_len, data_len),
+        389 => wire__crate__list_embedding_backends_impl(port, ptr, rust_vec_len, data_len),
+        390 => wire__crate__list_ocr_backend_capabilities_impl(port, ptr, rust_vec_len, data_len),
+        391 => wire__crate__list_ocr_backend_capabilities_for_impl(port, ptr, rust_vec_len, data_len),
+        392 => wire__crate__list_ocr_backends_impl(port, ptr, rust_vec_len, data_len),
+        393 => wire__crate__list_post_processors_impl(port, ptr, rust_vec_len, data_len),
+        394 => wire__crate__list_renderers_impl(port, ptr, rust_vec_len, data_len),
+        395 => wire__crate__list_reranker_backends_impl(port, ptr, rust_vec_len, data_len),
+        396 => wire__crate__list_supported_formats_impl(port, ptr, rust_vec_len, data_len),
+        397 => wire__crate__list_tokenizer_backends_impl(port, ptr, rust_vec_len, data_len),
+        398 => wire__crate__list_validators_impl(port, ptr, rust_vec_len, data_len),
         #[cfg(feature = "url-ingestion")]
-        398 => wire__crate__map_url_impl(port, ptr, rust_vec_len, data_len),
+        399 => wire__crate__map_url_impl(port, ptr, rust_vec_len, data_len),
         #[cfg(any(
             any(feature = "late-interaction-presets", feature = "late-interaction"),
             feature = "late-interaction-presets"
         ))]
-        399 => wire__crate__max_sim_rank_impl(port, ptr, rust_vec_len, data_len),
+        400 => wire__crate__max_sim_rank_impl(port, ptr, rust_vec_len, data_len),
         #[cfg(any(
             any(feature = "late-interaction-presets", feature = "late-interaction"),
             feature = "late-interaction-presets"
         ))]
-        400 => wire__crate__max_sim_score_impl(port, ptr, rust_vec_len, data_len),
-        401 => wire__crate__ocr_backend_supports_language_impl(port, ptr, rust_vec_len, data_len),
-        402 => wire__crate__ocr_backend_supports_language_for_impl(port, ptr, rust_vec_len, data_len),
+        401 => wire__crate__max_sim_score_impl(port, ptr, rust_vec_len, data_len),
+        402 => wire__crate__ocr_backend_supports_language_impl(port, ptr, rust_vec_len, data_len),
+        403 => wire__crate__ocr_backend_supports_language_for_impl(port, ptr, rust_vec_len, data_len),
         #[cfg(feature = "pdf")]
-        403 => wire__crate__pdf_page_count_impl(port, ptr, rust_vec_len, data_len),
+        404 => wire__crate__pdf_page_count_impl(port, ptr, rust_vec_len, data_len),
         #[cfg(feature = "redaction")]
-        404 => wire__crate__redact_external_impl(port, ptr, rust_vec_len, data_len),
-        405 => wire__crate__register_document_extractor_impl(port, ptr, rust_vec_len, data_len),
-        406 => wire__crate__register_embedding_backend_impl(port, ptr, rust_vec_len, data_len),
-        407 => wire__crate__register_ocr_backend_impl(port, ptr, rust_vec_len, data_len),
-        408 => wire__crate__register_post_processor_impl(port, ptr, rust_vec_len, data_len),
-        409 => wire__crate__register_renderer_impl(port, ptr, rust_vec_len, data_len),
-        410 => wire__crate__register_reranker_backend_impl(port, ptr, rust_vec_len, data_len),
-        411 => wire__crate__register_tokenizer_backend_impl(port, ptr, rust_vec_len, data_len),
-        412 => wire__crate__register_validator_impl(port, ptr, rust_vec_len, data_len),
-        413 => wire__crate__unregister_document_extractor_impl(port, ptr, rust_vec_len, data_len),
-        414 => wire__crate__unregister_embedding_backend_impl(port, ptr, rust_vec_len, data_len),
-        415 => wire__crate__unregister_ocr_backend_impl(port, ptr, rust_vec_len, data_len),
-        416 => wire__crate__unregister_post_processor_impl(port, ptr, rust_vec_len, data_len),
-        417 => wire__crate__unregister_renderer_impl(port, ptr, rust_vec_len, data_len),
-        418 => wire__crate__unregister_reranker_backend_impl(port, ptr, rust_vec_len, data_len),
-        419 => wire__crate__unregister_tokenizer_backend_impl(port, ptr, rust_vec_len, data_len),
-        420 => wire__crate__unregister_validator_impl(port, ptr, rust_vec_len, data_len),
+        405 => wire__crate__redact_external_impl(port, ptr, rust_vec_len, data_len),
+        406 => wire__crate__register_document_extractor_impl(port, ptr, rust_vec_len, data_len),
+        407 => wire__crate__register_embedding_backend_impl(port, ptr, rust_vec_len, data_len),
+        408 => wire__crate__register_ocr_backend_impl(port, ptr, rust_vec_len, data_len),
+        409 => wire__crate__register_post_processor_impl(port, ptr, rust_vec_len, data_len),
+        410 => wire__crate__register_renderer_impl(port, ptr, rust_vec_len, data_len),
+        411 => wire__crate__register_reranker_backend_impl(port, ptr, rust_vec_len, data_len),
+        412 => wire__crate__register_tokenizer_backend_impl(port, ptr, rust_vec_len, data_len),
+        413 => wire__crate__register_validator_impl(port, ptr, rust_vec_len, data_len),
+        414 => wire__crate__unregister_document_extractor_impl(port, ptr, rust_vec_len, data_len),
+        415 => wire__crate__unregister_embedding_backend_impl(port, ptr, rust_vec_len, data_len),
+        416 => wire__crate__unregister_ocr_backend_impl(port, ptr, rust_vec_len, data_len),
+        417 => wire__crate__unregister_post_processor_impl(port, ptr, rust_vec_len, data_len),
+        418 => wire__crate__unregister_renderer_impl(port, ptr, rust_vec_len, data_len),
+        419 => wire__crate__unregister_reranker_backend_impl(port, ptr, rust_vec_len, data_len),
+        420 => wire__crate__unregister_tokenizer_backend_impl(port, ptr, rust_vec_len, data_len),
+        421 => wire__crate__unregister_validator_impl(port, ptr, rust_vec_len, data_len),
         #[cfg(feature = "markdown-footnotes")]
-        421 => wire__crate__verify_excerpt_impl(port, ptr, rust_vec_len, data_len),
+        422 => wire__crate__verify_excerpt_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -27270,6 +27377,18 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<ValidatorDartImpl>> for Valida
 }
 
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<AlefBridgeError> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        crate::alef_encode_bridge_error(self.0).into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<AlefBridgeError> {}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<AlefBridgeError>> for AlefBridgeError {
+    fn into_into_dart(self) -> FrbWrapper<AlefBridgeError> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::AccelerationConfig> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -27283,6 +27402,40 @@ impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<
 impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::AccelerationConfig>> for crate::AccelerationConfig {
     fn into_into_dart(self) -> FrbWrapper<crate::AccelerationConfig> {
         self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::AlefBridgeErrorWire {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::AlefBridgeErrorWire::XbergError { error } => {
+                [0.into_dart(), error.into_into_dart().into_dart()].into_dart()
+            }
+            crate::AlefBridgeErrorWire::HeuristicsError { error } => {
+                [1.into_dart(), error.into_into_dart().into_dart()].into_dart()
+            }
+            crate::AlefBridgeErrorWire::LoadError { error } => {
+                [2.into_dart(), error.into_into_dart().into_dart()].into_dart()
+            }
+            crate::AlefBridgeErrorWire::ResolveError { error } => {
+                [3.into_dart(), error.into_into_dart().into_dart()].into_dart()
+            }
+            crate::AlefBridgeErrorWire::InvalidInput { message } => {
+                [4.into_dart(), message.into_into_dart().into_dart()].into_dart()
+            }
+            crate::AlefBridgeErrorWire::NativeFailure { message } => {
+                [5.into_dart(), message.into_into_dart().into_dart()].into_dart()
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::AlefBridgeErrorWire {}
+impl flutter_rust_bridge::IntoIntoDart<crate::AlefBridgeErrorWire> for crate::AlefBridgeErrorWire {
+    fn into_into_dart(self) -> crate::AlefBridgeErrorWire {
+        self
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
@@ -27611,6 +27764,9 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::BrowserConfig> {
             self.0.session_affinity.into_into_dart().into_dart(),
             self.0.chrome_path.into_into_dart().into_dart(),
             self.0.chrome_args.into_into_dart().into_dart(),
+            self.0.scroll_containers.into_into_dart().into_dart(),
+            self.0.dom_quiet_window.into_into_dart().into_dart(),
+            self.0.dom_quiet_cap.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -28281,6 +28437,10 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::ContentConfig> {
             self.0.compact_tables.into_into_dart().into_dart(),
             self.0.keep_inline_images_in.into_into_dart().into_dart(),
             self.0.keep_hidden.into_into_dart().into_dart(),
+            self.0.expand_abbreviations.into_into_dart().into_dart(),
+            self.0.escape_misc.into_into_dart().into_dart(),
+            self.0.escape_asterisks.into_into_dart().into_dart(),
+            self.0.include_icon_labels.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -28510,6 +28670,8 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::CrawlConfig> {
             self.0.save_browser_profile.into_into_dart().into_dart(),
             self.0.ssrf.into_into_dart().into_dart(),
             self.0.ssrf_deny_private_explicit.into_into_dart().into_dart(),
+            self.0.danger_accept_invalid_certs.into_into_dart().into_dart(),
+            self.0.subdomain_header_allowlist.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -34868,6 +35030,13 @@ impl SseEncode for ValidatorDartImpl {
     }
 }
 
+impl SseEncode for AlefBridgeError {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::AlefBridgeErrorWire>::sse_encode(crate::alef_encode_bridge_error(self), serializer);
+    }
+}
+
 impl SseEncode for flutter_rust_bridge::DartOpaque {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -35112,6 +35281,41 @@ impl SseEncode for crate::AccelerationConfig {
     }
 }
 
+impl SseEncode for crate::AlefBridgeErrorWire {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::AlefBridgeErrorWire::XbergError { error } => {
+                <i32>::sse_encode(0, serializer);
+                <crate::XbergError>::sse_encode(error, serializer);
+            }
+            crate::AlefBridgeErrorWire::HeuristicsError { error } => {
+                <i32>::sse_encode(1, serializer);
+                <crate::HeuristicsError>::sse_encode(error, serializer);
+            }
+            crate::AlefBridgeErrorWire::LoadError { error } => {
+                <i32>::sse_encode(2, serializer);
+                <crate::LoadError>::sse_encode(error, serializer);
+            }
+            crate::AlefBridgeErrorWire::ResolveError { error } => {
+                <i32>::sse_encode(3, serializer);
+                <crate::ResolveError>::sse_encode(error, serializer);
+            }
+            crate::AlefBridgeErrorWire::InvalidInput { message } => {
+                <i32>::sse_encode(4, serializer);
+                <String>::sse_encode(message, serializer);
+            }
+            crate::AlefBridgeErrorWire::NativeFailure { message } => {
+                <i32>::sse_encode(5, serializer);
+                <String>::sse_encode(message, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseEncode for crate::AnnotationKind {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -35140,7 +35344,7 @@ impl SseEncode for crate::AnnotationKind {
             crate::AnnotationKind::Link { url, title } => {
                 <i32>::sse_encode(7, serializer);
                 <String>::sse_encode(url, serializer);
-                <String>::sse_encode(title, serializer);
+                <Option<String>>::sse_encode(title, serializer);
             }
             crate::AnnotationKind::Highlight => {
                 <i32>::sse_encode(8, serializer);
@@ -35156,7 +35360,7 @@ impl SseEncode for crate::AnnotationKind {
             crate::AnnotationKind::Custom { name, value } => {
                 <i32>::sse_encode(11, serializer);
                 <String>::sse_encode(name, serializer);
-                <String>::sse_encode(value, serializer);
+                <Option<String>>::sse_encode(value, serializer);
             }
             _ => {
                 unimplemented!("");
@@ -35389,6 +35593,9 @@ impl SseEncode for crate::BrowserConfig {
         <bool>::sse_encode(self.session_affinity, serializer);
         <Option<String>>::sse_encode(self.chrome_path, serializer);
         <Vec<String>>::sse_encode(self.chrome_args, serializer);
+        <bool>::sse_encode(self.scroll_containers, serializer);
+        <i64>::sse_encode(self.dom_quiet_window, serializer);
+        <i64>::sse_encode(self.dom_quiet_cap, serializer);
     }
 }
 
@@ -35615,7 +35822,7 @@ impl SseEncode for crate::ChunkSizing {
             crate::ChunkSizing::Tokenizer { model, cache_dir } => {
                 <i32>::sse_encode(1, serializer);
                 <String>::sse_encode(model, serializer);
-                <String>::sse_encode(cache_dir, serializer);
+                <Option<String>>::sse_encode(cache_dir, serializer);
             }
             _ => {
                 unimplemented!("");
@@ -35898,6 +36105,10 @@ impl SseEncode for crate::ContentConfig {
         <bool>::sse_encode(self.compact_tables, serializer);
         <Vec<String>>::sse_encode(self.keep_inline_images_in, serializer);
         <bool>::sse_encode(self.keep_hidden, serializer);
+        <bool>::sse_encode(self.expand_abbreviations, serializer);
+        <bool>::sse_encode(self.escape_misc, serializer);
+        <bool>::sse_encode(self.escape_asterisks, serializer);
+        <bool>::sse_encode(self.include_icon_labels, serializer);
     }
 }
 
@@ -36087,6 +36298,8 @@ impl SseEncode for crate::CrawlConfig {
         <bool>::sse_encode(self.save_browser_profile, serializer);
         <crate::SsrfPolicy>::sse_encode(self.ssrf, serializer);
         <Option<bool>>::sse_encode(self.ssrf_deny_private_explicit, serializer);
+        <bool>::sse_encode(self.danger_accept_invalid_certs, serializer);
+        <Vec<String>>::sse_encode(self.subdomain_header_allowlist, serializer);
     }
 }
 
@@ -36122,7 +36335,7 @@ impl SseEncode for crate::CredentialProviderConfig {
                 <String>::sse_encode(tenant_id, serializer);
                 <String>::sse_encode(client_id, serializer);
                 <String>::sse_encode(client_secret, serializer);
-                <String>::sse_encode(scope, serializer);
+                <Option<String>>::sse_encode(scope, serializer);
             }
             crate::CredentialProviderConfig::VertexOauth2 {
                 service_account_key_file,
@@ -36130,11 +36343,11 @@ impl SseEncode for crate::CredentialProviderConfig {
             } => {
                 <i32>::sse_encode(1, serializer);
                 <String>::sse_encode(service_account_key_file, serializer);
-                <String>::sse_encode(scope, serializer);
+                <Option<String>>::sse_encode(scope, serializer);
             }
             crate::CredentialProviderConfig::VertexAdc { scope } => {
                 <i32>::sse_encode(2, serializer);
-                <String>::sse_encode(scope, serializer);
+                <Option<String>>::sse_encode(scope, serializer);
             }
             crate::CredentialProviderConfig::BedrockWebIdentity {
                 role_arn,
@@ -36145,8 +36358,8 @@ impl SseEncode for crate::CredentialProviderConfig {
                 <i32>::sse_encode(3, serializer);
                 <String>::sse_encode(role_arn, serializer);
                 <String>::sse_encode(token_file, serializer);
-                <String>::sse_encode(session_name, serializer);
-                <String>::sse_encode(region, serializer);
+                <Option<String>>::sse_encode(session_name, serializer);
+                <Option<String>>::sse_encode(region, serializer);
             }
             _ => {
                 unimplemented!("");
@@ -37934,9 +38147,9 @@ impl SseEncode for crate::LateInteractionModelType {
             } => {
                 <i32>::sse_encode(1, serializer);
                 <String>::sse_encode(model_id, serializer);
-                <String>::sse_encode(model_file, serializer);
+                <Option<String>>::sse_encode(model_file, serializer);
                 <Vec<String>>::sse_encode(additional_files, serializer);
-                <i64>::sse_encode(max_length, serializer);
+                <Option<i64>>::sse_encode(max_length, serializer);
             }
             crate::LateInteractionModelType::Plugin { name } => {
                 <i32>::sse_encode(2, serializer);
@@ -39471,14 +39684,14 @@ impl SseEncode for crate::NodeContent {
                 src,
             } => {
                 <i32>::sse_encode(6, serializer);
-                <String>::sse_encode(description, serializer);
-                <i64>::sse_encode(image_index, serializer);
-                <String>::sse_encode(src, serializer);
+                <Option<String>>::sse_encode(description, serializer);
+                <Option<i64>>::sse_encode(image_index, serializer);
+                <Option<String>>::sse_encode(src, serializer);
             }
             crate::NodeContent::Code { text, language } => {
                 <i32>::sse_encode(7, serializer);
                 <String>::sse_encode(text, serializer);
-                <String>::sse_encode(language, serializer);
+                <Option<String>>::sse_encode(language, serializer);
             }
             crate::NodeContent::Quote => {
                 <i32>::sse_encode(8, serializer);
@@ -39501,9 +39714,9 @@ impl SseEncode for crate::NodeContent {
                 heading_text,
             } => {
                 <i32>::sse_encode(12, serializer);
-                <String>::sse_encode(label, serializer);
-                <i64>::sse_encode(heading_level, serializer);
-                <String>::sse_encode(heading_text, serializer);
+                <Option<String>>::sse_encode(label, serializer);
+                <Option<i64>>::sse_encode(heading_level, serializer);
+                <Option<String>>::sse_encode(heading_text, serializer);
             }
             crate::NodeContent::PageBreak => {
                 <i32>::sse_encode(13, serializer);
@@ -39511,7 +39724,7 @@ impl SseEncode for crate::NodeContent {
             crate::NodeContent::Slide { number, title } => {
                 <i32>::sse_encode(14, serializer);
                 <i64>::sse_encode(number, serializer);
-                <String>::sse_encode(title, serializer);
+                <Option<String>>::sse_encode(title, serializer);
             }
             crate::NodeContent::DefinitionList => {
                 <i32>::sse_encode(15, serializer);
@@ -39529,7 +39742,7 @@ impl SseEncode for crate::NodeContent {
             crate::NodeContent::Admonition { kind, title } => {
                 <i32>::sse_encode(18, serializer);
                 <String>::sse_encode(kind, serializer);
-                <String>::sse_encode(title, serializer);
+                <Option<String>>::sse_encode(title, serializer);
             }
             crate::NodeContent::RawBlock { format, content } => {
                 <i32>::sse_encode(19, serializer);
@@ -42225,9 +42438,9 @@ impl SseEncode for crate::RerankerModelType {
             } => {
                 <i32>::sse_encode(1, serializer);
                 <String>::sse_encode(model_id, serializer);
-                <String>::sse_encode(model_file, serializer);
+                <Option<String>>::sse_encode(model_file, serializer);
                 <Vec<String>>::sse_encode(additional_files, serializer);
-                <i64>::sse_encode(max_length, serializer);
+                <Option<i64>>::sse_encode(max_length, serializer);
                 <crate::RerankerHead>::sse_encode(head, serializer);
             }
             crate::RerankerModelType::Llm { llm } => {
@@ -42316,7 +42529,7 @@ impl SseEncode for crate::RevisionAnchor {
             crate::RevisionAnchor::Sheet { index, name } => {
                 <i32>::sse_encode(4, serializer);
                 <i64>::sse_encode(index, serializer);
-                <String>::sse_encode(name, serializer);
+                <Option<String>>::sse_encode(name, serializer);
             }
             _ => {
                 unimplemented!("");
@@ -42444,9 +42657,9 @@ impl SseEncode for crate::SparseEmbeddingModelType {
             } => {
                 <i32>::sse_encode(1, serializer);
                 <String>::sse_encode(model_id, serializer);
-                <String>::sse_encode(model_file, serializer);
+                <Option<String>>::sse_encode(model_file, serializer);
                 <Vec<String>>::sse_encode(additional_files, serializer);
-                <i64>::sse_encode(max_length, serializer);
+                <Option<i64>>::sse_encode(max_length, serializer);
             }
             crate::SparseEmbeddingModelType::Plugin { name } => {
                 <i32>::sse_encode(2, serializer);

@@ -1210,3 +1210,5 @@ module.exports.JsWhisperModel = nativeBinding.JsWhisperModel;
 module.exports.WhitespaceMode = nativeBinding.WhitespaceMode;
 module.exports.JsWhitespaceMode = nativeBinding.JsWhitespaceMode;
 module.exports.yakeParamsDefault = nativeBinding.yakeParamsDefault;
+
+module.exports = require("./binding.cjs")(nativeBinding);

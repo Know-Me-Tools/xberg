@@ -328,6 +328,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  Object
+  dco_decode_CustomSerializer_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAlefBridgeError(
+    dynamic raw,
+  );
+
+  @protected
   FutureOr<bool> Function(String)
   dco_decode_DartFn_Inputs_String_Output_bool_AnyhowException(dynamic raw);
 
@@ -584,6 +590,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AccelerationConfig dco_decode_acceleration_config(dynamic raw);
 
   @protected
+  AlefBridgeErrorWire dco_decode_alef_bridge_error_wire(dynamic raw);
+
+  @protected
   AnnotationKind dco_decode_annotation_kind(dynamic raw);
 
   @protected
@@ -801,6 +810,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   HeadingContext dco_decode_box_autoadd_heading_context(dynamic raw);
 
   @protected
+  HeuristicsError dco_decode_box_autoadd_heuristics_error(dynamic raw);
+
+  @protected
   HierarchicalBoundingBox dco_decode_box_autoadd_hierarchical_bounding_box(
     dynamic raw,
   );
@@ -872,6 +884,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LlmRateLimitConfig dco_decode_box_autoadd_llm_rate_limit_config(dynamic raw);
+
+  @protected
+  LoadError dco_decode_box_autoadd_load_error(dynamic raw);
 
   @protected
   MimeDetectionPolicy dco_decode_box_autoadd_mime_detection_policy(dynamic raw);
@@ -1045,6 +1060,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UserChunkConfig dco_decode_box_autoadd_user_chunk_config(dynamic raw);
+
+  @protected
+  XbergError dco_decode_box_autoadd_xberg_error(dynamic raw);
 
   @protected
   XmlMetadata dco_decode_box_autoadd_xml_metadata(dynamic raw);
@@ -3160,6 +3178,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  Object
+  sse_decode_CustomSerializer_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAlefBridgeError(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   Object sse_decode_DartOpaque(SseDeserializer deserializer);
 
   @protected
@@ -3306,6 +3330,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AccelerationConfig sse_decode_acceleration_config(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AlefBridgeErrorWire sse_decode_alef_bridge_error_wire(
     SseDeserializer deserializer,
   );
 
@@ -3597,6 +3626,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  HeuristicsError sse_decode_box_autoadd_heuristics_error(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   HierarchicalBoundingBox sse_decode_box_autoadd_hierarchical_bounding_box(
     SseDeserializer deserializer,
   );
@@ -3690,6 +3724,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LlmRateLimitConfig sse_decode_box_autoadd_llm_rate_limit_config(
     SseDeserializer deserializer,
   );
+
+  @protected
+  LoadError sse_decode_box_autoadd_load_error(SseDeserializer deserializer);
 
   @protected
   MimeDetectionPolicy sse_decode_box_autoadd_mime_detection_policy(
@@ -3923,6 +3960,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UserChunkConfig sse_decode_box_autoadd_user_chunk_config(
     SseDeserializer deserializer,
   );
+
+  @protected
+  XbergError sse_decode_box_autoadd_xberg_error(SseDeserializer deserializer);
 
   @protected
   XmlMetadata sse_decode_box_autoadd_xml_metadata(SseDeserializer deserializer);
@@ -6545,6 +6585,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void
+  sse_encode_CustomSerializer_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAlefBridgeError(
+    Object self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_DartFn_Inputs_String_Output_bool_AnyhowException(
     FutureOr<bool> Function(String) self,
     SseSerializer serializer,
@@ -6851,6 +6898,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_acceleration_config(
     AccelerationConfig self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_alef_bridge_error_wire(
+    AlefBridgeErrorWire self,
     SseSerializer serializer,
   );
 
@@ -7221,6 +7274,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_heuristics_error(
+    HeuristicsError self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_hierarchical_bounding_box(
     HierarchicalBoundingBox self,
     SseSerializer serializer,
@@ -7337,6 +7396,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_llm_rate_limit_config(
     LlmRateLimitConfig self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_load_error(
+    LoadError self,
     SseSerializer serializer,
   );
 
@@ -7646,6 +7711,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_user_chunk_config(
     UserChunkConfig self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_xberg_error(
+    XbergError self,
     SseSerializer serializer,
   );
 

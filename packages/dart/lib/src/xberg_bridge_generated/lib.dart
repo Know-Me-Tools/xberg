@@ -10,13 +10,29 @@ part 'lib.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `try_convert_annotation_kind_from_core`, `try_convert_asset_category_from_core`, `try_convert_auth_config_from_core`, `try_convert_block_type_from_core`, `try_convert_boundary_reason_from_core`, `try_convert_browser_backend_from_core`, `try_convert_browser_mode_from_core`, `try_convert_browser_wait_from_core`, `try_convert_call_mode_from_core`, `try_convert_candle_deepseek_ocr_dtype_from_core`, `try_convert_candle_device_preference_from_core`, `try_convert_candle_trocr_variant_from_core`, `try_convert_caption_alt_text_mode_from_core`, `try_convert_chunk_sizing_from_core`, `try_convert_chunk_type_from_core`, `try_convert_chunker_type_from_core`, `try_convert_chunking_reason_from_core`, `try_convert_code_content_mode_from_core`, `try_convert_code_data_node_kind_from_core`, `try_convert_confidence_semantics_from_core`, `try_convert_content_filter_kind_from_core`, `try_convert_content_layer_from_core`, `try_convert_crawl_strategy_kind_from_core`, `try_convert_credential_provider_config_from_core`, `try_convert_diff_line_from_core`, `try_convert_document_content_encoding_from_core`, `try_convert_element_type_from_core`, `try_convert_embedding_model_type_from_core`, `try_convert_embeddings_embedding_backend_from_core`, `try_convert_entity_category_from_core`, `try_convert_execution_provider_type_from_core`, `try_convert_extract_input_kind_from_core`, `try_convert_extraction_method_from_core`, `try_convert_form_field_type_from_core`, `try_convert_format_metadata_from_core`, `try_convert_formula_model_from_core`, `try_convert_glm_ocr_layout_mode_from_core`, `try_convert_glm_ocr_task_kind_from_core`, `try_convert_host_matcher_from_core`, `try_convert_html_theme_from_core`, `try_convert_image_kind_from_core`, `try_convert_image_output_format_from_core`, `try_convert_image_type_from_core`, `try_convert_inline_type_from_core`, `try_convert_jupyter_cell_rendering_from_core`, `try_convert_keyword_algorithm_from_core`, `try_convert_late_interaction_model_type_from_core`, `try_convert_layout_class_from_core`, `try_convert_layout_strategy_from_core`, `try_convert_link_type_from_core`, `try_convert_merge_mode_from_core`, `try_convert_mime_detection_policy_from_core`, `try_convert_ner_backend_kind_from_core`, `try_convert_no_chunking_reason_from_core`, `try_convert_node_content_from_core`, `try_convert_ocr_backend_type_from_core`, `try_convert_ocr_bounding_geometry_from_core`, `try_convert_ocr_element_level_from_core`, `try_convert_ocr_strategy_from_core`, `try_convert_output_format_from_core`, `try_convert_paddle_inference_backend_from_core`, `try_convert_paddle_language_from_core`, `try_convert_paddle_ocr_vl_task_kind_from_core`, `try_convert_page_orientation_handling_from_core`, `try_convert_page_unit_type_from_core`, `try_convert_pdf_annotation_type_from_core`, `try_convert_pdf_backend_from_core`, `try_convert_pii_category_from_core`, `try_convert_preset_category_from_core`, `try_convert_probe_status_from_core`, `try_convert_processing_stage_from_core`, `try_convert_psm_mode_from_core`, `try_convert_redaction_offset_encoding_from_core`, `try_convert_redaction_strategy_from_core`, `try_convert_reduction_level_from_core`, `try_convert_region_kind_from_core`, `try_convert_relationship_kind_from_core`, `try_convert_reranker_head_from_core`, `try_convert_reranker_model_type_from_core`, `try_convert_result_format_from_core`, `try_convert_revision_anchor_from_core`, `try_convert_revision_kind_from_core`, `try_convert_schema_compliance_from_core`, `try_convert_sparse_embedding_model_type_from_core`, `try_convert_structured_data_type_from_core`, `try_convert_summary_strategy_from_core`, `try_convert_table_chunking_mode_from_core`, `try_convert_table_model_from_core`, `try_convert_table_overlap_preference_from_core`, `try_convert_text_direction_from_core`, `try_convert_tier_strategy_from_core`, `try_convert_uri_kind_from_core`, `try_convert_url_extraction_mode_from_core`, `try_convert_vlm_fallback_policy_from_core`, `try_convert_whisper_model_from_core`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ChunkClassificationEnrichmentConfig`, `DocumentExtractorDartCallbacks`, `EmbeddingBackendDartCallbacks`, `OcrBackendDartCallbacks`, `PostProcessorDartCallbacks`, `RendererDartCallbacks`, `RerankerBackendDartCallbacks`, `TokenizerBackendDartCallbacks`, `ValidatorDartCallbacks`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `backend_type`, `can_handle`, `confidence_semantics`, `count_tokens`, `dimensions`, `embed`, `emits_structured_markdown`, `estimated_duration_ms`, `extract`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `name`, `name`, `name`, `name`, `name`, `name`, `name`, `name`, `page_orientation_handling`, `priority`, `priority`, `priority`, `process_document`, `process_image_file`, `process_image`, `process`, `processing_stage`, `render_result`, `rerank`, `should_process`, `should_validate`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `supported_languages_for`, `supported_languages`, `supported_mime_types`, `supports_document_processing`, `supports_language_for`, `supports_language`, `supports_table_detection`, `validate`, `version`, `version`, `version`, `version`, `version`, `version`, `version`, `version`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `backend_type`, `can_handle`, `confidence_semantics`, `count_tokens`, `dimensions`, `embed`, `emits_structured_markdown`, `estimated_duration_ms`, `extract`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `name`, `name`, `name`, `name`, `name`, `name`, `name`, `name`, `page_orientation_handling`, `priority`, `priority`, `priority`, `process_document`, `process_image_file`, `process_image`, `process`, `processing_stage`, `render_result`, `rerank`, `should_process`, `should_validate`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `shutdown`, `supported_languages_for`, `supported_languages`, `supported_mime_types`, `supports_document_processing`, `supports_language_for`, `supports_language`, `supports_table_detection`, `try_from`, `try_from`, `try_from`, `try_from`, `validate`, `version`, `version`, `version`, `version`, `version`, `version`, `version`, `version`
 
 /// Extract content from a single bytes or URI input.
 Future<ExtractionResult> extract({
   required ExtractInput input,
   required ExtractionConfig config,
 }) => RustLib.instance.api.crateExtract(input: input, config: config);
+
+/// Extract one PDF bytes input with layout inference restricted to explicit 1-based pages.
+///
+/// This call enables layout on the native PDF route even when ordinary extraction leaves it disabled.
+/// Selected pages override the automatic layout gate; an empty list skips layout inference.
+/// Invalid pages are ignored with processing warnings. Both extraction caches are bypassed.
+/// This additive entry point leaves existing extraction configuration structs unchanged.
+Future<ExtractionResult> extractWithLayoutPages({
+  required ExtractInput input,
+  required ExtractionConfig config,
+  required Int64List pages,
+}) => RustLib.instance.api.crateExtractWithLayoutPages(
+  input: input,
+  config: config,
+  pages: pages,
+);
 
 /// Extract one bytes input and redact a JSON array or JSON Lines payload from an external inspection engine.
 ///
@@ -2012,6 +2028,26 @@ class AccelerationConfig {
 }
 
 @freezed
+sealed class AlefBridgeErrorWire with _$AlefBridgeErrorWire {
+  const AlefBridgeErrorWire._();
+
+  const factory AlefBridgeErrorWire.xbergError({required XbergError error}) =
+      AlefBridgeErrorWire_XbergError;
+  const factory AlefBridgeErrorWire.heuristicsError({
+    required HeuristicsError error,
+  }) = AlefBridgeErrorWire_HeuristicsError;
+  const factory AlefBridgeErrorWire.loadError({required LoadError error}) =
+      AlefBridgeErrorWire_LoadError;
+  const factory AlefBridgeErrorWire.resolveError({
+    required ResolveError error,
+  }) = AlefBridgeErrorWire_ResolveError;
+  const factory AlefBridgeErrorWire.invalidInput({required String message}) =
+      AlefBridgeErrorWire_InvalidInput;
+  const factory AlefBridgeErrorWire.nativeFailure({required String message}) =
+      AlefBridgeErrorWire_NativeFailure;
+}
+
+@freezed
 sealed class AnnotationKind with _$AnnotationKind {
   const AnnotationKind._();
 
@@ -2042,7 +2078,7 @@ sealed class AnnotationKind with _$AnnotationKind {
     required String url,
 
     /// Optional link title attribute.
-    required String title,
+    String? title,
   }) = AnnotationKind_Link;
 
   /// Highlighted text (PDF highlights, HTML `<mark>`).
@@ -2066,7 +2102,7 @@ sealed class AnnotationKind with _$AnnotationKind {
     required String name,
 
     /// Optional value or parameter for the annotation.
-    required String value,
+    String? value,
   }) = AnnotationKind_Custom;
 }
 
@@ -2595,6 +2631,12 @@ class BrowserConfig {
   final String? waitSelector;
 
   /// Extra time to wait after the wait condition is met.
+  ///
+  /// The default `network_idle` wait returns once the page has loaded and its DOM has been
+  /// unchanged for `dom_quiet_window` (at most `dom_quiet_cap`, and never past `timeout`, counted
+  /// from the start of the navigation). An app that draws after a longer quiet period needs
+  /// a larger `dom_quiet_window` or `extra_wait`; for
+  /// example `3000` waits three more seconds.
   final PlatformInt64? extraWait;
 
   /// Proxy for browser fetches. Overrides `CrawlConfig.proxy` when set.
@@ -2647,6 +2689,39 @@ class BrowserConfig {
   /// shared browser pool.
   final List<String> chromeArgs;
 
+  /// Scroll overflowing scroll containers (not only the window) and keep the items that a
+  /// virtualised list mounts as they pass through view, so the page that is read holds items
+  /// beyond the first screen. Default: `false`.
+  ///
+  /// Runs once after the page is ready and `extra_wait` has elapsed, bounded to 8 containers,
+  /// 200 steps and 5 seconds in total. Each container is scrolled by 80% of its height per step
+  /// and the items of its most repetitive child list are collected, keyed by `id`, `data-index`,
+  /// `data-key`, `data-id`, `aria-posinset` or `aria-rowindex` when present and otherwise by
+  /// text when it is unique among the rendered items, else by position and text. Only
+  /// containers whose child list repeats an element are considered, most repetitive first. The list is rewritten, in position order, only when items were unmounted
+  /// while scrolling and items beyond the first screen were seen; a list that keeps all its
+  /// items mounted is left as it is. Best effort: it does not follow lists that load data over
+  /// the network slower than about 100 ms per step, does not reach lists inside iframes or
+  /// shadow roots, and a rewrite replaces the element children of the list. Lists that recycle
+  /// their DOM nodes (reusing the same elements with new content) are not collected, and
+  /// scrolling can trigger infinite-scroll load-more requests. When the step, item or time
+  /// budget stops the scroll, the items collected so far are kept and a warning is logged.
+  /// Chromiumoxide backend only.
+  final bool scrollContainers;
+
+  /// How long the DOM must stay unchanged after page load for `network_idle` to return,
+  /// in milliseconds when serialized. Default: 150 ms. Every mutation restarts this window;
+  /// the whole wait stays bounded to `dom_quiet_cap` and the remaining navigation timeout.
+  /// A page whose first delayed render follows a longer quiet gap needs a larger value
+  /// or `extra_wait`. Chromiumoxide backend only.
+  final PlatformInt64 domQuietWindow;
+
+  /// Maximum time spent waiting for DOM quiet after page load, in milliseconds when serialized.
+  /// Default: 4000 ms. Lower this for pages with continuous mutations; zero skips the quiet wait.
+  /// The remaining navigation timeout also bounds this wait, independently of the quiet window.
+  /// Chromiumoxide backend only.
+  final PlatformInt64 domQuietCap;
+
   const BrowserConfig({
     required this.mode,
     required this.backend,
@@ -2665,6 +2740,9 @@ class BrowserConfig {
     required this.sessionAffinity,
     this.chromePath,
     required this.chromeArgs,
+    this.scrollContainers = false,
+    this.domQuietWindow = 150,
+    this.domQuietCap = 4000,
   });
 
   @override
@@ -2685,7 +2763,10 @@ class BrowserConfig {
       captureNetworkEvents.hashCode ^
       sessionAffinity.hashCode ^
       chromePath.hashCode ^
-      chromeArgs.hashCode;
+      chromeArgs.hashCode ^
+      scrollContainers.hashCode ^
+      domQuietWindow.hashCode ^
+      domQuietCap.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -2708,7 +2789,10 @@ class BrowserConfig {
           captureNetworkEvents == other.captureNetworkEvents &&
           sessionAffinity == other.sessionAffinity &&
           chromePath == other.chromePath &&
-          chromeArgs == other.chromeArgs;
+          chromeArgs == other.chromeArgs &&
+          scrollContainers == other.scrollContainers &&
+          domQuietWindow == other.domQuietWindow &&
+          domQuietCap == other.domQuietCap;
 }
 
 /// When to use the headless browser fallback.
@@ -3271,7 +3355,7 @@ sealed class ChunkSizing with _$ChunkSizing {
     /// Optional cache directory override for tokenizer files.
     /// Defaults to hf-hub's standard cache (`~/.cache/huggingface/`).
     /// Can also be set via `XBERG_TOKENIZER_CACHE_DIR` environment variable.
-    required String cacheDir,
+    String? cacheDir,
   }) = ChunkSizing_Tokenizer;
 }
 
@@ -4031,7 +4115,9 @@ class ContentConfig {
   /// Skip image elements in output. Default: `false`.
   final bool skipImages;
 
-  /// Max DOM traversal depth. Prevents stack overflow on deeply nested HTML.
+  /// Max DOM traversal depth. Prevents stack overflow on deeply nested HTML. Content nested
+  /// deeper is dropped and reported as a `DepthLimitExceeded` warning. `None` means 1024 in
+  /// crawlberg, not the converter's own default of 64.
   final PlatformInt64? maxDepth;
 
   /// Enable line wrapping. Default: `false`.
@@ -4074,6 +4160,18 @@ class ContentConfig {
   /// Scripts and styles remain excluded; explicit exclusions and image settings still apply.
   final bool keepHidden;
 
+  /// Append abbreviation titles in parentheses. Default: `true`.
+  final bool expandAbbreviations;
+
+  /// Escape literal Markdown metacharacters such as backticks and brackets. Default: `false`.
+  final bool escapeMisc;
+
+  /// Escape literal asterisks in text. Default: `false`.
+  final bool escapeAsterisks;
+
+  /// Include names and anchor tooltips of decorative linked SVG icons. Default: `true`.
+  final bool includeIconLabels;
+
   const ContentConfig({
     required this.outputFormat,
     required this.preprocessingPreset,
@@ -4095,6 +4193,10 @@ class ContentConfig {
     this.compactTables = false,
     this.keepInlineImagesIn = const [],
     this.keepHidden = false,
+    this.expandAbbreviations = true,
+    this.escapeMisc = false,
+    this.escapeAsterisks = false,
+    this.includeIconLabels = true,
   });
 
   @override
@@ -4118,7 +4220,11 @@ class ContentConfig {
       strongEmSymbol.hashCode ^
       compactTables.hashCode ^
       keepInlineImagesIn.hashCode ^
-      keepHidden.hashCode;
+      keepHidden.hashCode ^
+      expandAbbreviations.hashCode ^
+      escapeMisc.hashCode ^
+      escapeAsterisks.hashCode ^
+      includeIconLabels.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -4144,7 +4250,11 @@ class ContentConfig {
           strongEmSymbol == other.strongEmSymbol &&
           compactTables == other.compactTables &&
           keepInlineImagesIn == other.keepInlineImagesIn &&
-          keepHidden == other.keepHidden;
+          keepHidden == other.keepHidden &&
+          expandAbbreviations == other.expandAbbreviations &&
+          escapeMisc == other.escapeMisc &&
+          escapeAsterisks == other.escapeAsterisks &&
+          includeIconLabels == other.includeIconLabels;
 }
 
 /// Cross-extractor content filtering configuration.
@@ -4863,15 +4973,11 @@ class CrawlConfig {
   /// `noindex_detected`.
   final bool respectRobotsTxt;
 
-  /// When true, HTTP-level error responses (404 NotFound, 403 Forbidden, WAF blocks)
-  /// are surfaced as `ScrapeResult` records with the matching `status_code` rather
-  /// than raised as `CrawlError`. A WAF block reports the status of the refused
-  /// response when it is a 4xx or 5xx, and 403 when the block page came with a
-  /// 2xx status. Default `false` preserves the historical
-  /// throw-on-error contract for direct fetches. Independently of this flag,
-  /// 404s reached at the end of a redirect chain are *always* surfaced softly —
-  /// the user opted into redirect-following, so receiving a 404 there is part of
-  /// the normal flow rather than an unexpected error.
+  /// When true, readable HTTP error responses (4xx and 5xx) are surfaced as
+  /// `ScrapeResult` records with their status and body rather than raised as errors.
+  /// WAF blocks report their original 4xx/5xx status, or 403 for a block served as 2xx.
+  /// Default `false` raises errors for recognized error statuses in both `scrape`
+  /// and `crawl`, including a 404 reached through redirects.
   final bool softHttpErrors;
 
   /// Custom user-agent string.
@@ -4895,7 +5001,7 @@ class CrawlConfig {
   /// Regex patterns for paths to include during crawling.
   final List<String> includePaths;
 
-  /// Regex patterns for paths to exclude during crawling.
+  /// Regex patterns for paths to exclude during crawling. The seed URL is never excluded.
   final List<String> excludePaths;
 
   /// Whether `include_paths`/`exclude_paths` match against `path?query` instead of just
@@ -4931,8 +5037,9 @@ class CrawlConfig {
   /// enabled.
   final List<String> trackingParams;
 
-  /// Custom HTTP headers to send with each request to the seed URL's host. A request to another host
-  /// does not carry them.
+  /// Custom HTTP headers sent only to the seed URL's host by default, on any scheme or port.
+  /// Explicitly authorize individual headers for admitted subdomains with
+  /// [`Self::subdomain_header_allowlist`]. Other hosts never receive these headers.
   final Map<String, String> customHeaders;
 
   /// Timeout for individual HTTP requests (in milliseconds when serialized).
@@ -4958,7 +5065,10 @@ class CrawlConfig {
   /// subsequent attempt (capped at `retry_max_delay_ms`). Defaults to 100ms.
   final PlatformInt64 retryInitialDelayMs;
 
-  /// Upper bound, in milliseconds, on the exponential retry backoff. Defaults to 60s.
+  /// Upper bound, in milliseconds, on the exponential retry backoff. A 429 or 503 whose
+  /// `Retry-After` is longer than the backoff is waited out, but one that exceeds this bound
+  /// ends the retries with a warning instead (so `0` abandons the retry on any positive
+  /// `Retry-After`). Defaults to 60s.
   final PlatformInt64 retryMaxDelayMs;
 
   /// Fraction of the per-domain rate-limit delay to randomly jitter by, in `[0.0, 1.0]`.
@@ -5104,6 +5214,20 @@ class CrawlConfig {
   /// and the environment variable is not consulted for this config.
   final bool? ssrfDenyPrivateExplicit;
 
+  /// Accept invalid TLS certificates for page and robots.txt requests.
+  /// Defaults to false. Enable only for sites whose certificates you explicitly trust.
+  /// The browser backends also apply this setting before navigation.
+  /// On WebAssembly, enabling this setting returns `Unsupported`: the host's Fetch
+  /// implementation controls certificate validation.
+  final bool dangerAcceptInvalidCerts;
+
+  /// Custom header names explicitly authorized for proper subdomains when
+  /// [`Self::allow_subdomains`] is true. Empty by default; names match case-insensitively.
+  /// Authorization, cookies, other standard credential headers, and the header named by
+  /// [`Self::auth`] remain seed-host-only even when listed. HTTP, Chromiumoxide, and the
+  /// native browser backend apply this policy to each request and redirect hop.
+  final List<String> subdomainHeaderAllowlist;
+
   const CrawlConfig({
     this.maxDepth,
     this.maxPages,
@@ -5160,6 +5284,8 @@ class CrawlConfig {
     required this.saveBrowserProfile,
     required this.ssrf,
     this.ssrfDenyPrivateExplicit,
+    this.dangerAcceptInvalidCerts = false,
+    this.subdomainHeaderAllowlist = const [],
   });
 
   @override
@@ -5218,7 +5344,9 @@ class CrawlConfig {
       browserProfile.hashCode ^
       saveBrowserProfile.hashCode ^
       ssrf.hashCode ^
-      ssrfDenyPrivateExplicit.hashCode;
+      ssrfDenyPrivateExplicit.hashCode ^
+      dangerAcceptInvalidCerts.hashCode ^
+      subdomainHeaderAllowlist.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -5279,7 +5407,9 @@ class CrawlConfig {
           browserProfile == other.browserProfile &&
           saveBrowserProfile == other.saveBrowserProfile &&
           ssrf == other.ssrf &&
-          ssrfDenyPrivateExplicit == other.ssrfDenyPrivateExplicit;
+          ssrfDenyPrivateExplicit == other.ssrfDenyPrivateExplicit &&
+          dangerAcceptInvalidCerts == other.dangerAcceptInvalidCerts &&
+          subdomainHeaderAllowlist == other.subdomainHeaderAllowlist;
 }
 
 /// Traversal order for a crawl.
@@ -5318,7 +5448,7 @@ sealed class CredentialProviderConfig with _$CredentialProviderConfig {
 
     /// OAuth2 scope. Defaults to liter-llm's own
     /// `https://cognitiveservices.azure.com/.default` when unset.
-    required String scope,
+    String? scope,
   }) = CredentialProviderConfig_AzureAd;
 
   /// Google Vertex AI OAuth2 via a service-account JSON key file on disk.
@@ -5333,14 +5463,14 @@ sealed class CredentialProviderConfig with _$CredentialProviderConfig {
     required String serviceAccountKeyFile,
 
     /// OAuth2 scope. Defaults to liter-llm's own Vertex AI scope when unset.
-    required String scope,
+    String? scope,
   }) = CredentialProviderConfig_VertexOauth2;
 
   /// Google Vertex AI Application Default Credentials, resolved from the GCE/GKE/Cloud Run
   /// metadata server. Carries no secret material at all.
   const factory CredentialProviderConfig.vertexAdc({
     /// OAuth2 scope. Defaults to liter-llm's own Vertex AI scope when unset.
-    required String scope,
+    String? scope,
   }) = CredentialProviderConfig_VertexAdc;
 
   /// AWS STS `AssumeRoleWithWebIdentity` (EKS IRSA / OIDC federation) for Bedrock.
@@ -5354,10 +5484,10 @@ sealed class CredentialProviderConfig with _$CredentialProviderConfig {
 
     /// STS session name. Defaults to liter-llm's own default (`"liter-llm-session"`) when
     /// unset.
-    required String sessionName,
+    String? sessionName,
 
     /// AWS region. Defaults to liter-llm's own default (`"us-east-1"`) when unset.
-    required String region,
+    String? region,
   }) = CredentialProviderConfig_BedrockWebIdentity;
 }
 
@@ -11560,14 +11690,14 @@ sealed class LateInteractionModelType with _$LateInteractionModelType {
     required String modelId,
 
     /// Path to the ONNX file within the repo. Defaults to `"onnx/model.onnx"`.
-    required String modelFile,
+    String? modelFile,
 
     /// Sibling files that must be downloaded alongside `model_file`.
     required List<String> additionalFiles,
 
     /// Maximum token sequence length. Stored as `i64` for FFI compatibility;
     /// negative values are clamped to the model default.
-    required PlatformInt64 maxLength,
+    PlatformInt64? maxLength,
   }) = LateInteractionModelType_Custom;
 
   /// In-process late-interaction backend registered via the plugin system.
@@ -13167,13 +13297,13 @@ sealed class NodeContent with _$NodeContent {
   /// Image reference.
   const factory NodeContent.image({
     /// Optional alt text or caption describing the image.
-    required String description,
+    String? description,
 
     /// Index into the parent `ExtractedDocument::images` list.
-    required PlatformInt64 imageIndex,
+    PlatformInt64? imageIndex,
 
     /// Source URL or path of the image (from `<img src="...">` or `![](src)`).
-    required String src,
+    String? src,
   }) = NodeContent_Image;
 
   /// Code block.
@@ -13182,7 +13312,7 @@ sealed class NodeContent with _$NodeContent {
     required String text,
 
     /// Programming language identifier (e.g. `"rust"`, `"python"`).
-    required String language,
+    String? language,
   }) = NodeContent_Code;
 
   /// Block quote — container, children carry the quoted content.
@@ -13216,13 +13346,13 @@ sealed class NodeContent with _$NodeContent {
   /// rather than relying on a first-child positional convention.
   const factory NodeContent.group({
     /// Optional display label for the group (e.g. section name).
-    required String label,
+    String? label,
 
     /// Heading level of the section heading that opened this group (1-6).
-    required PlatformInt64 headingLevel,
+    PlatformInt64? headingLevel,
 
     /// Text of the section heading that opened this group.
-    required String headingText,
+    String? headingText,
   }) = NodeContent_Group;
 
   /// Page break marker.
@@ -13234,7 +13364,7 @@ sealed class NodeContent with _$NodeContent {
     required PlatformInt64 number,
 
     /// Slide title text, if present.
-    required String title,
+    String? title,
   }) = NodeContent_Slide;
 
   /// Definition list container — children are `DefinitionItem` nodes.
@@ -13266,7 +13396,7 @@ sealed class NodeContent with _$NodeContent {
     required String kind,
 
     /// Optional explicit title overriding the default kind label.
-    required String title,
+    String? title,
   }) = NodeContent_Admonition;
 
   /// Raw block preserved verbatim from the source format.
@@ -17505,7 +17635,7 @@ sealed class RerankerModelType with _$RerankerModelType {
     /// Defaults to `"onnx/model.onnx"` when `None`. Override for repos that
     /// place the weight elsewhere (e.g. `"model.onnx"` for `rozgo/bge-reranker-v2-m3`,
     /// `"onnx/model_quantized.onnx"` for int8 variants).
-    required String modelFile,
+    String? modelFile,
 
     /// Sibling files that must be downloaded alongside `model_file`.
     ///
@@ -17518,7 +17648,7 @@ sealed class RerankerModelType with _$RerankerModelType {
     ///
     /// Stored as `i64` for FFI compatibility across language bindings.
     /// Must be positive; a non-positive value is rejected with a validation error.
-    required PlatformInt64 maxLength,
+    PlatformInt64? maxLength,
 
     /// Scoring head for the ONNX model's output tensor.
     ///
@@ -17688,7 +17818,7 @@ sealed class RevisionAnchor with _$RevisionAnchor {
     required PlatformInt64 index,
 
     /// Sheet display name when available.
-    required String name,
+    String? name,
   }) = RevisionAnchor_Sheet;
 }
 
@@ -18096,14 +18226,14 @@ sealed class SparseEmbeddingModelType with _$SparseEmbeddingModelType {
     required String modelId,
 
     /// Path to the ONNX file within the repo. Defaults to `"onnx/model.onnx"`.
-    required String modelFile,
+    String? modelFile,
 
     /// Sibling files that must be downloaded alongside `model_file`.
     required List<String> additionalFiles,
 
     /// Maximum token sequence length. Stored as `i64` for FFI compatibility;
     /// negative values are clamped to the model default.
-    required PlatformInt64 maxLength,
+    PlatformInt64? maxLength,
   }) = SparseEmbeddingModelType_Custom;
 
   /// In-process sparse-embedding backend registered via the plugin system.
