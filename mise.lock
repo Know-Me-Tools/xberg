@@ -22,6 +22,11 @@ checksum = "sha256:bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9
 url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
 url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
+[tools.bats."platforms.macos-x64"]
+checksum = "sha256:bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177"
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
+url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
+
 [[tools.cargo-deny]]
 version = "0.20.2"
 backend = "aqua:EmbarkStudios/cargo-deny"
@@ -44,6 +49,12 @@ checksum = "sha256:fe67d82a10d8597a3549364cb733a3f9cc1bfff9031b7ae46384a9f2a7209
 checksum_source = "mise-versions"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/471597689"
+
+[tools.cargo-deny."platforms.macos-x64"]
+checksum = "sha256:248da7f581724e470071990c088ffc55c811981715f4cbdb258621fb79f8b7a6"
+checksum_source = "mise-versions"
+url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/471598357"
 
 [tools.cargo-deny."platforms.windows-x64"]
 checksum = "sha256:975a22143262fd27476d19ee00c7af67978426e40e1dee94eed6bbade1cf87dc"
@@ -79,6 +90,12 @@ url = "https://github.com/Goldziher/ai-rulez/releases/download/v5.8.0/ai-rulez_5
 url_api = "https://api.github.com/repos/Goldziher/ai-rulez/releases/assets/683089772"
 provenance = "github-attestations"
 
+[tools."github:Goldziher/ai-rulez"."platforms.macos-x64"]
+checksum = "sha256:b893d7b77578e11b8d921f00c427a8b217f370b8edb2fad97e81dc8459c20ca8"
+url = "https://github.com/Goldziher/ai-rulez/releases/download/v5.8.0/ai-rulez_5.8.0_darwin_amd64.tar.gz"
+url_api = "https://api.github.com/repos/Goldziher/ai-rulez/releases/assets/683089771"
+provenance = "github-attestations"
+
 [tools."github:Goldziher/ai-rulez"."platforms.windows-x64"]
 checksum = "sha256:b41f787984ad2f28f8075a1e7a967341bbd7f8bc0dcd940f033cd72ab6f56c8f"
 url = "https://github.com/Goldziher/ai-rulez/releases/download/v5.8.0/ai-rulez_5.8.0_windows_amd64.zip"
@@ -108,6 +125,12 @@ checksum_source = "mise-versions"
 url = "https://github.com/Goldziher/poly/releases/download/v0.29.0/poly-0.29.0-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/630822502"
 
+[tools."github:Goldziher/poly"."platforms.macos-x64"]
+checksum = "sha256:602d68e3c7970b363eeed1555a896cb65388f7e2327984a8222b328c52cf2194"
+checksum_source = "mise-versions"
+url = "https://github.com/Goldziher/poly/releases/download/v0.29.0/poly-0.29.0-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/630807956"
+
 [tools."github:Goldziher/poly"."platforms.windows-x64"]
 checksum = "sha256:d38c1a37536f5f2a484ec71e060e07111e8dcbbdc24ee2c18c5f79b3acff25cc"
 checksum_source = "mise-versions"
@@ -135,6 +158,12 @@ provenance = "github-attestations"
 checksum = "sha256:7e821a6c90c0884f79f759f5d9be50799ade67bb82515186d922f26032ef43b8"
 url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/547403359"
+provenance = "github-attestations"
+
+[tools."github:taiki-e/cargo-llvm-cov"."platforms.macos-x64"]
+checksum = "sha256:ddf949b82a63017441ea76aa068bdd7e2dde8055f47cd3ef736fdbbd633bc33e"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/547403156"
 provenance = "github-attestations"
 
 [tools."github:taiki-e/cargo-llvm-cov"."platforms.windows-x64"]
@@ -166,6 +195,12 @@ checksum_source = "mise-versions"
 url = "https://github.com/xberg-io/alef/releases/download/v0.111.0/alef-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/xberg-io/alef/releases/assets/653611494"
 
+[tools."github:xberg-io/alef"."platforms.macos-x64"]
+checksum = "sha256:b66332b9b858ae1f4b305be53526815295a55d09888c00603798e4935e47add6"
+checksum_source = "mise-versions"
+url = "https://github.com/xberg-io/alef/releases/download/v0.111.0/alef-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/xberg-io/alef/releases/assets/653611574"
+
 [tools."github:xberg-io/alef"."platforms.windows-x64"]
 checksum = "sha256:5dc3dceb3d8fb5fc79186f70b354a945b45f6344bc74efc107839bef2545d044"
 checksum_source = "mise-versions"
@@ -189,6 +224,10 @@ url = "https://dl.google.com/go/go1.27.3.linux-amd64.tar.gz"
 checksum = "sha256:dd3908cf20959d798c1e06ebe5b72213f0505ce01373b40ce3110975a6cd99c2"
 url = "https://dl.google.com/go/go1.27.3.darwin-arm64.tar.gz"
 
+[tools.go."platforms.macos-x64"]
+checksum = "sha256:b6f8e931e4ab497fcde6da8ae4499a58f9d258e55c8a80824a516eae5950a750"
+url = "https://dl.google.com/go/go1.27.3.darwin-amd64.tar.gz"
+
 [tools.go."platforms.windows-x64"]
 checksum = "sha256:f26081f438319757f8a1b46d7d0b2c5ec7583d4038e485e0aa725cfde7885fff"
 url = "https://dl.google.com/go/go1.27.3.windows-amd64.zip"
@@ -209,6 +248,10 @@ url = "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0
 [tools.java."platforms.macos-arm64"]
 checksum = "sha256:36dc14d797aaff6d89aab302cd053fdba6207dfdcf772052fa7b023a94b0e857"
 url = "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5%2B8/OpenJDK25U-jdk_aarch64_mac_hotspot_25.0.5_8.tar.gz"
+
+[tools.java."platforms.macos-x64"]
+checksum = "sha256:32cd4d2151c91aa00d0fc911edfd05245ed40fa6b1aa894d5f35c928cd67a59d"
+url = "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5%2B8/OpenJDK25U-jdk_x64_mac_hotspot_25.0.5_8.tar.gz"
 
 [tools.java."platforms.windows-x64"]
 checksum = "sha256:636bdc13dc649ddc7d5921c5c7d23cca6e44fd19d662b45cc9c02135a6c96c42"
@@ -237,6 +280,12 @@ checksum_source = "mise-versions"
 url = "https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/lycheeverse/lychee/releases/assets/409957951"
 
+[tools.lychee."platforms.macos-x64"]
+checksum = "sha256:887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978"
+checksum_source = "mise-versions"
+url = "https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/lycheeverse/lychee/releases/assets/409957687"
+
 [tools.lychee."platforms.windows-x64"]
 checksum = "sha256:32975d1493ee1a975d6bb41e4fb56fe419cb442ded628bb772ba2e614acfacad"
 checksum_source = "mise-versions"
@@ -260,6 +309,10 @@ url = "https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-mave
 checksum = "sha512:831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6"
 url = "https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz"
 
+[tools.maven."platforms.macos-x64"]
+checksum = "sha512:831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6"
+url = "https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz"
+
 [tools.maven."platforms.windows-x64"]
 checksum = "sha512:831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6"
 url = "https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz"
@@ -280,6 +333,10 @@ url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1-linux-x64.tar.gz"
 [tools.node."platforms.macos-arm64"]
 checksum = "sha256:1901d539912c02afa10d1cc126943a8855a7eedebe830119463470db5e6c59e8"
 url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1-darwin-arm64.tar.gz"
+
+[tools.node."platforms.macos-x64"]
+checksum = "sha256:b85c2ea4420ad0bc4abf2dc6cf1f55130ed681f1cabf60cf3f526e4c9e2712ff"
+url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1-darwin-x64.tar.gz"
 
 [tools.node."platforms.windows-x64"]
 checksum = "sha256:b3efd5c70cba3308ed46e7e699a9b8aac075bbc6b027fcb39c84c31acc25e2b4"
@@ -308,6 +365,12 @@ url = "https://github.com/pnpm/pnpm/releases/download/v12.15.0/pnpm-darwin-arm64
 url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/662173343"
 provenance = "github-attestations"
 
+[tools.pnpm."platforms.macos-x64"]
+checksum = "sha256:2d7b336884574aee8a765bee48591212e9caf4fcf985fb3279588c1fb73fb47f"
+url = "https://github.com/pnpm/pnpm/releases/download/v12.15.0/pnpm-darwin-x64.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/662173347"
+provenance = "github-attestations"
+
 [tools.pnpm."platforms.windows-x64"]
 checksum = "sha256:84cf69db1be19e95bb4e5bef329291a046f2821b390d87e00f5690809d8a2ed7"
 url = "https://github.com/pnpm/pnpm/releases/download/v12.15.0/pnpm-win32-x64.zip"
@@ -332,6 +395,11 @@ provenance = "github-attestations"
 [tools.python."platforms.macos-arm64"]
 checksum = "sha256:8392b6ea51d94391befb2c31ebe75463f045d0b69dfcf5e1bb3234e1f5fa3405"
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-aarch64-apple-darwin-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.macos-x64"]
+checksum = "sha256:7412c19d896c99431b74a18a5643e110449a7f9590fbab179c3e5ab27b9aa9e3"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-x86_64-apple-darwin-install_only_stripped.tar.gz"
 provenance = "github-attestations"
 
 [tools.python."platforms.windows-x64"]
@@ -365,6 +433,10 @@ checksum = "sha256:865b429c511c40a96fe3c25466bbf9b300e5cae22c70c7dd68e0af003b849
 url = "https://github.com/jdx/ruby/releases/download/3.4.12-1/ruby-3.4.12.macos.tar.gz"
 provenance = "github-attestations"
 
+[tools.ruby."platforms.macos-x64"]
+checksum = "sha256:5e5d85ad93b0adcccbad47733680f4892bd0078e3342437f7babce01c1872479"
+url = "https://cache.ruby-lang.org/pub/ruby/3.4/ruby-3.4.12.tar.gz"
+
 [[tools.ruby]]
 version = "3.4.12"
 backend = "core:ruby"
@@ -397,6 +469,12 @@ checksum_source = "mise-versions"
 url = "https://github.com/go-task/task/releases/download/v3.54.0/task_darwin_arm64.tar.gz"
 url_api = "https://api.github.com/repos/go-task/task/releases/assets/604090068"
 
+[tools.task."platforms.macos-x64"]
+checksum = "sha256:0543b0844a725814c0412d3f4bed12873ce9ed0da207b15775f63a97d734aac0"
+checksum_source = "mise-versions"
+url = "https://github.com/go-task/task/releases/download/v3.54.0/task_darwin_amd64.tar.gz"
+url_api = "https://api.github.com/repos/go-task/task/releases/assets/604090006"
+
 [tools.task."platforms.windows-x64"]
 checksum = "sha256:837f42f71899ea41d07a47acc81d4d6ea80cb41c68292345f915c656473efcb7"
 checksum_source = "mise-versions"
@@ -426,6 +504,12 @@ url = "https://github.com/astral-sh/uv/releases/download/0.13.6/uv-aarch64-apple
 url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/679980393"
 provenance = "github-attestations"
 
+[tools.uv."platforms.macos-x64"]
+checksum = "sha256:63ba17fdda55ad1a230d4b37fc6017ffa10c23688c83818bd3bfdf914c652a02"
+url = "https://github.com/astral-sh/uv/releases/download/0.13.6/uv-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/679980609"
+provenance = "github-attestations"
+
 [tools.uv."platforms.windows-x64"]
 checksum = "sha256:a2a8820d5eea32f08ef467ef3b7f66883a9b076d5737a2fc2fbb5f458d1bb50f"
 url = "https://github.com/astral-sh/uv/releases/download/0.13.6/uv-x86_64-pc-windows-msvc.zip"
@@ -448,6 +532,10 @@ url = "https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz"
 [tools.zig."platforms.macos-arm64"]
 checksum = "sha256:b607e9b9234790a008116ae5bdb71c6243b84b9fb42a53a9e70fde41c06c536a"
 url = "https://ziglang.org/download/0.17.0/zig-aarch64-macos-0.17.0.tar.xz"
+
+[tools.zig."platforms.macos-x64"]
+checksum = "sha256:4f9a1c5269aa17ebda5e6d3c2b89d6cbf36f7d2b22a0306e9ab98f25f95529c6"
+url = "https://ziglang.org/download/0.17.0/zig-x86_64-macos-0.17.0.tar.xz"
 
 [tools.zig."platforms.windows-x64"]
 checksum = "sha256:b5663f69581dcf391293fbf16c06cb80d81d806545ce618b4d0bab7f0eb8c428"
