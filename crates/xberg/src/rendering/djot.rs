@@ -291,7 +291,7 @@ pub(crate) fn render_djot(doc: &InternalDocument) -> String {
             out.push_str("[^");
             out.push_str(&entry.number.to_string());
             out.push_str("]: ");
-            out.push_str(&entry.text);
+            out.push_str(&render_djot_annotated(&entry.text, &entry.annotations));
             out.push_str("\n\n");
         }
     }
@@ -316,7 +316,7 @@ pub(crate) fn render_djot(doc: &InternalDocument) -> String {
             out.push_str("[^");
             out.push_str(key);
             out.push_str("]: ");
-            out.push_str(&elem.text);
+            out.push_str(&render_djot_annotated(&elem.text, &elem.annotations));
             out.push_str("\n\n");
         }
     }
