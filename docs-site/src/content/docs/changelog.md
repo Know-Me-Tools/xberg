@@ -71,6 +71,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(pptx): Preserve slide headings and table grids in plain document structures.**
+  Tables retain literal pipe characters and remain available in extraction results. (#2302)
+- **(pdf): Recover word spaces when subset fonts omit a space-glyph width.**
+  Explicit spacing, fixed-pitch fonts and standard font metrics remain authoritative. (#2303)
+- **(pdf): Classify repeated running headers and honor header/footer filters across renderers.**
+  Retained furniture keeps its semantic layer without exposing internal rendering markers. (#2304)
+- **(pdf): Retain up to six inferred heading font tiers without flattening semantic subsections.**
+  Font-tier lookups stay bounded for documents containing many distinct sizes. (#2305)
+- **(ocr): Reuse secondary dictionaries within keyed Tesseract sessions.**
+  Repeated multilingual calls avoid reloading dictionaries while preserving quality checks and pool eviction. (#2306)
 - **(publish): Inspect the actual Node native binary before packing platform packages.**
   File-size failures now stop publication instead of being hidden by the diagnostic output.
 - **(office): Recover native text from embedded EMF and WMF pictures without raster OCR failures.**
