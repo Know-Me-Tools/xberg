@@ -94,6 +94,7 @@ jobs:
         uses: xberg-io/actions/setup-mise@v1
         with:
           install-args: task python uv
+          config-ref: ${{ github.sha }}
       - name: Resolve the mise Python version
         id: mise-python
         shell: bash
@@ -1275,6 +1276,7 @@ jobs:
         uses: xberg-io/actions/setup-mise@v1
         with:
           install-args: python uv
+          config-ref: ${{ github.sha }}
       - name: Resolve the mise Python version
         id: mise-python
         shell: bash
