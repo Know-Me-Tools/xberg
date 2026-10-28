@@ -290,36 +290,46 @@ async fn should_preserve_scripts_in_adjacent_doc_footnotes_gh2275() {
         );
         assert_eq!(definitions[1].text, "H2O");
         assert_eq!(definitions[1].annotations, [builder::subscript(1, 2)]);
-        let markdown = crate::extract(
-            crate::ExtractInput::from_bytes(bytes.clone(), "application/msword", None),
+        assert_subdocument_script_output(&bytes, prefix, &config).await;
+    }
+}
+
+async fn assert_subdocument_script_output(bytes: &[u8], prefix: &str, config: &ExtractionConfig) {
+    for (format, superscript, subscript) in [
+        (OutputFormat::Markdown, "^9^", "H~2~O"),
+        (OutputFormat::Djot, "^9^", "H~2~O"),
+        (OutputFormat::Html, "<sup>9</sup>", "H<sub>2</sub>O"),
+    ] {
+        let output = crate::extract(
+            crate::ExtractInput::from_bytes(bytes.to_vec(), "application/msword", None),
             &ExtractionConfig {
-                output_format: OutputFormat::Markdown,
+                output_format: format.clone(),
                 escape_markdown: false,
                 ..config.clone()
             },
         )
         .await
         .unwrap();
-        assert_eq!(markdown.results.len(), 1);
-        assert!(markdown.errors.is_empty());
+        assert_eq!(output.results.len(), 1);
+        assert!(output.errors.is_empty());
+        let content = &output.results[0].content;
         assert!(
-            markdown.results[0].content.contains(&format!("{prefix}10^9^/l")),
-            "{}",
-            markdown.results[0].content
+            content.contains(&format!("{prefix}10{superscript}/l")),
+            "{format:?}: {content}"
         );
-        assert!(markdown.results[0].content.contains("H~2~O"));
-        let plain = crate::extract(
-            crate::ExtractInput::from_bytes(bytes, "application/msword", None),
-            &ExtractionConfig {
-                output_format: OutputFormat::Plain,
-                ..config
-            },
-        )
-        .await
-        .unwrap();
-        assert_eq!(plain.results.len(), 1);
-        assert!(plain.errors.is_empty());
-        assert!(!plain.results[0].content.contains(['^', '~']));
-        assert!(plain.results[0].content.contains(&format!("{prefix}109/l")));
+        assert!(content.contains(subscript), "{format:?}: {content}");
     }
+    let plain = crate::extract(
+        crate::ExtractInput::from_bytes(bytes.to_vec(), "application/msword", None),
+        &ExtractionConfig {
+            output_format: OutputFormat::Plain,
+            ..config.clone()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(plain.results.len(), 1);
+    assert!(plain.errors.is_empty());
+    assert!(!plain.results[0].content.contains(['^', '~']));
+    assert!(plain.results[0].content.contains(&format!("{prefix}109/l")));
 }
