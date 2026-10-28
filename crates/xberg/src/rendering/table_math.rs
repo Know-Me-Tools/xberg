@@ -1,5 +1,6 @@
 //! Private provenance for equations inside table-cell strings.
 
+#[cfg(any(feature = "office", test))]
 use std::ops::Range;
 
 use ahash::AHashMap;
@@ -10,6 +11,7 @@ use crate::types::internal_builder::InternalDocumentBuilder;
 
 pub(crate) const TABLE_CELL_MATH_ATTRIBUTE: &str = "xberg:internal:table-cell-math";
 
+#[cfg(any(feature = "office", test))]
 type MathCell = (String, Vec<(Range<usize>, bool)>);
 type CellAnnotations = AHashMap<(usize, usize), Vec<TextAnnotation>>;
 
@@ -20,6 +22,7 @@ struct CellMathAnnotation {
     annotation: TextAnnotation,
 }
 
+#[cfg(any(feature = "office", test))]
 pub(crate) fn split_cell_grid(grid: Vec<Vec<MathCell>>) -> (Vec<Vec<String>>, Option<String>) {
     let mut annotations = Vec::new();
     let cells = grid

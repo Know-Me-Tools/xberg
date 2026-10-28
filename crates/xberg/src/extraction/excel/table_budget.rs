@@ -9,12 +9,12 @@ use crate::{Result, XbergError};
 
 mod legacy;
 mod ods;
-mod zip_metadata;
 mod xlsb_framing;
+mod zip_metadata;
 pub(super) use legacy::validate_xls;
 pub(super) use ods::validate_ods;
-pub(super) use zip_metadata::validate_xlsx_string_parts;
 pub(super) use xlsb_framing::validate_xlsb_parts;
+pub(super) use zip_metadata::validate_xlsx_string_parts;
 
 #[derive(Default)]
 struct SheetBounds {
