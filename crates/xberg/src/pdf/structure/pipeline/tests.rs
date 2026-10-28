@@ -4,6 +4,79 @@ use crate::pdf::structure::types::{PdfLine, PdfParagraph};
 
 #[cfg(feature = "layout-detection")]
 #[test]
+fn should_preserve_repeated_margin_body_text_with_deferred_model_classification_gh2304() {
+    let text = "Repeated body text near the page edge";
+    let pages = (0..3)
+        .map(|page| {
+            let mut segments = vec![seg_heuristic(text, 9.0, 760.0)];
+            for row in 0..6 {
+                segments.push(seg_heuristic(
+                    &format!("Body paragraph on page {page} row {row} preserves the complete document content."),
+                    11.0,
+                    650.0 - row as f32 * 25.0,
+                ));
+            }
+            segments
+        })
+        .collect::<Vec<_>>();
+    let hints = vec![
+        vec![LayoutHint {
+            class_name: LayoutHintClass::Text,
+            confidence: 0.99,
+            left: 0.0,
+            bottom: 745.0,
+            right: 612.0,
+            top: 780.0
+        }];
+        3
+    ];
+    let document = build_document_structure(
+        pages,
+        SegmentStructureConfig {
+            k_clusters: 3,
+            tables: &[],
+            outline_entries: &[],
+            strip_repeating_text: true,
+            include_headers: false,
+            include_footers: false,
+            include_footnotes: false,
+            include_watermarks: false,
+            used_structure_tree: false,
+            image_positions: &[],
+            images: None,
+            inject_placeholders: false,
+            layout_hints: Some(&hints),
+            allow_single_column: true,
+            cancel_token: None,
+            layout_images: None,
+            layout_results: None,
+            table_model: crate::core::config::layout::TableModel::Disabled,
+            table_overlap_preference: crate::core::config::layout::TableOverlapPreference::Content,
+            acceleration: None,
+            session_thread_budget: 1,
+        },
+        NO_TABLE_MODELS,
+    )
+    .unwrap();
+    let retained = document
+        .elements
+        .iter()
+        .filter(|element| element.text == text)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        retained.len(),
+        3,
+        "a positive model body classification must veto margin suppression"
+    );
+    assert!(
+        retained
+            .iter()
+            .all(|element| element.layer == crate::types::ContentLayer::Body)
+    );
+}
+
+#[cfg(feature = "layout-detection")]
+#[test]
 fn table_model_preflight_uses_selected_slanet_variant() {
     use crate::core::config::layout::TableModel;
 
@@ -7655,4 +7728,55 @@ fn should_honor_header_and_footer_flags_independently_for_geometric_page_numbers
 fn content_loss_should_still_recognize_a_line_leading_middle_dot_marker() {
     assert!(looks_like_list_item("· first substantial item"));
     assert!(looks_like_list_item("• another substantial item"));
+}
+
+#[test]
+fn should_bound_heading_font_lookup_to_six_tiers_for_many_sizes_gh2305() {
+    const HEADING_COUNT: usize = 4096;
+    let mut paragraphs = (0..HEADING_COUNT)
+        .map(|index| {
+            let mut paragraph = outline_heading(&format!("Heading {index}"), 2);
+            paragraph.dominant_font_size = (HEADING_COUNT - index) as f32;
+            paragraph
+        })
+        .collect::<Vec<_>>();
+    let mut body = outline_para("Body text must never enter the heading tier index.");
+    body.dominant_font_size = 100_000.0;
+    paragraphs.push(body);
+    let mut pages = vec![paragraphs];
+    assert_eq!(
+        inferred_heading_font_tiers(&pages),
+        vec![4096.0, 4095.0, 4094.0, 4093.0, 4092.0, 4091.0]
+    );
+    refine_existing_font_heading_tiers(&mut pages);
+    assert_eq!(pages[0].len(), HEADING_COUNT + 1);
+    for (index, paragraph) in pages[0][..HEADING_COUNT].iter().enumerate() {
+        assert_eq!(paragraph.heading_level, Some((index + 1).min(6) as u8));
+    }
+    assert_eq!(pages[0][HEADING_COUNT].heading_level, None);
+}
+
+#[test]
+fn should_exclude_nonfinite_and_nonpositive_heading_sizes_from_tier_inference_gh2305() {
+    let sizes = [30.0, 20.0, 10.0, f32::NAN, f32::INFINITY, 0.0, -1.0];
+    let mut pages = vec![
+        sizes
+            .into_iter()
+            .map(|size| {
+                let mut paragraph = outline_heading("Heading", 4);
+                paragraph.dominant_font_size = size;
+                paragraph
+            })
+            .collect::<Vec<_>>(),
+    ];
+    assert_eq!(inferred_heading_font_tiers(&pages), vec![30.0, 20.0, 10.0]);
+    refine_existing_font_heading_tiers(&mut pages);
+    let levels = pages[0]
+        .iter()
+        .map(|paragraph| paragraph.heading_level)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        levels,
+        vec![Some(1), Some(2), Some(3), Some(4), Some(4), Some(4), Some(4)]
+    );
 }

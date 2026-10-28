@@ -29,6 +29,7 @@ pub use element_id::InternalElementId;
 
 pub(crate) const MARKDOWN_PLAIN_TEXT_ATTRIBUTE: &str = "xberg:internal:markdown-plain-text";
 pub(crate) const MARKDOWN_IMAGE_REFERENCE_ATTRIBUTE: &str = "xberg:internal:markdown-image-reference";
+pub(crate) const RETAINED_FURNITURE_RENDER_ATTRIBUTE: &str = "xberg:internal:render-retained-furniture";
 
 const SUPPRESS_IMAGE_OCR_RENDER_ATTRIBUTE: &str = "xberg:internal:suppress-image-ocr-render";
 
@@ -779,6 +780,7 @@ impl InternalElement {
 fn is_internal_only_attribute(key: &str) -> bool {
     key == MARKDOWN_PLAIN_TEXT_ATTRIBUTE
         || key == MARKDOWN_IMAGE_REFERENCE_ATTRIBUTE
+        || key == RETAINED_FURNITURE_RENDER_ATTRIBUTE
         || key == SUPPRESS_IMAGE_OCR_RENDER_ATTRIBUTE
         || key == IMAGE_OCR_TEXT_ANCHOR_ATTRIBUTE
         || key == MEASURED_FONT_SIZE_ATTRIBUTE

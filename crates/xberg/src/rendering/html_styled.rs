@@ -19,8 +19,8 @@ use crate::XbergError;
 use crate::core::config::html_output::{HtmlOutputConfig, HtmlTheme};
 use crate::plugins::{InternalRenderer, Plugin};
 use crate::rendering::common::{
-    NestingKind, RenderState, annotated_math, render_annotated_text_with_plain, render_nested_annotated_text,
-    valid_math_annotation,
+    NestingKind, RenderState, annotated_math, is_body_element, render_annotated_text_with_plain,
+    render_nested_annotated_text, valid_math_annotation,
 };
 use crate::types::document_structure::{AnnotationKind, ContentLayer};
 use crate::types::internal::{ElementKind, InternalDocument, InternalElement};
@@ -260,7 +260,7 @@ fn render_elements(doc: &InternalDocument, p: &str, buf: &mut String) {
         // they were pushed, like the body-layer definitions of formats that kept them there.
         let footnote_definition =
             elem.kind == ElementKind::FootnoteDefinition && matches!(elem.layer, ContentLayer::Footnote);
-        if !matches!(elem.layer, ContentLayer::Body) && !footnote_definition {
+        if !is_body_element(elem) && !footnote_definition {
             continue;
         }
 

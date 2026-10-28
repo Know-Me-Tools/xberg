@@ -12,7 +12,7 @@ use crate::types::internal::{ElementKind, InternalDocument, InternalElement};
 
 use super::common::{
     FootnoteCollector, annotation_display_text, annotation_type_label, get_admonition_kind, get_admonition_title,
-    image_ocr_text, parse_metadata_entries, render_table_plain,
+    image_ocr_text, is_body_element, parse_metadata_entries, render_table_plain,
 };
 
 /// Render an `InternalDocument` to plain text.
@@ -22,7 +22,7 @@ pub(crate) fn render_plain(doc: &InternalDocument) -> String {
     let footnotes = FootnoteCollector::new(doc);
     let mut after_text_block = false;
     for (i, elem) in doc.elements.iter().enumerate() {
-        if elem.layer != ContentLayer::Body || elem.kind.is_container_start() || elem.kind.is_container_end() {
+        if !is_body_element(elem) || elem.kind.is_container_start() || elem.kind.is_container_end() {
             continue;
         }
         if elem.kind == ElementKind::FootnoteRef {

@@ -619,6 +619,12 @@ pub(crate) fn handle_container_end(kind: &ElementKind, state: &mut RenderState) 
 /// Check if an element should be rendered in the body pass.
 pub(crate) fn is_body_element(elem: &InternalElement) -> bool {
     elem.layer == ContentLayer::Body
+        || (matches!(elem.layer, ContentLayer::Header | ContentLayer::Footer)
+            && elem
+                .attributes
+                .as_ref()
+                .and_then(|attributes| attributes.get(crate::types::internal::RETAINED_FURNITURE_RENDER_ATTRIBUTE))
+                .is_some_and(|value| value == "true"))
 }
 
 /// The OCR text of the picture that the image element `elem` shows, where there is text to add.
@@ -752,3 +758,72 @@ pub(crate) fn external_link_target(url: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod retained_furniture_tests {
+    use super::*;
+
+    const RENDER_MARKER: &str = "xberg:internal:render-retained-furniture";
+
+    fn marked_element(text: &str, layer: ContentLayer) -> InternalElement {
+        let mut element = InternalElement::text(ElementKind::Paragraph, text, 0);
+        element.layer = layer;
+        element.attributes = Some(ahash::AHashMap::from([(RENDER_MARKER.to_owned(), "true".to_owned())]));
+        element
+    }
+
+    #[test]
+    fn should_only_render_explicitly_retained_header_and_footer_layers_gh2304() {
+        for layer in [ContentLayer::Header, ContentLayer::Footer, ContentLayer::Footnote] {
+            let mut plain = InternalElement::text(ElementKind::Paragraph, "Region", 0);
+            plain.layer = layer;
+            assert!(!is_body_element(&plain), "unmarked non-body regions stay excluded");
+            let mut marked = marked_element("Region", layer);
+            assert_eq!(is_body_element(&marked), layer != ContentLayer::Footnote);
+            marked
+                .attributes
+                .as_mut()
+                .unwrap()
+                .insert(RENDER_MARKER.to_owned(), "false".to_owned());
+            assert!(!is_body_element(&marked), "only an explicit true marker opts in");
+        }
+        assert!(is_body_element(&InternalElement::text(
+            ElementKind::Paragraph,
+            "Body",
+            0
+        )));
+    }
+
+    #[test]
+    fn should_render_retained_furniture_without_leaking_private_markers_gh2304() {
+        let header = marked_element("Retained header", ContentLayer::Header);
+        let footer = marked_element("Retained footer", ContentLayer::Footer);
+        assert!(header.public_attributes().is_none());
+        assert!(footer.public_attributes().is_none());
+        let document = InternalDocument {
+            elements: vec![
+                header,
+                InternalElement::text(ElementKind::Paragraph, "Body", 0),
+                footer,
+                marked_element("Hidden footnote", ContentLayer::Footnote),
+            ],
+            ..Default::default()
+        };
+        let expected = "Retained header\n\nBody\n\nRetained footer";
+        assert_eq!(crate::rendering::render_plain(&document), expected);
+        assert_eq!(crate::rendering::render_markdown(&document).trim(), expected);
+        #[cfg(feature = "html")]
+        {
+            use crate::plugins::InternalRenderer;
+            let html = crate::rendering::html_styled::StyledHtmlRenderer::new(Default::default())
+                .unwrap()
+                .render(&document)
+                .unwrap();
+            for included in ["Retained header", "Body", "Retained footer"] {
+                assert!(html.contains(included));
+            }
+            assert!(!html.contains("Hidden footnote"));
+            assert!(!html.contains(RENDER_MARKER));
+        }
+    }
+}

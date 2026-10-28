@@ -1760,7 +1760,12 @@ pub(super) fn mark_cross_page_repeating_text(all_pages: &mut [Vec<PdfParagraph>]
 
         let mut seen: ahash::AHashSet<String> = ahash::AHashSet::new();
         for para in page {
-            if para.is_page_furniture {
+            if para.is_page_furniture
+                || matches!(
+                    para.layout_class,
+                    Some(LayoutHintClass::PageHeader | LayoutHintClass::PageFooter)
+                )
+            {
                 continue;
             }
 
@@ -1827,7 +1832,12 @@ pub(super) fn mark_cross_page_repeating_text(all_pages: &mut [Vec<PdfParagraph>]
         let bottom_margin_y = page_h * margin_frac;
 
         for para in page.iter_mut() {
-            if para.is_page_furniture {
+            if para.is_page_furniture
+                || matches!(
+                    para.layout_class,
+                    Some(LayoutHintClass::PageHeader | LayoutHintClass::PageFooter)
+                )
+            {
                 continue;
             }
             let in_margin = para
@@ -1991,7 +2001,13 @@ pub(super) fn mark_cross_page_repeating_short_text(all_pages: &mut [Vec<PdfParag
             // Positioned paragraphs are handled by the margin-aware first tier.
             // Restrict this broad fallback to unpositioned structure-tree text so
             // repeated semantic form fields in the page body are not discarded.
-            if para.is_page_furniture || para.block_bbox.is_some() {
+            if para.is_page_furniture
+                || para.block_bbox.is_some()
+                || matches!(
+                    para.layout_class,
+                    Some(LayoutHintClass::PageHeader | LayoutHintClass::PageFooter)
+                )
+            {
                 continue;
             }
             let text = paragraph_plain_text(para);

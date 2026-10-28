@@ -872,7 +872,12 @@ fn push_paragraph_element_by_kind(
         return element_id;
     }
 
-    if para.is_page_furniture {
+    if para.is_page_furniture
+        || matches!(
+            para.layout_class,
+            Some(LayoutHintClass::PageHeader | LayoutHintClass::PageFooter)
+        )
+    {
         let text = get_text(para);
         let layer = guess_furniture_layer(para);
         let elem_idx = builder.push_paragraph(&text, vec![], page, bbox);

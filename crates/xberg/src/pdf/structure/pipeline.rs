@@ -27,7 +27,7 @@ use super::text_repair::{
     collapse_spaced_hyphens, expand_ligatures_with_space_absorption, normalize_text_encoding, normalize_unicode_text,
     repair_contextual_ligatures, repair_ligature_spaces,
 };
-use super::types::{LayoutHint, PdfParagraph};
+use super::types::{LayoutHint, LayoutHintClass, PdfParagraph};
 
 const SPARSE_REPEATED_TIER_MIN_PAGES: usize = 2;
 const SPARSE_FONT_TIER_CLUSTER_COUNT: usize = 2;
@@ -3995,11 +3995,23 @@ fn build_document_structure(
         .map(|input| process_single_page(input, &heading_map, doc_body_font_size, &witnesses))
         .collect();
 
+    if !used_structure_tree && outline_entries.is_empty() {
+        refine_existing_font_heading_tiers(&mut all_page_paragraphs);
+    }
     refine_heading_hierarchy(&mut all_page_paragraphs);
     demote_unnumbered_subsections(&mut all_page_paragraphs);
     demote_heading_runs(&mut all_page_paragraphs);
     split_colon_semicolon_run_in_lists(&mut all_page_paragraphs);
 
+    if !used_structure_tree {
+        classify_running_margin_regions(
+            &mut all_page_paragraphs,
+            &page_heights,
+            include_headers,
+            include_footers,
+            layout_hints,
+        );
+    }
     if strip_repeating_text {
         mark_cross_page_repeating_text(&mut all_page_paragraphs, &page_heights);
         mark_cross_page_repeating_short_text(&mut all_page_paragraphs);
@@ -4059,6 +4071,18 @@ fn build_document_structure(
     doc.processing_warnings.extend(table_model_warning);
 
     for elem in &mut doc.elements {
+        let retain_furniture = match elem.layer {
+            crate::types::ContentLayer::Header => include_headers,
+            crate::types::ContentLayer::Footer => include_footers,
+            _ => false,
+        };
+        if retain_furniture {
+            // ~keep Retained furniture keeps its semantic layer; opt it into text rendering without relabeling it as body.
+            elem.attributes.get_or_insert_with(ahash::AHashMap::new).insert(
+                crate::types::internal::RETAINED_FURNITURE_RENDER_ATTRIBUTE.to_owned(),
+                "true".to_owned(),
+            );
+        }
         if elem.text.is_empty() {
             continue;
         }
@@ -5834,6 +5858,120 @@ fn finite_paragraph_bbox(paragraph: &PdfParagraph) -> Option<(f32, f32, f32, f32
     (left.is_finite() && bottom.is_finite() && right.is_finite() && top.is_finite()).then_some(bbox)
 }
 
+const RUNNING_MARGIN_MIN_PAGES: usize = 3;
+const RUNNING_MARGIN_FRACTION: f32 = 0.08;
+const RUNNING_MARGIN_BODY_CHARS: usize = 80;
+const RUNNING_MARGIN_MAX_WORDS: usize = 20;
+const RUNNING_MARGIN_MAX_CHARS: usize = 120;
+
+fn running_margin_key(paragraph: &PdfParagraph, height: f32, hints: Option<&[LayoutHint]>) -> Option<(String, bool)> {
+    if paragraph.layout_class.is_some()
+        || paragraph.heading_level.is_some()
+        || paragraph.is_list_item
+        || paragraph.is_formula
+        || paragraph.is_code_block
+        || paragraph.lines.len() != 1
+        || paragraph.word_count > RUNNING_MARGIN_MAX_WORDS
+    {
+        return None;
+    }
+    let (_, bottom, _, top) = finite_paragraph_bbox(paragraph)?;
+    let header = if bottom >= height * (1.0 - RUNNING_MARGIN_FRACTION) {
+        true
+    } else if top <= height * RUNNING_MARGIN_FRACTION {
+        false
+    } else {
+        return None;
+    };
+    let text = paragraph_text_whitespace_collapsed(paragraph);
+    if text.is_empty() || text.chars().count() > RUNNING_MARGIN_MAX_CHARS || has_deferred_layout_class(paragraph, hints)
+    {
+        return None;
+    }
+    Some((text, header))
+}
+
+fn has_deferred_layout_class(paragraph: &PdfParagraph, hints: Option<&[LayoutHint]>) -> bool {
+    #[cfg(feature = "layout-detection")]
+    {
+        let Some(hints) = hints.filter(|hints| !hints.is_empty()) else {
+            return false;
+        };
+        let hints = regular_layout_hints(hints);
+        let mut probe = paragraph.clone();
+        // ~keep Model annotation is deferred until after semantic refinement; consult the same matcher before any removal.
+        super::layout_classify::annotate_layout_classes(std::slice::from_mut(&mut probe), &hints, 0.5, 0.2);
+        probe.layout_class.is_some()
+    }
+    #[cfg(not(feature = "layout-detection"))]
+    {
+        let _ = (paragraph, hints);
+        false
+    }
+}
+
+fn running_page_keys(
+    page: &[PdfParagraph],
+    height: f32,
+    hints: Option<&[LayoutHint]>,
+) -> ahash::AHashSet<(String, bool)> {
+    let body_chars: usize = page
+        .iter()
+        .filter(|paragraph| {
+            finite_paragraph_bbox(paragraph).is_some_and(|(_, bottom, _, top)| {
+                bottom >= height * RUNNING_MARGIN_FRACTION && top <= height * (1.0 - RUNNING_MARGIN_FRACTION)
+            })
+        })
+        .map(paragraph_alphanum_len)
+        .sum();
+    if body_chars < RUNNING_MARGIN_BODY_CHARS {
+        return ahash::AHashSet::new();
+    }
+    page.iter()
+        .filter_map(|paragraph| running_margin_key(paragraph, height, hints))
+        .collect()
+}
+
+fn classify_running_margin_regions(
+    pages: &mut [Vec<PdfParagraph>],
+    heights: &[f32],
+    include_headers: bool,
+    include_footers: bool,
+    layout_hints: Option<&[Vec<LayoutHint>]>,
+) {
+    if pages.len() < RUNNING_MARGIN_MIN_PAGES {
+        return;
+    }
+    let mut occurrences = ahash::AHashMap::<(String, bool), usize>::new();
+    for (page_index, page) in pages.iter().enumerate() {
+        let height = heights.get(page_index).copied().unwrap_or(FALLBACK_PAGE_HEIGHT_PTS);
+        let hints = layout_hints.and_then(|pages| pages.get(page_index)).map(Vec::as_slice);
+        for key in running_page_keys(page, height, hints) {
+            *occurrences.entry(key).or_default() += 1;
+        }
+    }
+    // ~keep Require the same short margin text on every page with substantive body text before assigning furniture semantics.
+    let page_count = pages.len();
+    for (page_index, page) in pages.iter_mut().enumerate() {
+        let height = heights.get(page_index).copied().unwrap_or(FALLBACK_PAGE_HEIGHT_PTS);
+        let hints = layout_hints.and_then(|pages| pages.get(page_index)).map(Vec::as_slice);
+        for paragraph in page {
+            let Some(key) = running_margin_key(paragraph, height, hints) else {
+                continue;
+            };
+            if occurrences.get(&key).copied() != Some(page_count) {
+                continue;
+            }
+            paragraph.layout_class = Some(if key.1 {
+                LayoutHintClass::PageHeader
+            } else {
+                LayoutHintClass::PageFooter
+            });
+            paragraph.is_page_furniture = if key.1 { !include_headers } else { !include_footers };
+        }
+    }
+}
+
 /// Widest right edge across the whole document, used to normalize horizontal
 /// position.
 ///
@@ -6722,6 +6860,42 @@ fn compact_final_heading_hierarchy(all_pages: &mut [Vec<PdfParagraph>]) {
         if let Some(level @ 3..) = paragraph.heading_level {
             paragraph.heading_level = Some(level - 1);
         }
+    }
+}
+
+fn inferred_heading_font_tiers(all_pages: &[Vec<PdfParagraph>]) -> Vec<f32> {
+    let mut sizes = all_pages
+        .iter()
+        .flatten()
+        .filter(|paragraph| paragraph.heading_level.is_some())
+        .map(|paragraph| paragraph.dominant_font_size)
+        .filter(|size| size.is_finite() && *size > 0.0)
+        .collect::<Vec<_>>();
+    sizes.sort_by(|left, right| right.total_cmp(left));
+    sizes.dedup_by(|left, right| (*left - *right).abs() <= SPARSE_FONT_TIER_TOLERANCE);
+    sizes.truncate(MAX_MARKDOWN_HEADING_LEVEL as usize);
+    sizes
+}
+
+fn refine_existing_font_heading_tiers(all_pages: &mut [Vec<PdfParagraph>]) {
+    let sizes = inferred_heading_font_tiers(all_pages);
+    if sizes.len() < 3 {
+        return;
+    }
+    // ~keep Clustering establishes heading eligibility; its small k must not collapse distinct heading font tiers.
+    for paragraph in all_pages.iter_mut().flatten() {
+        if paragraph.heading_level.is_none()
+            || !paragraph.dominant_font_size.is_finite()
+            || paragraph.dominant_font_size <= 0.0
+        {
+            continue;
+        }
+        // ~keep Only the first six tiers need lookup; every lower valid tier has the same capped level.
+        let level = sizes
+            .iter()
+            .position(|size| (*size - paragraph.dominant_font_size).abs() <= SPARSE_FONT_TIER_TOLERANCE)
+            .map_or(MAX_MARKDOWN_HEADING_LEVEL as u8, |tier| (tier + 1) as u8);
+        paragraph.heading_level = Some(level);
     }
 }
 
