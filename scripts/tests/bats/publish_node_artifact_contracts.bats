@@ -17,7 +17,9 @@ write_platform() {
 }
 
 @test "Node packaging should archive each supported target with exact native and PDFium assets" {
+	target_count=0
 	while read -r target platform binary pdfium; do
+		target_count=$((target_count + 1))
 		write_platform "$platform" "$binary"
 		printf '%s\n' "$platform pdfium" >"crates/xberg-node/$pdfium"
 		run env TARGET="$target" bash "$REPOSITORY_ROOT/scripts/publish/node/package-artifacts.sh"
@@ -38,6 +40,7 @@ x86_64-unknown-linux-gnu linux-x64-gnu xberg-node.linux-x64-gnu.node libpdfium.s
 aarch64-unknown-linux-gnu linux-arm64-gnu xberg-node.linux-arm64-gnu.node libpdfium.so
 armv7-unknown-linux-gnueabihf linux-arm-gnueabihf xberg-node.linux-arm-gnueabihf.node libpdfium.so
 TARGETS
+	[ "$target_count" -eq 7 ]
 }
 
 @test "Node packaging should use the crate-local binary fallback when artifacts are absent" {

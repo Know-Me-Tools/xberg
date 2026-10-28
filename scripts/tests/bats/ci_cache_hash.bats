@@ -1,5 +1,11 @@
 #!/usr/bin/env bats
 
+setup_file() {
+	bats_load_library xberg-bats
+	xberg_shadow_system_path_without sha256sum
+	[ -x "$XBERG_SYS_BIN/shasum" ]
+}
+
 setup() {
 	bats_load_library xberg-bats
 	xberg_setup
@@ -66,4 +72,21 @@ setup() {
 	run bash "$REPOSITORY_ROOT/scripts/ci/cache/compute-hash.sh" 'source/**/*.missing'
 	xberg_assert_status 1
 	xberg_assert_output_contains 'No files found matching the provided patterns'
+}
+
+@test "cache hashing should support the shasum fallback for files directories and recursive globs" {
+	local mode_count=0
+	for mode in files dirs glob; do
+		case "$mode" in
+		files) set -- --files source/a.txt source/nested/b.txt ;;
+		dirs) set -- --dirs source ;;
+		glob) set -- 'source/**/*.txt' ;;
+		esac
+		run env PATH="$(xberg_isolated_path)" bash "$REPOSITORY_ROOT/scripts/ci/cache/compute-hash.sh" "$@"
+		xberg_assert_status 0
+		[[ "${lines[0]}" =~ ^[[:xdigit:]]{12}$ ]]
+		[[ "$output" =~ Hashed[[:space:]]+2[[:space:]]files ]]
+		mode_count=$((mode_count + 1))
+	done
+	[ "$mode_count" -eq 3 ]
 }

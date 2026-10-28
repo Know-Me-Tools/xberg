@@ -67,7 +67,7 @@ setup() {
 	xberg_assert_status 0
 	xberg_assert_trace '-T crates/xberg-node/artifacts/xberg-node.linux-x64-gnu.node'
 	xberg_assert_output_contains 'Symbol audit PASSED'
-	: >"$XBERG_TRACE"
+	rm "$XBERG_TRACE"
 	run env TARGET=aarch64-apple-darwin bash "$REPOSITORY_ROOT/scripts/publish/node/verify-glibc-floor.sh"
 	xberg_assert_status 0
 	xberg_assert_output_contains 'not a linux-gnu prebuild'
