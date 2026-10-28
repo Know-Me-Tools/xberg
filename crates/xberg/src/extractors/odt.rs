@@ -2366,9 +2366,9 @@ mod tests {
             r#"<office:document-content {CONTENT_XML_NAMESPACES}><office:body><office:text>{xml}</office:text></office:body></office:document-content>"#
         );
         let mut archive = build_odt_zip(&[("content.xml", &content)]);
-        let error = build_internal_document(&mut archive, &mut SecurityBudget::from_limits(&limits))
-            .err()
-            .expect("nested past the cap");
+        let Err(error) = build_internal_document(&mut archive, &mut SecurityBudget::from_limits(&limits)) else {
+            panic!("nested past the cap");
+        };
         assert!(error.to_string().contains("Nesting too deep"), "{error}");
     }
 
