@@ -485,7 +485,7 @@ def test_glibc_native_closures_are_strictly_verified() -> None:
 def test_cli_release_enables_metal_only_for_macos_arm64() -> None:
     block = job_block(WORKFLOW.read_text(), "cli-binaries")
     macos_arm64 = re.search(
-        r"os: macos-15,\s+target: aarch64-apple-darwin,\s+"
+        r"os: macos-26,\s+target: aarch64-apple-darwin,\s+"
         r'extra_cargo_args: "([^"]+)"',
         block,
     )

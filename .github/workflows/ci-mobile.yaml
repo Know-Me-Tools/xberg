@@ -60,7 +60,7 @@ jobs:
   ios-check:
     name: iOS cargo check (${{ matrix.target }})
     if: github.repository == 'xberg-io/xberg' && github.actor != 'dependabot[bot]' && github.event.pull_request.draft != true
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 360
     strategy:
       fail-fast: false
