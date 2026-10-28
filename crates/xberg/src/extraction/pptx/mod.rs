@@ -113,6 +113,7 @@ pub(crate) struct PptxInternalSlide {
 
 pub(crate) enum PptxInternalSlideElement {
     Markdown(String),
+    Table(Vec<Vec<String>>),
     Image {
         alt_text: String,
         target: String,

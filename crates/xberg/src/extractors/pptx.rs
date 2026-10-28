@@ -181,6 +181,9 @@ impl PptxExtractor {
         for slide in slide_contents {
             for element in &slide.elements {
                 match element {
+                    crate::extraction::pptx::PptxInternalSlideElement::Table(cells) => {
+                        Self::push_table_content(&mut builder, cells, slide.slide_number, budget)?;
+                    }
                     crate::extraction::pptx::PptxInternalSlideElement::Markdown(content) => {
                         Self::push_markdown_content(
                             &mut builder,
@@ -231,6 +234,23 @@ impl PptxExtractor {
         }
 
         Ok(builder.build())
+    }
+
+    fn push_table_content(
+        builder: &mut InternalDocumentBuilder,
+        cells: &[Vec<String>],
+        slide_num: u32,
+        budget: &mut SecurityBudget,
+    ) -> Result<()> {
+        for row in cells {
+            budget.step()?;
+            budget.add_cells(row.len())?;
+            for cell in row {
+                budget.account_text(cell.len())?;
+            }
+        }
+        builder.push_table_from_cells(cells, Some(slide_num), None);
+        Ok(())
     }
 
     fn push_markdown_content(

@@ -255,8 +255,12 @@ impl Slide {
     }
 
     fn render_table_markdown(builder: &mut ContentBuilder, table: &TableElement, config: &ParserConfig) {
+        builder.add_table(&Self::table_cells(table, config));
+    }
+
+    fn table_cells(table: &TableElement, config: &ParserConfig) -> Vec<Vec<String>> {
         let extract_fn: fn(&Run) -> String = if config.plain { Run::extract } else { Run::render_as_md };
-        let table_rows: Vec<Vec<String>> = table
+        table
             .rows
             .iter()
             .map(|row| {
@@ -265,8 +269,7 @@ impl Slide {
                     .map(|cell| join_runs_with_spacing(&cell.runs, extract_fn))
                     .collect()
             })
-            .collect();
-        builder.add_table(&table_rows);
+            .collect()
     }
 
     fn render_list_markdown(builder: &mut ContentBuilder, list: &ListElement, config: &ParserConfig) {
@@ -433,7 +436,8 @@ impl Slide {
             } else {
                 join_runs_with_spacing(&text.runs, Run::render_as_md)
             };
-            let mut builder = ContentBuilder::new(config.plain);
+            // ~keep Internal title identity must survive plain output; only the final renderer removes its marker.
+            let mut builder = ContentBuilder::new(false);
             builder.add_title(text_content.replace('\n', " ").trim());
             internal_elements.push(PptxInternalSlideElement::Markdown(builder.build().0));
         }
@@ -460,7 +464,11 @@ impl Slide {
             let mut builder = ContentBuilder::new(config.plain);
             match &self.elements[idx] {
                 SlideElement::Text(text, _) => Self::render_text_markdown(&mut builder, text, config),
-                SlideElement::Table(table, _) => Self::render_table_markdown(&mut builder, table, config),
+                SlideElement::Table(table, _) => {
+                    // ~keep A Markdown round trip would split literal pipe characters and erase plain-output tables.
+                    internal_elements.push(PptxInternalSlideElement::Table(Self::table_cells(table, config)));
+                    continue;
+                }
                 SlideElement::List(list, _) => Self::render_list_markdown(&mut builder, list, config),
                 SlideElement::Chart(chart_ref, _) => {
                     if let Some(text) = chart_ref.resolved_text.as_deref() {
