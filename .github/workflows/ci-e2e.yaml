@@ -140,6 +140,8 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 360
     env:
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
       # ~keep Gradle's nested JNI fat-LTO build exceeds the ARM runner's 16 GB (#2163).
       CARGO_PROFILE_RELEASE_LTO: ${{ matrix.lang == 'kotlin-android' && 'thin' || 'fat' }}
     strategy:
@@ -147,23 +149,23 @@ jobs:
       matrix:
         include:
           - lang: python
-            python-version: "3.13"
+            mise-tools: python uv
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - lang: node
-            node-version: "24"
+            mise-tools: node pnpm
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - lang: go
-            go-version: "1.26"
+            mise-tools: go
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - lang: ruby
-            ruby-version: "3.4"
+            mise-tools: ruby
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - lang: java
-            java-version: "25"
+            mise-tools: java
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - lang: csharp
@@ -180,7 +182,7 @@ jobs:
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - lang: wasm
-            node-version: "24"
+            mise-tools: node pnpm
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - lang: rust
@@ -194,7 +196,7 @@ jobs:
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
           - lang: kotlin-android
-            java-version: "25"
+            mise-tools: java
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
           - lang: swift
@@ -202,7 +204,7 @@ jobs:
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
           - lang: zig
-            zig-version: "0.17.0"
+            mise-tools: zig
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
     steps:
@@ -327,44 +329,47 @@ jobs:
         if: matrix.lang == 'wasm'
         uses: xberg-io/actions/install-wasi-sdk@v1
 
-      - name: Setup Python
-        if: matrix.python-version
-        uses: xberg-io/actions/setup-python-env@v1
+      # Each leg installs Task plus its language toolchain (matrix.mise-tools) from mise.lock. ~keep
+      - name: Install Task and the leg's toolchain
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: ${{ matrix.python-version }}
-          cache-prefix: e2e-py-${{ matrix.python-version }}
+          install-args: task ${{ matrix.mise-tools }}
 
-      - name: Setup Node
-        if: matrix.node-version
-        uses: xberg-io/actions/setup-node-workspace@v1
-
-      - name: Setup Go
-        if: matrix.go-version
-        uses: actions/setup-go@v7
+      - name: Resolve the mise Python version
+        if: matrix.lang == 'python'
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        if: matrix.lang == 'python'
+        uses: actions/cache@v6
         with:
-          go-version: ${{ matrix.go-version }}
+          path: ~/.cache/uv
+          key: e2e-uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: e2e-uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        if: matrix.lang == 'python'
+        run: uv sync --all-extras --all-packages --group dev --no-install-project --no-install-workspace
+      - name: Add the virtualenv to PATH
+        if: matrix.lang == 'python'
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
-      - name: Setup Ruby
-        if: matrix.ruby-version
-        uses: ruby/setup-ruby@v1.335.0
-        with:
-          ruby-version: ${{ matrix.ruby-version }}
-          bundler-cache: false
-          working-directory: e2e/ruby
+      - name: Install pnpm workspace dependencies
+        if: matrix.lang == 'node' || matrix.lang == 'wasm'
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        if: matrix.lang == 'node' || matrix.lang == 'wasm'
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
 
       - name: Bundle install
-        if: matrix.ruby-version
+        if: matrix.lang == 'ruby'
         working-directory: e2e/ruby
         run: |
           bundle config set frozen true
           bundle install --jobs 4
-
-      - name: Setup Java
-        if: matrix.java-version
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: ${{ matrix.java-version }}
 
       - name: Setup Android SDK
         if: matrix.lang == 'kotlin-android'
@@ -411,12 +416,6 @@ jobs:
         with:
           swift-version: ${{ matrix.swift-version }}
 
-      - name: Setup Zig
-        if: matrix.zig-version
-        uses: xberg-io/actions/setup-zig@v1
-        with:
-          version: ${{ matrix.zig-version }}
-
       - name: Setup library paths for FFI bindings
         if: |
           matrix.lang == 'go' || matrix.lang == 'java' ||
@@ -432,9 +431,6 @@ jobs:
           export LD_LIBRARY_PATH="/usr/local/lib:${PWD}/target/release:${ORT_LIB_LOCATION}:${LD_LIBRARY_PATH}"
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
-
-      - name: Install Task
-        uses: xberg-io/actions/install-task@v1
 
       - name: Install wasm-pack
         if: matrix.lang == 'wasm'

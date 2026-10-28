@@ -67,21 +67,27 @@ class GovernanceRuntimeTests(unittest.TestCase):
                 assert self.calls.read_text().splitlines() == ["--version"]
 
     def test_should_install_latest_in_ci_and_pin_release_installations(self) -> None:
-        """CI installers take the latest release; the six release-path installers pin 5.7.0."""
+        """CI installers take the latest release; the six release-path installers use the mise.toml pin."""
         root = Path(__file__).resolve().parents[2]
         taskfile = (root / "Taskfile.yml").read_text()
         assert re.search(r'AI_RULEZ_MIN_VERSION: "5\.7\.0"', taskfile) is not None
         assert "AI_RULEZ_VERSION:" not in taskfile
+        mise = (root / "mise.toml").read_text()
+        assert re.search(r'(?m)^"github:Goldziher/ai-rulez" = "\d+\.\d+\.\d+"$', mise) is not None
         release_paths = {"publish.yaml", "plugin-artifacts.yaml"}
         versions: dict[str, list[str]] = {"ci": [], "release": []}
+        release_installs = 0
         for path in (root / ".github/workflows").glob("*"):
             source = path.read_text()
             if "xberg-io/actions/setup-ai-rulez@" in source:
                 assert "source-revision:" not in source, f"{path} overrides the released AI-Rulez runtime"
             kind = "release" if path.name in release_paths else "ci"
             versions[kind].extend(re.findall(r'ai-rulez-version: "([^"\n]+)"', source))
+            if kind == "release":
+                release_installs += len(re.findall(r"(?m)^ +install-args: [^\n]*github:Goldziher/ai-rulez", source))
         assert versions["ci"] == ["latest"] * 3, versions
-        assert versions["release"] == ["5.7.0"] * 6, versions
+        assert versions["release"] == [], versions
+        assert release_installs == 6, release_installs
 
     def test_should_validate_with_minimum_or_newer_version(self) -> None:
         """The minimum and newer releases, compared numerically, reach the validation command."""

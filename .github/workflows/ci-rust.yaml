@@ -109,7 +109,9 @@ jobs:
           label: ${{ matrix.os }}
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Verify system Tesseract dynamic linking
         if: matrix.os == 'ubuntu-latest'
@@ -597,7 +599,9 @@ jobs:
 
       - name: Install Task
         if: matrix.name == 'email' || matrix.name == 'xml' || matrix.name == 'hwpx'
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Clippy email without Tokio
         if: matrix.name == 'email'

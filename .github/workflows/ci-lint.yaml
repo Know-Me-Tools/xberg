@@ -48,7 +48,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
       - name: Install ai-rulez
         uses: xberg-io/actions/setup-ai-rulez@v1
         with:
@@ -60,14 +62,25 @@ jobs:
     if: github.event.pull_request.draft != true
     name: Benchmark script regressions
     runs-on: ubuntu-latest
+    env:
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     steps:
       - uses: actions/checkout@v7
-      - name: Install Task
-        uses: xberg-io/actions/install-task@v1
-      - name: Install uv for benchmark dependency contracts
-        uses: astral-sh/setup-uv@v10.3.2
+      - name: Install Task, Python and uv
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          version: "0.13.3"
+          install-args: task python uv
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
       - name: Validate benchmark scripts
         run: task benchmark:validate:scripts
       - name: Validate Publish workflow contracts
@@ -77,10 +90,27 @@ jobs:
     if: github.event.pull_request.draft != true
     name: Plugin bundle freshness
     runs-on: ubuntu-latest
+    env:
+      # mise.ci.toml adds Python 3.11 for the Hermes test's `uv run --python 3.11`. ~keep
+      MISE_ENV: ci
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.2
+      - name: Install Python, uv and Node
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: python uv node
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
       # The plugin version must track the core crate version (task version:sync keeps it
       # pinned via sync_integration_versions.py). Guards against a core bump landing
       # without the plugin version following — verify --plugin alone would not catch it. ~keep
@@ -96,17 +126,12 @@ jobs:
       - name: Verify generated plugin bundles are current
         run: |
           ai-rulez verify --plugin
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
       - name: Verify OpenCode tools and packed Pi resources
         run: |
           node --test scripts/tests/opencode-plugin.test.mjs
           python3 scripts/verify_pi_package.py
           python3 scripts/tests/test_verify_pi_package.py
 
-      - name: Install uv for Hermes contract tests
-        uses: astral-sh/setup-uv@v10.3.2
       - name: Validate Hermes distribution metadata
         shell: bash
         run: |
@@ -172,7 +197,9 @@ jobs:
         with:
           submodules: false
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
       # C# DllImport and Java Panama FunctionDescriptor both restate every native signature
       # by hand, and neither restatement is checked at build time, so a wrong declaration
       # compiles clean and misbehaves only when the call runs. GH#1595 shipped that way in
@@ -185,14 +212,27 @@ jobs:
     if: github.event.pull_request.draft != true
     name: Alef readme/docs paths resolve
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     steps:
       - uses: actions/checkout@v7
-      - name: Install Task
-        uses: xberg-io/actions/install-task@v1
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.2
+      - name: Install Task, Python and uv
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
+          install-args: task python uv
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
       # Static check: every readme/docs path alef.toml points at (templates,
       # snippets_dir + snippet_language overrides, CLI/MCP doc sources, skills
       # template_dir) must resolve on disk. Catches a class of bug that
@@ -278,7 +318,9 @@ jobs:
           mv .polyrepo-siblings/html-to-markdown ../html-to-markdown
           rmdir .polyrepo-siblings
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
       - name: Verify Poly formatter scopes
         run: task poly:verify:tool-scopes
       - name: Setup Rust for Alef metadata
@@ -290,7 +332,7 @@ jobs:
           install-llvm-cov: "false"
       # install-alef reads alef.toml's [workspace] alef_version and installs that
       # exact pinned build, so this job doesn't go red every time alef cuts a
-      # release -- same hermeticity guarantee install-task gives the Task binary. ~keep
+      # release -- same hermeticity guarantee mise.lock gives the Task binary. ~keep
       - name: Install alef CLI
         uses: xberg-io/actions/install-alef@v1
         # alef is a third-party tool. The job-wide `-D warnings` turns its own
@@ -304,10 +346,9 @@ jobs:
       # generated Java is formatted with the repository's Java 25 toolchain; keep verification
       # on that same toolchain so eight wrapped declarations do not oscillate in CI. ~keep
       - name: Setup Java
-        uses: actions/setup-java@v6
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          distribution: temurin
-          java-version: "25"
+          install-args: java
       # Poly delegates Java formatting to the executables on PATH. Pin the same formatter chain
       # used for the committed Alef output; google-java-format alone is insufficient because Poly
       # 0.28.0 still applies the enabled clang-format catalog tool to Java despite its `files` glob.
@@ -386,6 +427,11 @@ jobs:
     if: github.event.pull_request.draft != true
     name: Generated e2e suites freshness
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     steps:
       - uses: actions/checkout@v7
       # alef.toml's [[crates.source_crates]] entries hash Rust sources living in
@@ -430,16 +476,28 @@ jobs:
           mv .polyrepo-siblings/html-to-markdown ../html-to-markdown
           rmdir .polyrepo-siblings
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
       - name: Install Elixir formatter
         uses: xberg-io/actions/setup-elixir@v1
         with:
           elixir-version: "1.19"
           otp-version: "28"
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.2
+      - name: Install Python and uv
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
+          install-args: python uv
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
       - name: Install E2E formatter
         run: uv sync --locked --only-group dev --no-install-workspace
       # `[crates.e2e.format] dart` runs `dart format` on e2e/dart during `alef e2e generate`,
@@ -483,7 +541,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
       - name: Install alef CLI
         uses: xberg-io/actions/install-alef@v1
         # alef is a third-party tool. The job-wide `-D warnings` turns its own
@@ -533,10 +593,9 @@ jobs:
       # packages/java/pom.xml `<maven.compiler.release>` and the `validate` job below,
       # which already sets the same version for the same reason. ~keep
       - name: Setup Java
-        uses: actions/setup-java@v6
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          distribution: temurin
-          java-version: "25"
+          install-args: java
       # The rust validator compiles its snippets against xberg, which reaches
       # heic -> xberg-libheif -> libheif-sys. That build script shells out to
       # `pkg-config libheif >= 1.21` and Ubuntu Noble ships only 1.17.6, so every

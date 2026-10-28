@@ -33,10 +33,9 @@ jobs:
       - name: Install system dependencies
         uses: ./.github/actions/install-system-deps
 
+      # rustup installs the toolchain rust-toolchain.toml pins, with its components and targets. ~keep
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: "1.99.1"
+        run: rustup toolchain install
 
       - name: Cache Cargo
         uses: actions/cache@v6

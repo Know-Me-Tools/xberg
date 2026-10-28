@@ -46,6 +46,9 @@ jobs:
   setup:
     name: Build harness + native libs
     runs-on: ubuntu-24.04-arm
+    env:
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 360
     permissions:
       contents: read
@@ -87,13 +90,20 @@ jobs:
       - name: Setup Layout Models
         uses: ./.github/actions/setup-layout-models
 
-      - name: Install Task
-        uses: xberg-io/actions/install-task@v1
-
-      - name: Install uv for benchmark dependency contracts
-        uses: astral-sh/setup-uv@v10.3.2
+      - name: Install Task, Python and uv for benchmark dependency contracts
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          version: "0.13.3"
+          install-args: task python uv
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
 
       - name: Validate benchmark scripts
         run: task benchmark:validate:scripts
@@ -273,6 +283,11 @@ jobs:
     # leg now runs on the same hosted arm64 machine — figures need re-baselining before they
     # are compared against numbers published from the old runners.
     runs-on: ubuntu-24.04-arm
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 360
     permissions:
       contents: read
@@ -402,11 +417,29 @@ jobs:
       # Python with pip (matching the competitor jobs) before the model download.
       - name: Setup Python (PaddleOCR model download)
         if: contains(matrix.pipeline, 'paddle')
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: benchmark-paddle-hf
-          install-command: "python -m pip install --disable-pip-version-check 'huggingface_hub>=0.34,<2'"
+          install-args: python uv
+          config-ref: ${{ github.sha }}
+      - name: Resolve the mise Python version
+        if: contains(matrix.pipeline, 'paddle')
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        if: contains(matrix.pipeline, 'paddle')
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: benchmark-paddle-hf-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: benchmark-paddle-hf-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        if: contains(matrix.pipeline, 'paddle')
+        run: python -m pip install --disable-pip-version-check 'huggingface_hub>=0.34,<2'
+      - name: Add the virtualenv to PATH
+        if: contains(matrix.pipeline, 'paddle')
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Setup PaddleOCR Models
         if: contains(matrix.pipeline, 'paddle')
@@ -654,6 +687,11 @@ jobs:
     needs: [setup, bench-rust]
     if: ${{ needs.setup.result == 'success' && !cancelled() }}
     runs-on: ubuntu-24.04-arm
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 360
     permissions:
       contents: read
@@ -713,11 +751,25 @@ jobs:
           ort-version: ${{ env.ORT_VERSION }}
 
       - name: Setup Python
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: benchmark-docling
-          install-command: "uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-docling"
+          install-args: python uv
+          config-ref: ${{ github.sha }}
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: benchmark-docling-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: benchmark-docling-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        run: uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-docling
+      - name: Add the virtualenv to PATH
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Install system dependencies
         run: |
@@ -771,6 +823,11 @@ jobs:
     needs: [setup, bench-rust]
     if: ${{ needs.setup.result == 'success' && !cancelled() }}
     runs-on: ubuntu-24.04-arm
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 360
     permissions:
       contents: read
@@ -824,11 +881,25 @@ jobs:
           ort-version: ${{ env.ORT_VERSION }}
 
       - name: Setup Python
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: benchmark-markitdown
-          install-command: "uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-markitdown --prerelease=allow"
+          install-args: python uv
+          config-ref: ${{ github.sha }}
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: benchmark-markitdown-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: benchmark-markitdown-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        run: uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-markitdown --prerelease=allow
+      - name: Add the virtualenv to PATH
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Run benchmark
         env:
@@ -854,6 +925,11 @@ jobs:
     needs: [setup, bench-rust]
     if: ${{ needs.setup.result == 'success' && !cancelled() }}
     runs-on: ubuntu-24.04-arm
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 360
     permissions:
       contents: read
@@ -918,11 +994,25 @@ jobs:
           sudo apt-get install -y tesseract-ocr tesseract-ocr-eng libmagic-dev poppler-utils libreoffice pandoc
 
       - name: Setup Python
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: benchmark-unstructured
-          install-command: "uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-unstructured"
+          install-args: python uv
+          config-ref: ${{ github.sha }}
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: benchmark-unstructured-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: benchmark-unstructured-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        run: uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-unstructured
+      - name: Add the virtualenv to PATH
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Run benchmark
         env:
@@ -1009,11 +1099,10 @@ jobs:
           ort-version: ${{ env.ORT_VERSION }}
 
       - name: Setup Java
-        uses: actions/setup-java@v6
-        id: setup-java
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          distribution: "temurin"
-          java-version: "25"
+          install-args: java
+          config-ref: ${{ github.sha }}
 
       - name: Download Apache Tika artifact
         uses: actions/download-artifact@v8
@@ -1044,6 +1133,11 @@ jobs:
     needs: [setup, bench-rust]
     if: ${{ needs.setup.result == 'success' && !cancelled() }}
     runs-on: ubuntu-24.04-arm
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 360
     permissions:
       contents: read
@@ -1103,11 +1197,25 @@ jobs:
           sudo apt-get install -y tesseract-ocr tesseract-ocr-eng libjpeg-dev libpng-dev libtiff-dev
 
       - name: Setup Python
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: benchmark-pymupdf4llm
-          install-command: "uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-pymupdf4llm"
+          install-args: python uv
+          config-ref: ${{ github.sha }}
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: benchmark-pymupdf4llm-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: benchmark-pymupdf4llm-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        run: uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-pymupdf4llm
+      - name: Add the virtualenv to PATH
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Test PyMuPDF4LLM adapter
         run: .venv/bin/pytest -q scripts/ci/benchmarks/test_pymupdf4llm_extract.py
@@ -1141,6 +1249,11 @@ jobs:
     # needed by jobs that must match the benchmarked binary's exact revision).
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04-arm
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 120
     permissions:
       contents: read
@@ -1159,11 +1272,24 @@ jobs:
         uses: xberg-io/actions/fetch-test-documents@v1
 
       - name: Setup Python
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: benchmark-mineru
-          install-command: "uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-mineru"
+          install-args: python uv
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: benchmark-mineru-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: benchmark-mineru-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        run: uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-mineru
+      - name: Add the virtualenv to PATH
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Install system dependencies (libgl1 + libglib2.0-0 for mineru)
         run: |
@@ -1245,6 +1371,11 @@ jobs:
     needs: [setup, bench-rust, prefetch-mineru-models]
     if: ${{ needs.setup.result == 'success' && needs.prefetch-mineru-models.result == 'success' && !cancelled() }}
     runs-on: ubuntu-24.04-arm
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 360
     permissions:
       contents: read
@@ -1298,11 +1429,25 @@ jobs:
           ort-version: ${{ env.ORT_VERSION }}
 
       - name: Setup Python
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: benchmark-mineru
-          install-command: "uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-mineru"
+          install-args: python uv
+          config-ref: ${{ github.sha }}
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: benchmark-mineru-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: benchmark-mineru-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        run: uv sync --frozen --no-install-project --no-install-workspace --group dev --group bench-mineru
+      - name: Add the virtualenv to PATH
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Install system dependencies (libgl1 + libglib2.0-0 for mineru)
         run: |

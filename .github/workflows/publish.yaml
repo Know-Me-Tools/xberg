@@ -720,9 +720,10 @@ jobs:
 
           submodules: false
       - uses: xberg-io/actions/setup-rust@v1
-      - uses: actions/setup-python@v7
+      - uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.13"
+          install-args: python
+          config-ref: ${{ github.sha }}
 
       - name: Install system dependencies
         uses: ./.github/actions/install-system-deps
@@ -764,9 +765,16 @@ jobs:
         with:
           target: ${{ matrix.target }}
 
-      - uses: xberg-io/actions/setup-node-workspace@v1
+      - uses: xberg-io/actions/setup-mise@v1
         with:
-          node-version: "24"
+          install-args: node pnpm
+          config-ref: ${{ github.sha }}
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
 
       - name: Install system dependencies
         uses: ./.github/actions/install-system-deps
@@ -1065,9 +1073,16 @@ jobs:
 
       - uses: xberg-io/actions/install-wasi-sdk@v1
 
-      - uses: xberg-io/actions/setup-node-workspace@v1
+      - uses: xberg-io/actions/setup-mise@v1
         with:
-          node-version: "24"
+          install-args: node pnpm
+          config-ref: ${{ github.sha }}
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
 
       - name: Install system dependencies
         uses: ./.github/actions/install-system-deps
@@ -1298,6 +1313,9 @@ jobs:
     if: >-
       ${{ !inputs.plugins-only && (!cancelled() && needs.prepare.outputs.dry_run != 'true' && needs.publish-crates.result != 'failure' && needs.prepare.outputs.release_php == 'true' && (needs.check-packagist.outputs.exists != 'true' || needs.prepare.outputs.force_republish == 'true')) }}
     runs-on: ${{ matrix.platform.os }}
+    env:
+      MISE_ENV: ci
+      MISE_ZIG_VERSION: "0.13.0"
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -1326,14 +1344,16 @@ jobs:
       - name: Install system dependencies
         uses: ./.github/actions/install-system-deps
 
+      # ~keep ext-php-rs bindgen uses the runner's libclang 18. Zig 0.17 ships newer
+      # ARM headers that libclang 18 cannot parse (`__mfp8` and NEON type failures).
+      # Zig 0.13 uses LLVM 18 headers while retaining glibc-versioned targets; the job's
+      # MISE_ZIG_VERSION selects it from mise.ci.toml.
       - name: Setup Zig for PHP glibc floor
         if: contains(matrix.platform.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-zig@v1
-        # ~keep ext-php-rs bindgen uses the runner's libclang 18. Zig 0.17 ships newer
-        # ARM headers that libclang 18 cannot parse (`__mfp8` and NEON type failures).
-        # Zig 0.13 uses LLVM 18 headers while retaining glibc-versioned targets.
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          version: "0.13.0"
+          install-args: zig
+          config-ref: ${{ github.sha }}
 
       - name: Build liblzma statically for PHP glibc floor
         if: contains(matrix.platform.target, '-linux-gnu')
@@ -1869,7 +1889,10 @@ jobs:
 
           submodules: false
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
+          config-ref: ${{ github.sha }}
 
       - uses: xberg-io/actions/setup-rust@v1
         if: ${{ !matrix.musl }}
@@ -1889,7 +1912,10 @@ jobs:
 
       - name: Setup Zig for glibc 2.28 floor
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-zig@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: zig
+          config-ref: ${{ github.sha }}
 
       - name: Build liblzma statically for glibc floor
         if: contains(matrix.target, '-linux-gnu')
@@ -1976,7 +2002,10 @@ jobs:
 
       - name: Setup Zig for glibc 2.28 floor
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-zig@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: zig
+          config-ref: ${{ github.sha }}
 
       - name: Build liblzma statically for glibc floor
         if: contains(matrix.target, '-linux-gnu')
@@ -2114,7 +2143,10 @@ jobs:
 
       - name: Setup Zig for glibc 2.28 floor
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-zig@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: zig
+          config-ref: ${{ github.sha }}
 
       - name: Build liblzma statically for glibc floor
         if: contains(matrix.target, '-linux-gnu')
@@ -2309,7 +2341,10 @@ jobs:
 
       - name: Setup Zig for glibc 2.28 floor
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-zig@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: zig
+          config-ref: ${{ github.sha }}
 
       - name: Build liblzma statically for glibc floor
         if: contains(matrix.target, '-linux-gnu')
@@ -2770,7 +2805,10 @@ jobs:
           ort-version: "1.24.2"
       - name: Setup Zig for glibc 2.28 floor
         if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-zig@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: zig
+          config-ref: ${{ github.sha }}
       - name: Build liblzma statically for glibc floor
         if: contains(matrix.target, '-linux-gnu')
         shell: bash
@@ -3195,9 +3233,10 @@ jobs:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
           fetch-depth: 0
 
-      - uses: actions/setup-python@v7
+      - uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.13"
+          install-args: python
+          config-ref: ${{ github.sha }}
 
       - name: Download CLI binaries
         uses: actions/download-artifact@v8
@@ -3803,7 +3842,9 @@ jobs:
           path: .python-publication-actions
           persist-credentials: false
       - name: Install task runner
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
       - uses: actions/download-artifact@v8
         with:
           pattern: python-wheels-*
@@ -3880,9 +3921,10 @@ jobs:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
           fetch-depth: 0
 
-      - uses: actions/setup-python@v7
+      - uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.13"
+          install-args: python
+          config-ref: ${{ github.sha }}
 
       - name: Download CLI proxy wheels
         uses: actions/download-artifact@v8
@@ -3969,10 +4011,16 @@ jobs:
           path: node-artifacts
           merge-multiple: true
 
-      - uses: xberg-io/actions/setup-node-workspace@v1
+      - uses: xberg-io/actions/setup-mise@v1
         with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org/"
+          install-args: node pnpm
+          config-ref: ${{ github.sha }}
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
 
       - name: Stage platform packages and main package
         shell: bash
@@ -4167,10 +4215,16 @@ jobs:
           name: wasm-bundle
           path: crates/xberg-wasm
 
-      - uses: xberg-io/actions/setup-node-workspace@v1
+      - uses: xberg-io/actions/setup-mise@v1
         with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org/"
+          install-args: node pnpm
+          config-ref: ${{ github.sha }}
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
 
       - name: Assert npm tarball contains the wasm web bundle and fits the CDN size budget
         working-directory: crates/xberg-wasm
@@ -5149,10 +5203,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
-      - uses: xberg-io/actions/setup-node-workspace@v1
+      - uses: xberg-io/actions/setup-mise@v1
         with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org/"
+          install-args: node pnpm
+          config-ref: ${{ github.sha }}
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
       # dry-run must be threaded explicitly: prepare synthesizes a dry-run tag, so this job's
       # `is_tag == 'true'` gate does not exclude dry runs (same reasoning as the elixir-natives
       # upload-artifact step elsewhere in this file), and check-cli.outputs.exists only guards
@@ -5176,6 +5236,9 @@ jobs:
     if: >-
       ${{ !inputs.plugins-only && (!cancelled() && needs.publish-pypi.result != 'failure' && needs.publish-crates.result != 'failure' && needs.prepare.outputs.release_python == 'true' && needs.prepare.outputs.is_tag == 'true') }}
     runs-on: ubuntu-latest
+    env:
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     environment: pypi
     permissions:
       contents: read
@@ -5184,10 +5247,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.2
+      - name: Install Python and uv
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.13"
+          install-args: python uv
+          config-ref: ${{ github.sha }}
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
       - name: Build integration distributions
         run: |
           set -euo pipefail
@@ -5296,10 +5370,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
-      - uses: xberg-io/actions/setup-node-workspace@v1
+      - uses: xberg-io/actions/setup-mise@v1
         with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org/"
+          install-args: node pnpm
+          config-ref: ${{ github.sha }}
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
       # Dry runs never publish the release version to npm (see the job comment above), so pin
       # to whatever IS on npm right now instead of the unresolvable release version. Best-effort:
       # if nothing has ever been published for this package, leave the pin alone and let `npm
@@ -5358,16 +5438,19 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
-      - uses: xberg-io/actions/setup-node-workspace@v1
+      # ~keep Release paths pin ai-rulez (mise.toml) so a new upstream release cannot break a release with no
+      # repo change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
+      - name: Install Node, pnpm and ai-rulez
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org/"
-      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
-      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
-      - name: Install ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@v1
-        with:
-          ai-rulez-version: "5.8.0"
+          install-args: node pnpm github:Goldziher/ai-rulez
+          config-ref: ${{ github.sha }}
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
       - name: Verify plugin bundles match the pinned generator
         run: |
           ai-rulez verify --plugin
@@ -5404,6 +5487,9 @@ jobs:
     if: >-
       ${{ !inputs.plugins-only && (!cancelled() && needs.prepare.outputs.release_targets == 'all' && needs.prepare.outputs.is_tag == 'true') }}
     runs-on: ubuntu-latest
+    env:
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     environment: pypi
     permissions:
       contents: read
@@ -5412,21 +5498,28 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
-      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
-      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
-      - name: Install ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@v1
+      # ~keep Release paths pin ai-rulez (mise.toml) so a new upstream release cannot break a release with no
+      # repo change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
+      - name: Install Python, uv and ai-rulez
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          ai-rulez-version: "5.8.0"
+          install-args: python uv github:Goldziher/ai-rulez
+          config-ref: ${{ github.sha }}
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
       - name: Verify plugin source and generated artifacts
         uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
           config-directory: .ai-rulez
           version-sync-script: scripts/sync_integration_versions.py
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.2
-        with:
-          python-version: "3.13"
       - name: Build Hermes wheel
         run: uv build --wheel --out-dir dist-hermes plugin/.hermes/package
       # publish-pypi is idempotent (skips a version already on PyPI). ~keep
@@ -5448,12 +5541,13 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.tag }}
           fetch-depth: 0
-      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
-      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
+      # ~keep Release paths pin ai-rulez (mise.toml) so a new upstream release cannot break a release with no
+      # repo change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
       - name: Install ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          ai-rulez-version: "5.8.0"
+          install-args: github:Goldziher/ai-rulez
+          config-ref: ${{ github.sha }}
       - name: Verify public skill exports
         run: python3 scripts/sync_public_skills.py --check
       - name: Package all supported plugin runtimes
@@ -5521,24 +5615,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
-      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
-      - name: Install ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@v1
+      # ~keep Release paths pin ai-rulez (mise.toml) so a new upstream release cannot break a release with no
+      # repo change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
+      - name: Install Node, pnpm and ai-rulez
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          ai-rulez-version: "5.8.0"
+          install-args: node pnpm github:Goldziher/ai-rulez
       - name: Verify plugin versions and generated resources
         uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
           version-sync-script: scripts/sync_integration_versions.py
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          registry-url: https://registry.npmjs.org
-      - uses: pnpm/action-setup@v6.1.0
-        with:
-          version: "12.11.2"
-          run_install: false
       - name: Read and check the exact npm version
         id: package
         shell: bash
@@ -5589,6 +5675,9 @@ jobs:
     name: Publish missing Hermes plugin version
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.plugins-only && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    env:
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     environment: pypi
     permissions:
       contents: read
@@ -5597,19 +5686,26 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      # ~keep Release paths pin ai-rulez so a new upstream release cannot break a release with no repo
-      # change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
-      - name: Install ai-rulez
-        uses: xberg-io/actions/setup-ai-rulez@v1
+      # ~keep Release paths pin ai-rulez (mise.toml) so a new upstream release cannot break a release with no
+      # repo change; CI validation runs latest and flags regeneration first. Bump with the poly hook revision.
+      - name: Install Python, uv and ai-rulez
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          ai-rulez-version: "5.8.0"
+          install-args: python uv github:Goldziher/ai-rulez
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
       - name: Verify plugin versions and generated resources
         uses: xberg-io/actions/verify-ai-rulez-plugin@v1
         with:
           version-sync-script: scripts/sync_integration_versions.py
-      - uses: astral-sh/setup-uv@v10.3.2
-        with:
-          python-version: "3.13"
       - name: Read the verified Hermes version
         id: package
         shell: bash

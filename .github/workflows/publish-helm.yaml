@@ -62,7 +62,10 @@ jobs:
           ref: ${{ inputs.ref || inputs.tag || github.event.client_payload.tag || github.ref }}
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
+          config-ref: ${{ github.sha }}
 
       - name: Resolve version
         id: meta

@@ -28,7 +28,7 @@ def test_php_linux_artifacts_are_floor_built_and_verified() -> None:
     ort_step = block[setup_ort : block.index("xberg-io/actions/build-php-extension@v1")]
     assert "if: contains(matrix.platform.target, '-linux-gnu')" in ort_step
     assert "dest-dir: crates/xberg-php" in ort_step
-    assert 'version: "0.13.0"' in block
+    assert 'MISE_ZIG_VERSION: "0.13.0"' in block
     assert 'TARGET_ARG="${TARGET}.${GLIBC_FLOOR}"' in block
     assert 'cargo zigbuild --locked -p xberg-php --release --target "${TARGET_ARG}"' in block
     assert "contains(matrix.platform.target, '-linux-gnu')" in block

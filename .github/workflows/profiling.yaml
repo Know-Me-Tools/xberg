@@ -65,7 +65,9 @@ jobs:
         uses: ./.github/actions/setup-layout-models
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build workspace (native libs + harness with profiling)
         env:
@@ -172,6 +174,11 @@ jobs:
     name: xberg-python (${{ matrix.mode }}) [profiling]
     needs: setup
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 60
     permissions:
       contents: read
@@ -218,10 +225,24 @@ jobs:
           use-sccache: true
 
       - name: Setup Python
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: profiling-python
+          install-args: python uv
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: profiling-python-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: profiling-python-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        run: uv sync --all-extras --all-packages --group dev --no-install-project --no-install-workspace
+      - name: Add the virtualenv to PATH
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Setup ONNX Runtime
         uses: ./.github/actions/setup-onnx-runtime
@@ -232,7 +253,9 @@ jobs:
         uses: ./.github/actions/setup-layout-models
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Python bindings
         run: task python:build:bindings
@@ -266,6 +289,11 @@ jobs:
     name: xberg-python-async-OLD (${{ matrix.mode }}) [profiling]
     needs: setup
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 60
     permissions:
       contents: read
@@ -312,10 +340,24 @@ jobs:
           use-sccache: true
 
       - name: Setup Python
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: profiling-python
+          install-args: python uv
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: profiling-python-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: profiling-python-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        run: uv sync --all-extras --all-packages --group dev --no-install-project --no-install-workspace
+      - name: Add the virtualenv to PATH
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Setup ONNX Runtime
         uses: ./.github/actions/setup-onnx-runtime
@@ -326,7 +368,9 @@ jobs:
         uses: ./.github/actions/setup-layout-models
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Python bindings
         run: task python:build:bindings
@@ -360,6 +404,11 @@ jobs:
     name: xberg-python-batch (${{ matrix.mode }}) [profiling]
     needs: setup
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: ci
+      MISE_PYTHON_VERSION: "3.11.18"
+      # uv must use the interpreter mise installed, not download its own. ~keep
+      UV_PYTHON_PREFERENCE: only-system
     timeout-minutes: 60
     permissions:
       contents: read
@@ -406,10 +455,24 @@ jobs:
           use-sccache: true
 
       - name: Setup Python
-        uses: xberg-io/actions/setup-python-env@v1
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.11"
-          cache-prefix: profiling-python
+          install-args: python uv
+      - name: Resolve the mise Python version
+        id: mise-python
+        shell: bash
+        run: echo "version=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: profiling-python-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: profiling-python-${{ runner.os }}-${{ steps.mise-python.outputs.version }}-
+      - name: Install Python dependencies
+        run: uv sync --all-extras --all-packages --group dev --no-install-project --no-install-workspace
+      - name: Add the virtualenv to PATH
+        shell: bash
+        run: if [ -d .venv/bin ]; then echo "$PWD/.venv/bin" >> "$GITHUB_PATH"; fi
 
       - name: Setup ONNX Runtime
         uses: ./.github/actions/setup-onnx-runtime
@@ -420,7 +483,9 @@ jobs:
         uses: ./.github/actions/setup-layout-models
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Python bindings
         run: task python:build:bindings
@@ -500,7 +565,15 @@ jobs:
           use-sccache: true
 
       - name: Setup Node
-        uses: xberg-io/actions/setup-node-workspace@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: node pnpm
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
 
       - name: Verify Node setup (async)
         run: scripts/ci/benchmarks/verify-node-setup.sh "Node setup (async)"
@@ -514,7 +587,9 @@ jobs:
         uses: ./.github/actions/setup-layout-models
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Node bindings and install locally
         env:
@@ -596,7 +671,15 @@ jobs:
           use-sccache: true
 
       - name: Setup Node
-        uses: xberg-io/actions/setup-node-workspace@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: node pnpm
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
 
       - name: Verify Node setup (batch)
         run: scripts/ci/benchmarks/verify-node-setup.sh "Node setup (batch)"
@@ -610,7 +693,9 @@ jobs:
         uses: ./.github/actions/setup-layout-models
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Node bindings and install locally
         env:
@@ -692,10 +777,20 @@ jobs:
           use-sccache: true
 
       - name: Setup Node
-        uses: xberg-io/actions/setup-node-workspace@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: node pnpm
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build WASM bindings
         run: task wasm:build:bindings
@@ -775,10 +870,20 @@ jobs:
           use-sccache: true
 
       - name: Setup Node
-        uses: xberg-io/actions/setup-node-workspace@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: node pnpm
+      - name: Install pnpm workspace dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+      - name: Add pnpm bin to PATH
+        shell: bash
+        run: pnpm bin >> "$GITHUB_PATH"
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build WASM bindings
         run: task wasm:build:bindings
@@ -812,6 +917,9 @@ jobs:
     name: xberg-ruby (${{ matrix.mode }}) [profiling]
     needs: setup
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: ci
+      MISE_RUBY_VERSION: "3.2.11"
     timeout-minutes: 60
     permissions:
       contents: read
@@ -858,9 +966,9 @@ jobs:
           use-sccache: true
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1.335.0
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          ruby-version: "3.2"
+          install-args: ruby
 
       - name: Install Bundler
         shell: bash
@@ -882,7 +990,9 @@ jobs:
         run: python3 scripts/ci/ruby/vendor-xberg-core.py
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Ruby native gem
         env:
@@ -926,6 +1036,9 @@ jobs:
     name: xberg-ruby-batch (${{ matrix.mode }}) [profiling]
     needs: setup
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: ci
+      MISE_RUBY_VERSION: "3.2.11"
     timeout-minutes: 60
     permissions:
       contents: read
@@ -972,9 +1085,9 @@ jobs:
           use-sccache: true
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1.335.0
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          ruby-version: "3.2"
+          install-args: ruby
 
       - name: Install Bundler
         shell: bash
@@ -996,7 +1109,9 @@ jobs:
         run: python3 scripts/ci/ruby/vendor-xberg-core.py
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Ruby native gem
         env:
@@ -1086,10 +1201,17 @@ jobs:
           use-sccache: true
 
       - name: Setup Go
-        uses: actions/setup-go@v7
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          go-version: "1.26.x"
-          cache-dependency-path: packages/go/go.sum
+          install-args: go
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('packages/go/go.sum') }}
+          restore-keys: go-${{ runner.os }}-
 
       - name: Setup ONNX Runtime
         uses: ./.github/actions/setup-onnx-runtime
@@ -1104,7 +1226,9 @@ jobs:
         run: go mod download
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Go bindings
         run: task go:build:bindings
@@ -1185,10 +1309,17 @@ jobs:
           use-sccache: true
 
       - name: Setup Go
-        uses: actions/setup-go@v7
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          go-version: "1.26.x"
-          cache-dependency-path: packages/go/go.sum
+          install-args: go
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('packages/go/go.sum') }}
+          restore-keys: go-${{ runner.os }}-
 
       - name: Setup ONNX Runtime
         uses: ./.github/actions/setup-onnx-runtime
@@ -1203,7 +1334,9 @@ jobs:
         run: go mod download
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Go bindings
         run: task go:build:bindings
@@ -1283,15 +1416,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Java
-        uses: actions/setup-java@v6
-        id: setup-java
+      - name: Setup Java and Maven
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          distribution: "temurin"
-          java-version: "25"
-
-      - name: Setup Maven 3.9.11
-        uses: xberg-io/actions/setup-maven@v1
+          install-args: java maven
 
       - name: Setup ONNX Runtime
         uses: ./.github/actions/setup-onnx-runtime
@@ -1302,7 +1430,9 @@ jobs:
         uses: ./.github/actions/setup-layout-models
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build Java bindings
         run: task java:build:bindings
@@ -1395,7 +1525,9 @@ jobs:
         uses: ./.github/actions/setup-layout-models
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Build C# bindings
         run: task csharp:build:bindings

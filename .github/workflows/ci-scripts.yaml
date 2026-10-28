@@ -85,7 +85,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Task
-        uses: xberg-io/actions/install-task@v1
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
 
       - name: Check shared Bats helper provenance
         run: task test:scripts:lib:check
