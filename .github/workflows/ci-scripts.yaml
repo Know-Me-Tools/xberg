@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "scripts/**"
+      - "docker/Dockerfile.*"
       - "tools/**/*.sh"
       - "integrations/scripts/**"
       - ".editorconfig"

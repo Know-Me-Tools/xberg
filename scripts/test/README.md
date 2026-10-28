@@ -8,6 +8,11 @@ This directory contains comprehensive testing scripts for validating Docker conf
 
 A comprehensive local Docker testing script that validates all configuration volume mount scenarios.
 
+This is an image integration harness, run by `ci-docker.yaml` through
+`scripts/ci/docker/run-config-tests.sh`. It requires actual built images, Docker and HTTP health
+checks; it stays outside the offline Bats shell contract suite. The shell contracts, including
+Dockerfile tessdata checks, run through `task test:scripts:bats`.
+
 #### Purpose
 
 Tests Docker configuration in various scenarios:
