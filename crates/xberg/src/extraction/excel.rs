@@ -29,7 +29,7 @@
 //! # Ok(())
 //! # }
 //! ```
-use calamine::{Data, DataRef, Range, Reader, SheetVisible, open_workbook_auto};
+use calamine::{Data, DataRef, Range, Reader, SheetVisible};
 use std::collections::HashMap;
 use std::fmt::Write as FmtWrite;
 use std::io::{Cursor, Read, Seek};
@@ -95,6 +95,7 @@ use package_metadata::{
 };
 
 mod datetime;
+mod table_budget;
 
 /// Format dispatch and the `read_excel_file`/`read_excel_bytes` entry points, split out to
 /// keep this file under the line-count limit.
