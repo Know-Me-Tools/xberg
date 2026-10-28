@@ -50,6 +50,33 @@ Xberg uses only the RT-DETR v2 model for layout detection. The `preset` field is
 RT-DETR also runs through xberg's pure-Rust `tract` engine (no native ONNX Runtime library, CPU-only), matching ONNX Runtime within 5e-3 on its outputs. This brings layout detection to targets that cannot link native ONNX Runtime: it is enabled on WASM and the Android x86_64 emulator via the `layout-tract` feature (on WASM, weights are streamed in through the `detectLayout` export). PP-DocLayout-V3, TATR, and SLANeXT table structure models remain ONNX Runtime-only.
 :::
 
+## Choose pages explicitly
+
+Use `extract_with_layout_pages` to run layout detection on selected PDF pages while retaining
+native text from the other pages. Page numbers start at 1. An empty list disables layout for
+that request; zero and out-of-range page numbers are ignored with a processing warning.
+
+```python
+from pathlib import Path
+from xberg import ExtractInput, ExtractionConfig, extract_with_layout_pages
+
+output = await extract_with_layout_pages(
+    ExtractInput(
+        kind="bytes",
+        bytes=Path("report.pdf").read_bytes(),
+        mime_type="application/pdf",
+        filename="report.pdf",
+    ),
+    ExtractionConfig(),
+    pages=[3, 7],
+)
+```
+
+This entry point accepts PDF bytes with the native PDF backend. It bypasses extraction caches
+for the request and enables layout processing for the selected pages. URI inputs, Pdfium and
+custom extractors that cannot honor the selection return an explicit error. The existing
+`LayoutDetectionConfig` has no `pages` field; pass the list to this function.
+
 ## Configuration
 
 <Tabs syncKey="lang">

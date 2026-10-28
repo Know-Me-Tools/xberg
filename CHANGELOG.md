@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **(layout): Select PDF pages with `extract_with_layout_pages`.**
+  The additive API uses 1-based page numbers, retains native text on excluded pages and warns about invalid pages. (#2255)
+
 - **(benchmarks): Preserve independent layout annotations when importing evaluation documents.**
   PDF-bound sidecars retain regions and reading order, reject changed inputs, and backfill existing fixtures. (#2284)
 
@@ -24,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **(Rust): Update Crawlberg configuration types and error matching.**
+  Exhaustive Crawlberg configuration literals need the new upstream fields; use `..Default::default()` where appropriate.
+  `WafBlocked` matches must account for its added status and body fields. HTML conversion options retain their existing
+  exhaustive field set with html-to-markdown 3.19.
+
 - **(elixir): Allow compatible Brotli and allocator updates in native builds.**
   Elixir no longer forces decompressor 6.0.1 when another dependency requires a newer compatible release.
 - **(pdf): Native font metrics retain their 16-bit glyph-count API with the updated font parser.**
@@ -32,9 +40,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **(rendering): Avoid quadratic work when rendering user-controlled HTML table cells.**
+  Comrak 0.59 includes the upstream table-cell rendering fix.
+
 - **(excel): Enforce spreadsheet limits before worksheet buffers and table grids are allocated.**
   XLSX, XLSB, XLS and ODS reject oversized ranges, repeated cells and malformed records early,
   including renamed inputs; readable cached values survive unsupported XLSB formulas. (#2296)
+
+- **(crawl): Keep custom headers scoped to the seed host while following subdomains.**
+  Crawlberg 1.12.3 sends a custom header to subdomains only through its explicit public-header allowlist.
+  Untrusted API requests cannot override the operator's TLS certificate-verification policy.
 
 - **(integrations): File locking uses filelock 4.2.4 on Python 3.11 and later to protect lock-file ownership.**
   Python 3.10 retains the affected 4.1.0 branch; benchmark environments with upstream caps remain affected.
@@ -79,6 +94,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Font-tier lookups stay bounded for documents containing many distinct sizes. (#2305)
 - **(ocr): Reuse secondary dictionaries within keyed Tesseract sessions.**
   Repeated multilingual calls avoid reloading dictionaries while preserving quality checks and pool eviction. (#2306)
+
+
 - **(publish): Inspect the actual Node native binary before packing platform packages.**
   File-size failures now stop publication instead of being hidden by the diagnostic output.
 - **(office): Recover native text from embedded EMF and WMF pictures without raster OCR failures.**
