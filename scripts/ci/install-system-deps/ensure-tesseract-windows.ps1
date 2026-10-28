@@ -32,7 +32,7 @@ function Invoke-TesseractBuildCommand {
     & $Executable @Arguments | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Tesseract source command failed with exit ${LASTEXITCODE}: $Executable" }
   }
-  finally { [Environment]::SetEnvironmentVariable('_CL_', $previous, 'Process') }
+  finally { $env:_CL_ = $previous }
 }
 
 function Install-TesseractLeptonica {
@@ -43,7 +43,7 @@ function Install-TesseractLeptonica {
     Invoke-TesseractBuildCommand -Executable (Join-Path $VcpkgRoot 'vcpkg.exe') `
       -Arguments @('install', 'leptonica:x64-windows-static-md', '--recurse')
   }
-  finally { [Environment]::SetEnvironmentVariable('VCPKG_MAX_CONCURRENCY', $previous, 'Process') }
+  finally { $env:VCPKG_MAX_CONCURRENCY = $previous }
 }
 
 function Build-TesseractSource {

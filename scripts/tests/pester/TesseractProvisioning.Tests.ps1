@@ -231,3 +231,50 @@ Describe 'Actual Windows OCR runtime versions' {
         { Assert-TesseractRuntime -Executable 'Invoke-TesseractRuntimeFixture' } | Should -Throw '*probe failed: 7*'
     }
 }
+
+Describe 'Tesseract build environment restoration' {
+    It 'should restore compiler flags <Value> after command failure=<Fails>' -ForEach @(
+        @{ Value = $null; Fails = $false }
+        @{ Value = ''; Fails = $false }
+        @{ Value = '/DORIGINAL'; Fails = $false }
+        @{ Value = $null; Fails = $true }
+        @{ Value = ''; Fails = $true }
+        @{ Value = '/DORIGINAL'; Fails = $true }
+    ) {
+        $original = $env:_CL_
+        try {
+            $env:_CL_ = $Value
+            $expected = [Environment]::GetEnvironmentVariable('_CL_', 'Process')
+            $code = if ($Fails) { 'exit 7' } else { 'exit 0' }
+            $command = { Invoke-TesseractBuildCommand -Executable (Join-Path $PSHOME 'pwsh') -Arguments @('-NoProfile', '-Command', $code) }
+            if ($Fails) { $command | Should -Throw '*exit 7*' }
+            else { $command | Should -Not -Throw }
+            [Environment]::GetEnvironmentVariable('_CL_', 'Process') | Should -BeExactly $expected
+        }
+        finally { $env:_CL_ = $original }
+    }
+
+    It 'should restore vcpkg concurrency <Value> after build failure=<Fails>' -ForEach @(
+        @{ Value = $null; Fails = $false }
+        @{ Value = ''; Fails = $false }
+        @{ Value = '13'; Fails = $false }
+        @{ Value = $null; Fails = $true }
+        @{ Value = ''; Fails = $true }
+        @{ Value = '13'; Fails = $true }
+    ) {
+        $original = $env:VCPKG_MAX_CONCURRENCY
+        try {
+            $env:VCPKG_MAX_CONCURRENCY = $Value
+            $expected = [Environment]::GetEnvironmentVariable('VCPKG_MAX_CONCURRENCY', 'Process')
+            Mock Invoke-TesseractBuildCommand {
+                $env:VCPKG_MAX_CONCURRENCY | Should -BeExactly '1'
+                if ($Fails) { throw 'controlled build failure' }
+            }
+            $command = { Install-TesseractLeptonica -VcpkgRoot $TestDrive }
+            if ($Fails) { $command | Should -Throw '*controlled build failure*' }
+            else { $command | Should -Not -Throw }
+            [Environment]::GetEnvironmentVariable('VCPKG_MAX_CONCURRENCY', 'Process') | Should -BeExactly $expected
+        }
+        finally { $env:VCPKG_MAX_CONCURRENCY = $original }
+    }
+}
