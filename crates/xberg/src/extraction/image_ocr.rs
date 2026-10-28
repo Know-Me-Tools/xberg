@@ -71,6 +71,8 @@ pub(crate) async fn process_images_with_ocr(
         return Ok(images);
     }
 
+    extract_metafile_text(&mut images, config, warnings);
+
     // Opting in without an `ocr` block is an AUTOMATIC trigger: with nothing registered to
     // run it, spawning a task per image would only produce one failure warning per image. ~keep
     if config.ocr.is_none() && !crate::plugins::registry::automatic_ocr_backend_is_registered() {
@@ -106,6 +108,46 @@ pub(crate) async fn process_images_with_ocr(
     Ok(images)
 }
 
+#[cfg(all(feature = "ocr", feature = "tokio-runtime"))]
+fn extract_metafile_text(
+    images: &mut [ExtractedImage],
+    config: &crate::core::config::ExtractionConfig,
+    warnings: &mut Vec<crate::types::ProcessingWarning>,
+) {
+    let defaults = crate::extractors::security::SecurityLimits::default();
+    let limits = config
+        .security_limits
+        .as_ref()
+        .or_else(|| config.ocr.as_ref().and_then(|ocr| ocr.security_limits.as_ref()))
+        .unwrap_or(&defaults);
+    let mut budget = crate::extractors::security::SecurityBudget::from_limits(limits);
+    for image in images {
+        let Some(kind) = crate::extraction::metafile::kind(&image.data, &image.format) else {
+            continue;
+        };
+        match crate::extraction::metafile::extract(&image.data, kind, limits, &mut budget) {
+            Ok(native) => {
+                if native.unsupported_text {
+                    crate::core::diagnostics::push_warning(
+                        warnings,
+                        "metafile_text",
+                        "Some metafile text requires a font-specific glyph map or unsupported ANSI code page",
+                    );
+                }
+                // ~keep The existing image-text carrier feeds container anchors; native records are not OCR and have no OCR metadata.
+                image.ocr_result = Some(Box::new(ExtractedDocument {
+                    content: native.text,
+                    ..Default::default()
+                }));
+            }
+            Err(error) => {
+                image.ocr_result = None;
+                crate::core::diagnostics::push_warning(warnings, "metafile_text", error.to_string());
+            }
+        }
+    }
+}
+
 /// Build one pending OCR task per image, applying the caller's output format, acceleration, and
 /// security limits onto a per-image `OcrConfig` clone.
 ///
@@ -126,6 +168,9 @@ fn build_pending_ocr_tasks(
 
     let mut pending = std::collections::VecDeque::with_capacity(images.len());
     for (idx, image) in images.iter().enumerate() {
+        if crate::extraction::metafile::kind(&image.data, &image.format).is_some() {
+            continue;
+        }
         let image_data = image.data.clone();
         let mut ocr_config_clone = ocr_config.clone();
         ocr_config_clone.output_format = Some(output_format.clone());

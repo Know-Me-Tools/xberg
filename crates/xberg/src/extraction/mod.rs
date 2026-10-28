@@ -116,6 +116,9 @@ pub mod image_format;
 #[cfg(all(feature = "ocr", feature = "tokio-runtime"))]
 pub mod image_ocr;
 
+#[cfg(all(feature = "ocr", feature = "tokio-runtime"))]
+pub(crate) mod metafile;
+
 #[cfg(feature = "office")]
 pub mod ppt;
 

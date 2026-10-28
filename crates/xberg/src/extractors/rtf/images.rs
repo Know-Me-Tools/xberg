@@ -71,6 +71,10 @@ fn apply_pict_control_word(
             *image_type = Some("png");
             *format = "png";
         }
+        "emfblip" => {
+            *image_type = Some("emf");
+            *format = "emf";
+        }
         "wmetafile" => {
             *image_type = Some("wmf");
             *format = "wmf";
@@ -172,6 +176,16 @@ pub(crate) fn extract_pict_image(chars: &mut std::iter::Peekable<std::str::Chars
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_keep_rtf_emfblip_format_with_its_native_bytes_gh2297() {
+        let mut chars = "\\emfblip 01000000}".chars().peekable();
+        let (metadata, image) = extract_pict_image(&mut chars);
+        assert_eq!(metadata, "image.emf");
+        let image = image.unwrap();
+        assert_eq!(image.format, "emf");
+        assert_eq!(image.data, [1, 0, 0, 0]);
+    }
 
     /// A `\bin` payload that contains a multi-byte UTF-8 character (once the RTF source has
     /// already gone through `String::from_utf8_lossy`) must be skipped by BYTE count, not by

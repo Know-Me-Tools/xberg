@@ -20,7 +20,9 @@ pub(crate) fn detect_image_format(data: &[u8]) -> Cow<'static, str> {
         Cow::Borrowed("tiff")
     } else if data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP" {
         Cow::Borrowed("webp")
-    } else if data.starts_with(&[0xD7, 0xCD, 0xC6, 0x9A]) {
+    } else if data.starts_with(&[0xD7, 0xCD, 0xC6, 0x9A])
+        || (data.len() >= 18 && matches!(data.get(..6), Some([1 | 2, 0, 9, 0, 0, 1 | 3])))
+    {
         Cow::Borrowed("wmf")
     } else if data.len() >= 44 && data[0..4] == [0x01, 0x00, 0x00, 0x00] && &data[40..44] == b" EMF" {
         Cow::Borrowed("emf")
@@ -71,6 +73,17 @@ mod tests {
     #[test]
     fn test_detect_wmf() {
         assert_eq!(detect_image_format(&[0xD7, 0xCD, 0xC6, 0x9A, 0x00]), "wmf");
+    }
+
+    #[test]
+    fn should_detect_standard_wmf_without_placeable_header_gh2297() {
+        for kind in [1, 2] {
+            let mut header = vec![kind, 0, 9, 0, 0, 3];
+            header.resize(18, 0);
+            assert_eq!(detect_image_format(&header), "wmf");
+            header[2] = 8;
+            assert_eq!(detect_image_format(&header), "unknown");
+        }
     }
 
     #[test]
