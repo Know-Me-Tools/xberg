@@ -92,7 +92,7 @@ fn emf(text: Option<&str>) -> Vec<u8> {
         for character in wide {
             payload.extend_from_slice(&character.to_le_bytes());
         }
-        while (payload.len() + 8) % 4 != 0 {
+        while !(payload.len() + 8).is_multiple_of(4) {
             payload.push(0);
         }
         records.extend(record(84, &payload));
@@ -115,7 +115,7 @@ fn wmf(text: &str) -> Vec<u8> {
     assert!(text.is_ascii());
     let mut payload = (text.len() as u16).to_le_bytes().to_vec();
     payload.extend_from_slice(text.as_bytes());
-    if text.len() % 2 != 0 {
+    if !text.len().is_multiple_of(2) {
         payload.push(0);
     }
     payload.extend_from_slice(&[0u8; 4]);

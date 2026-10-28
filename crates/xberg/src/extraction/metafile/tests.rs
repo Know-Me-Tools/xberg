@@ -33,7 +33,7 @@ fn text_record(text: &str) -> Vec<u8> {
     for value in wide {
         payload.extend_from_slice(&value.to_le_bytes());
     }
-    while payload.len() % 4 != 0 {
+    while !payload.len().is_multiple_of(4) {
         payload.push(0);
     }
     record(84, &payload)
@@ -68,7 +68,9 @@ fn wmf(records: Vec<Vec<u8>>, placeable: bool) -> Vec<u8> {
     header[12..14].copy_from_slice(&100u16.to_le_bytes());
     header[14..16].copy_from_slice(&1440u16.to_le_bytes());
     let checksum = header[..20]
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .fold(0u16, |value, word| value ^ u16::from_le_bytes([word[0], word[1]]));
     header[20..22].copy_from_slice(&checksum.to_le_bytes());
     header.extend(data);
@@ -78,7 +80,7 @@ fn wmf(records: Vec<Vec<u8>>, placeable: bool) -> Vec<u8> {
 fn wmf_text(text: &[u8]) -> Vec<u8> {
     let mut payload = (text.len() as u16).to_le_bytes().to_vec();
     payload.extend_from_slice(text);
-    if text.len() % 2 != 0 {
+    if !text.len().is_multiple_of(2) {
         payload.push(0);
     }
     payload.extend_from_slice(&[0u8; 4]);
