@@ -39,12 +39,13 @@ int xberg_tess_clear(void *handle) {
 }
 
 int xberg_tess_detect_orientation_script(void *handle, int *orient_deg,
-                                         float *orient_conf, char **script_name,
+                                         float *orient_conf,
+                                         const char **script_name,
                                          float *script_conf) {
   try {
     return TessBaseAPIDetectOrientationScript(
         static_cast<TessBaseAPI *>(handle), orient_deg, orient_conf,
-        (const char **)script_name, script_conf);
+        script_name, script_conf);
   } catch (...) {
     return 0;
   }

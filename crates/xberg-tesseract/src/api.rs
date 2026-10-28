@@ -747,7 +747,7 @@ impl TesseractAPI {
         let handle = self.handle.lock().map_err(|_| TesseractError::MutexLockError)?;
         let mut orient_deg = 0;
         let mut orient_conf = 0.0;
-        let mut script_name_ptr = std::ptr::null_mut();
+        let mut script_name_ptr: *const c_char = std::ptr::null();
         let mut script_conf = 0.0;
         #[cfg(all(feature = "build-tesseract", not(target_arch = "wasm32")))]
         let result = unsafe {
@@ -773,10 +773,10 @@ impl TesseractAPI {
             return Err(TesseractError::OcrError);
         }
         let script_name = if !script_name_ptr.is_null() {
+            // SAFETY: DetectOrientationScript borrows this NUL-terminated name from its
+            // UNICHARSET; the locked engine owns it, so copy it without TessDeleteText. ~keep
             let c_str = unsafe { CStr::from_ptr(script_name_ptr) };
-            let result = c_str.to_str()?.to_owned();
-            unsafe { TessDeleteText(script_name_ptr) };
-            result
+            copy_borrowed_script_name(c_str)?
         } else {
             String::new()
         };
@@ -1931,7 +1931,7 @@ ffi_extern! {
         handle: *mut c_void,
         orient_deg: *mut c_int,
         orient_conf: *mut c_float,
-        script_name: *mut *mut c_char,
+        script_name: *mut *const c_char,
         script_conf: *mut c_float,
     ) -> c_int;
     fn TessBaseAPISetMinOrientationMargin(handle: *mut c_void, margin: c_double);
@@ -2064,7 +2064,7 @@ mod shim {
             handle: *mut c_void,
             orient_deg: *mut c_int,
             orient_conf: *mut c_float,
-            script_name: *mut *mut c_char,
+            script_name: *mut *const c_char,
             script_conf: *mut c_float,
         ) -> c_int;
     }
@@ -2376,5 +2376,31 @@ mod native_signature_contract_tests {
             unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, c_int, *mut c_void) -> c_int;
 
         let _: NativeFunction = super::TessBaseAPIProcessPages;
+    }
+}
+
+fn copy_borrowed_script_name(script_name: &CStr) -> Result<String> {
+    Ok(script_name.to_str()?.to_owned())
+}
+
+#[cfg(test)]
+mod borrowed_script_name_tests {
+    use super::*;
+
+    #[test]
+    fn should_copy_osd_script_name_without_taking_ownership_gh2300() {
+        let owner = CString::new("Han").unwrap();
+        let copied = copy_borrowed_script_name(owner.as_c_str()).unwrap();
+        assert_eq!(copied, "Han");
+        assert_eq!(owner.as_bytes_with_nul(), b"Han\0");
+        drop(copied);
+        assert_eq!(owner.as_bytes(), b"Han");
+    }
+
+    #[test]
+    fn should_reject_non_utf8_osd_script_names_without_freeing_them_gh2300() {
+        let owner = CString::new(vec![0xff]).unwrap();
+        assert!(copy_borrowed_script_name(owner.as_c_str()).is_err());
+        assert_eq!(owner.as_bytes(), [0xff]);
     }
 }
