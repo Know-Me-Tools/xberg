@@ -199,7 +199,9 @@ RUN ldconfig && \
     python3 /opt/xberg-ocr/verify-ocr-linux.py /usr/local && \
     tesseract --version >/tmp/ocr-version 2>&1 && grep -q '^tesseract 5\.5\.4$' /tmp/ocr-version && \
     tesseract --list-langs >/tmp/ocr-languages && grep -qx eng /tmp/ocr-languages && \
-    bash /opt/xberg-ocr/verify-ocr-fixture.sh /usr/local/bin/tesseract /usr/share/tesseract-ocr/5/tessdata
+    tessdata="$(find /usr/share/tesseract-ocr -type f -name eng.traineddata -print -quit)" && \
+    test -n "$tessdata" && \
+    bash /opt/xberg-ocr/verify-ocr-fixture.sh /usr/local/bin/tesseract "$(dirname "$tessdata")"
 
 COPY --from=builder /build/onnxruntime/lib/libonnxruntime.so* /usr/local/lib/
 COPY --from=builder /build/pdfium/lib/libpdfium.so /usr/local/lib/
