@@ -6,7 +6,9 @@ use std::ops::Range;
 use ahash::AHashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::types::document_structure::{AnnotationKind, TextAnnotation};
+#[cfg(any(feature = "office", test))]
+use crate::types::document_structure::AnnotationKind;
+use crate::types::document_structure::TextAnnotation;
 use crate::types::internal_builder::InternalDocumentBuilder;
 
 pub(crate) const TABLE_CELL_MATH_ATTRIBUTE: &str = "xberg:internal:table-cell-math";
