@@ -1888,10 +1888,12 @@ jobs:
           fetch-depth: 0
 
           submodules: false
-      - name: Install Task
+      # Zig is used only by the linux-gnu legs' glibc 2.28 floor build; one setup-mise call per
+      # job keeps the mise cache for this key from carrying tools another call installed. ~keep
+      - name: Install Task and Zig
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: task
+          install-args: task zig
           config-ref: ${{ github.sha }}
 
       - uses: xberg-io/actions/setup-rust@v1
@@ -1909,13 +1911,6 @@ jobs:
         with:
           ort-version: "1.24.2"
           dest-dir: crates/xberg-ffi
-
-      - name: Setup Zig for glibc 2.28 floor
-        if: contains(matrix.target, '-linux-gnu')
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: zig
-          config-ref: ${{ github.sha }}
 
       - name: Build liblzma statically for glibc floor
         if: contains(matrix.target, '-linux-gnu')

@@ -326,10 +326,13 @@ jobs:
           mv .polyrepo-siblings/crawlberg ../crawlberg
           mv .polyrepo-siblings/html-to-markdown ../html-to-markdown
           rmdir .polyrepo-siblings
-      - name: Install Task
+      # Poly's Java formatter runs on the configured JDK. Ubuntu's default JRE is 17, while
+      # generated Java is formatted with the repository's Java 25 toolchain; keep verification
+      # on that same toolchain so eight wrapped declarations do not oscillate in CI. ~keep
+      - name: Install Task and Java
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: task
+          install-args: task java
       - name: Verify Poly formatter scopes
         run: task poly:verify:tool-scopes
       - name: Setup Rust for Alef metadata
@@ -351,13 +354,6 @@ jobs:
       # Generated Markdown and Rust bindings are committed after the same Poly formatting
       # pass used by `task alef:generate`. Alef verifies the formatted render when Poly is
       # available; without it this job compared raw backend output and reported false drift. ~keep
-      # Poly's Java formatter runs on the configured JDK. Ubuntu's default JRE is 17, while
-      # generated Java is formatted with the repository's Java 25 toolchain; keep verification
-      # on that same toolchain so eight wrapped declarations do not oscillate in CI. ~keep
-      - name: Setup Java
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: java
       # Poly delegates Java formatting to the executables on PATH. Pin the same formatter chain
       # used for the committed Alef output; google-java-format alone is insufficient because Poly
       # 0.28.0 still applies the enabled clang-format catalog tool to Java despite its `files` glob.
@@ -484,19 +480,15 @@ jobs:
           mv .polyrepo-siblings/crawlberg ../crawlberg
           mv .polyrepo-siblings/html-to-markdown ../html-to-markdown
           rmdir .polyrepo-siblings
-      - name: Install Task
+      - name: Install Task, Python and uv
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: task
+          install-args: task python uv
       - name: Install Elixir formatter
         uses: xberg-io/actions/setup-elixir@v1
         with:
           elixir-version: "1.19"
           otp-version: "28"
-      - name: Install Python and uv
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: python uv
       - name: Resolve the mise Python version
         id: mise-python
         shell: bash
@@ -549,10 +541,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install Task
+      # Java is the one preinstalled toolchain that is not usable as shipped: the
+      # ubuntu-latest image's default JRE is 17 (`class file versions up to 61.0`), and
+      # the java validator runs maven against packages/java, whose checkstyle plugin
+      # carries class file version 65.0. Without this the job died on
+      # `UnsupportedClassVersionError` for every one of the 139 java snippets. 25 matches
+      # packages/java/pom.xml `<maven.compiler.release>` and the `validate` job below,
+      # which already sets the same version for the same reason. ~keep
+      - name: Install Task and Java
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: task
+          install-args: task java
       - name: Install alef CLI
         uses: xberg-io/actions/install-alef@v1
         # alef is a third-party tool. The job-wide `-D warnings` turns its own
@@ -594,17 +593,6 @@ jobs:
         with:
           elixir-version: "1.19"
           otp-version: "28"
-      # Java is the one preinstalled toolchain that is not usable as shipped: the
-      # ubuntu-latest image's default JRE is 17 (`class file versions up to 61.0`), and
-      # the java validator runs maven against packages/java, whose checkstyle plugin
-      # carries class file version 65.0. Without this the job died on
-      # `UnsupportedClassVersionError` for every one of the 139 java snippets. 25 matches
-      # packages/java/pom.xml `<maven.compiler.release>` and the `validate` job below,
-      # which already sets the same version for the same reason. ~keep
-      - name: Setup Java
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: java
       # The rust validator compiles its snippets against xberg, which reaches
       # heic -> xberg-libheif -> libheif-sys. That build script shells out to
       # `pkg-config libheif >= 1.21` and Ubuntu Noble ships only 1.17.6, so every

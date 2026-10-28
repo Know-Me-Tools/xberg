@@ -224,10 +224,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Python
+      - name: Setup Python and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: python uv
+          install-args: python uv task
       - name: Resolve the mise Python version
         id: mise-python
         shell: bash
@@ -251,11 +251,6 @@ jobs:
 
       - name: Setup Layout Models
         uses: ./.github/actions/setup-layout-models
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Python bindings
         run: task python:build:bindings
@@ -339,10 +334,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Python
+      - name: Setup Python and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: python uv
+          install-args: python uv task
       - name: Resolve the mise Python version
         id: mise-python
         shell: bash
@@ -366,11 +361,6 @@ jobs:
 
       - name: Setup Layout Models
         uses: ./.github/actions/setup-layout-models
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Python bindings
         run: task python:build:bindings
@@ -454,10 +444,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Python
+      - name: Setup Python and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: python uv
+          install-args: python uv task
       - name: Resolve the mise Python version
         id: mise-python
         shell: bash
@@ -481,11 +471,6 @@ jobs:
 
       - name: Setup Layout Models
         uses: ./.github/actions/setup-layout-models
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Python bindings
         run: task python:build:bindings
@@ -564,10 +549,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Node
+      - name: Setup Node and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: node pnpm
+          install-args: node pnpm task
       - name: Install pnpm workspace dependencies
         shell: bash
         run: pnpm install --no-frozen-lockfile
@@ -585,11 +570,6 @@ jobs:
 
       - name: Setup Layout Models
         uses: ./.github/actions/setup-layout-models
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Node bindings and install locally
         env:
@@ -670,10 +650,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Node
+      - name: Setup Node and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: node pnpm
+          install-args: node pnpm task
       - name: Install pnpm workspace dependencies
         shell: bash
         run: pnpm install --no-frozen-lockfile
@@ -691,11 +671,6 @@ jobs:
 
       - name: Setup Layout Models
         uses: ./.github/actions/setup-layout-models
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Node bindings and install locally
         env:
@@ -776,21 +751,16 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Node
+      - name: Setup Node and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: node pnpm
+          install-args: node pnpm task
       - name: Install pnpm workspace dependencies
         shell: bash
         run: pnpm install --no-frozen-lockfile
       - name: Add pnpm bin to PATH
         shell: bash
         run: pnpm bin >> "$GITHUB_PATH"
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build WASM bindings
         run: task wasm:build:bindings
@@ -869,21 +839,16 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Node
+      - name: Setup Node and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: node pnpm
+          install-args: node pnpm task
       - name: Install pnpm workspace dependencies
         shell: bash
         run: pnpm install --no-frozen-lockfile
       - name: Add pnpm bin to PATH
         shell: bash
         run: pnpm bin >> "$GITHUB_PATH"
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build WASM bindings
         run: task wasm:build:bindings
@@ -965,10 +930,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Ruby
+      - name: Setup Ruby and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: ruby
+          install-args: ruby task
 
       - name: Install Bundler
         shell: bash
@@ -988,11 +953,6 @@ jobs:
 
       - name: Vendor xberg core for Ruby
         run: python3 scripts/ci/ruby/vendor-xberg-core.py
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Ruby native gem
         env:
@@ -1084,10 +1044,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Ruby
+      - name: Setup Ruby and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: ruby
+          install-args: ruby task
 
       - name: Install Bundler
         shell: bash
@@ -1107,11 +1067,6 @@ jobs:
 
       - name: Vendor xberg core for Ruby
         run: python3 scripts/ci/ruby/vendor-xberg-core.py
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Ruby native gem
         env:
@@ -1200,10 +1155,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Go
+      - name: Setup Go and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: go
+          install-args: go task
       - name: Cache Go modules and build cache
         uses: actions/cache@v6
         with:
@@ -1224,11 +1179,6 @@ jobs:
       - name: Prime Go modules
         working-directory: packages/go
         run: go mod download
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Go bindings
         run: task go:build:bindings
@@ -1308,10 +1258,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Go
+      - name: Setup Go and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: go
+          install-args: go task
       - name: Cache Go modules and build cache
         uses: actions/cache@v6
         with:
@@ -1332,11 +1282,6 @@ jobs:
       - name: Prime Go modules
         working-directory: packages/go
         run: go mod download
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Go bindings
         run: task go:build:bindings
@@ -1416,10 +1361,10 @@ jobs:
           cache-key-prefix: profiling
           use-sccache: true
 
-      - name: Setup Java and Maven
+      - name: Setup Java, Maven and Task
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: java maven
+          install-args: java maven task
 
       - name: Setup ONNX Runtime
         uses: ./.github/actions/setup-onnx-runtime
@@ -1428,11 +1373,6 @@ jobs:
 
       - name: Setup Layout Models
         uses: ./.github/actions/setup-layout-models
-
-      - name: Install Task
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: task
 
       - name: Build Java bindings
         run: task java:build:bindings

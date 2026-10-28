@@ -247,10 +247,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Task
+      - name: Install Task, Java and Maven
         uses: xberg-io/actions/setup-mise@v1
         with:
-          install-args: task
+          install-args: task java maven
 
       - name: Install system dependencies
         uses: ./.github/actions/install-system-deps
@@ -264,10 +264,6 @@ jobs:
       - name: Setup native library paths
         run: task integrations:ci:configure-native-paths
 
-      - name: Setup Java and Maven
-        uses: xberg-io/actions/setup-mise@v1
-        with:
-          install-args: java maven
       - name: Cache Maven repository
         uses: actions/cache@v6
         with:
