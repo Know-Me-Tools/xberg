@@ -388,6 +388,9 @@ jobs:
           "$clang_venv/bin/clang-format" --version
       - name: Install poly
         uses: Goldziher/poly@v0
+        with:
+          # poly 0.30.0 lints Python as 3.11+ whatever target-version says (Goldziher/poly#42). ~keep
+          version: "0.29.0"
       # `alef verify` (aliased as `task alef:verify`) is a purpose-built freshness
       # check: it recomputes each generated file's expected hash from the current
       # Rust source, applies the configured formatter to the in-memory render, and
@@ -527,6 +530,9 @@ jobs:
       # recomputes hashes without writing or formatting generated files. ~keep
       - name: Install poly
         uses: Goldziher/poly@v0
+        with:
+          # poly 0.30.0 lints Python as 3.11+ whatever target-version says (Goldziher/poly#42). ~keep
+          version: "0.29.0"
       # `task e2e:verify` (`alef e2e generate` then `git diff --exit-code e2e/`)
       # was previously invoked by nothing -- it was only named in a comment on
       # the alef-bindings-freshness job above as though it ran. Wiring it here
