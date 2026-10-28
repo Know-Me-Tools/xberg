@@ -263,3 +263,61 @@ fn should_ignore_table_styles_when_classifying_body_headings() {
         [(2, "Overview")]
     );
 }
+
+fn script_table_paragraph(content: &str, table: Option<DocTableMark>, start: u32, end: u32) -> DocParagraph {
+    let mut paragraph = paragraph(content, table);
+    paragraph.annotations.push(crate::types::builder::superscript(start, end));
+    paragraph
+}
+
+#[test]
+fn should_preserve_doc_table_scripts_without_changing_plain_cells_gh2275() {
+    let paragraphs = [
+        paragraph("Value", CELL),
+        paragraph("", ROW),
+        script_table_paragraph("7,2 x 109/l", CELL, 8, 9),
+        paragraph("", ROW),
+    ];
+    let mut doc = InternalDocument::new("doc");
+    doc.escape_markdown = false;
+    push_paragraph_elements(&mut doc, &paragraphs, &mut SecurityBudget::with_defaults()).unwrap();
+    assert_eq!(doc.tables[0].cells, [vec!["Value"], vec!["7,2 x 109/l"]]);
+    let markdown = crate::rendering::render_markdown(&doc);
+    assert!(markdown.contains("7,2 x 10^9^/l"), "{markdown}");
+    let plain = crate::rendering::render_plain(&doc);
+    assert!(plain.contains("7,2 x 109/l"), "{plain}");
+    assert!(!plain.contains('^'), "{plain}");
+    assert!(doc.elements[0].public_attributes().is_none());
+    let restored = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+    assert_eq!(crate::rendering::render_markdown(&restored), markdown);
+}
+
+#[test]
+fn should_project_doc_table_scripts_after_unicode_trim_and_paragraph_join_gh2275() {
+    let mut second = paragraph(" H2O ", CELL);
+    second.annotations.push(crate::types::builder::subscript(2, 3));
+    let paragraphs = [
+        script_table_paragraph(" é109 ", IN_CELL, 5, 6),
+        second,
+        paragraph("", ROW),
+    ];
+    let mut doc = InternalDocument::new("doc");
+    doc.escape_markdown = false;
+    push_paragraph_elements(&mut doc, &paragraphs, &mut SecurityBudget::with_defaults()).unwrap();
+    assert_eq!(doc.tables[0].cells, [vec!["é109\nH2O"]]);
+    let markdown = crate::rendering::render_markdown(&doc);
+    assert!(markdown.contains("é10^9^"), "{markdown}");
+    assert!(markdown.contains("H~2~O"), "{markdown}");
+}
+
+#[test]
+fn should_keep_literal_script_markers_and_unannotated_tables_literal_gh2275() {
+    let paragraphs = [paragraph("10^9^ and H~2~O", CELL), paragraph("", ROW)];
+    let mut doc = InternalDocument::new("doc");
+    push_paragraph_elements(&mut doc, &paragraphs, &mut SecurityBudget::with_defaults()).unwrap();
+    assert!(doc.elements[0].attributes.is_none());
+    let html = crate::rendering::render_html(&doc);
+    assert!(!html.contains("<sup>"), "{html}");
+    assert!(!html.contains("<sub>"), "{html}");
+    assert!(html.contains("10^9^ and H~2~O"), "{html}");
+}
