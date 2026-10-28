@@ -88,8 +88,8 @@ platform's `libheif` build links it.
 
 ## Tesseract OCR + Leptonica
 
-- **Feature:** `xberg-tesseract` builds Tesseract 5.5.3 at commit
-  `db0ec62f81b0737fbbe184d8fea40af5738f8eef` and Leptonica 1.87.0 at commit
+- **Feature:** `xberg-tesseract` builds Tesseract 5.5.4 at commit
+  `7e548e6eff172f38f97664afe7f7ce40db36c8d6` and Leptonica 1.87.0 at commit
   `13275a278eb55b5746e33f95fbf5a2c8f604b3ab` when `build-tesseract` or
   `build-tesseract-wasm` is enabled.
 - **Licenses:** Tesseract is Apache-2.0; the exact upstream text is preserved in

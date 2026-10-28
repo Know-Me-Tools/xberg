@@ -40,11 +40,11 @@ mod build_tesseract {
     const LEPTONICA_ARCHIVE_SIZE: u64 = 14_348_280;
     const LEPTONICA_ARCHIVE_ROOT: &str = "leptonica-13275a278eb55b5746e33f95fbf5a2c8f604b3ab";
     const LEPTONICA_LICENSE_FILE: &str = "leptonica-license.txt";
-    const TESSERACT_VERSION: &str = "5.5.3";
-    const TESSERACT_REVISION: &str = "db0ec62f81b0737fbbe184d8fea40af5738f8eef";
-    const TESSERACT_SHA256: &str = "d2470cc33ee34deeae6fc47809d0b33a3623a4343d92ff317ac3b9903c507bad";
-    const TESSERACT_ARCHIVE_SIZE: u64 = 2_533_335;
-    const TESSERACT_ARCHIVE_ROOT: &str = "tesseract-db0ec62f81b0737fbbe184d8fea40af5738f8eef";
+    const TESSERACT_VERSION: &str = "5.5.4";
+    const TESSERACT_REVISION: &str = "7e548e6eff172f38f97664afe7f7ce40db36c8d6";
+    const TESSERACT_SHA256: &str = "ef082fa5b1ddf469e8e5174298242afdc7605b278470693badf2dbf50e17721b";
+    const TESSERACT_ARCHIVE_SIZE: u64 = 2_603_004;
+    const TESSERACT_ARCHIVE_ROOT: &str = "tesseract-7e548e6eff172f38f97664afe7f7ce40db36c8d6";
     const TESSERACT_LICENSE_FILE: &str = "LICENSE";
     const TESSDATA_FAST_REVISION: &str = "87416418657359cb625c412a48b6e1d6d41c29bd";
     const ENG_TRAINEDDATA_SHA256: &str = "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2";
