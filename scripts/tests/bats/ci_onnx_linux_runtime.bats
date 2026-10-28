@@ -23,12 +23,14 @@ runtime_root() {
 	run bash "$REPOSITORY_ROOT/scripts/ci/actions/setup-onnx-runtime/linux.sh" 1.24.2 'node output' x64 system
 	xberg_assert_status 0
 	xberg_assert_file "$GITHUB_WORKSPACE/node output/libonnxruntime.so.1.24.2" 'runtime bytes'
-	xberg_assert_github_env "ORT_LIB_LOCATION=$root/lib"
-	xberg_assert_github_env "ORT_DYLIB_PATH=$root/lib/libonnxruntime.so.1.24.2"
-	xberg_assert_github_env 'ORT_STRATEGY=system'
-	xberg_assert_github_env 'ORT_SKIP_DOWNLOAD=1'
-	xberg_assert_github_env "RUSTFLAGS=-C debuginfo=1 -L $root/lib -C link-arg=-Wl,-rpath,\$ORIGIN"
-	xberg_assert_github_env "LD_LIBRARY_PATH=$root/lib:$GITHUB_WORKSPACE/node output:ambient-loader"
+	xberg_assert_github_env "ORT_LIB_LOCATION=$root/lib
+ORT_PREFER_DYNAMIC_LINK=1
+ORT_SKIP_DOWNLOAD=1
+ORT_STRATEGY=system
+ORT_DYLIB_PATH=$root/lib/libonnxruntime.so.1.24.2
+LD_LIBRARY_PATH=$root/lib:$GITHUB_WORKSPACE/node output:ambient-loader
+LIBRARY_PATH=$root/lib:$GITHUB_WORKSPACE/node output:ambient-linker
+RUSTFLAGS=-C debuginfo=1 -L $root/lib -C link-arg=-Wl,-rpath,\$ORIGIN"
 	[ ! -e "$XBERG_TRACE" ]
 }
 
@@ -39,7 +41,8 @@ runtime_root() {
 	run bash "$REPOSITORY_ROOT/scripts/ci/actions/setup-onnx-runtime/linux.sh" 1.24.2 bindings arm64 bundled
 	xberg_assert_status 0
 	xberg_assert_file "$GITHUB_WORKSPACE/bindings/libonnxruntime.so" 'arm runtime'
-	xberg_assert_github_env "LIBRARY_PATH=$root/lib:$GITHUB_WORKSPACE/bindings:ambient-linker"
+	xberg_assert_github_env "LD_LIBRARY_PATH=$root/lib:$GITHUB_WORKSPACE/bindings:ambient-loader
+LIBRARY_PATH=$root/lib:$GITHUB_WORKSPACE/bindings:ambient-linker"
 	[ "$(wc -l <"$GITHUB_ENV" | tr -d '[:space:]')" = 2 ]
 	! grep -Eq '^(ORT_|RUSTFLAGS=)' "$GITHUB_ENV"
 	[ ! -e "$XBERG_TRACE" ]
@@ -106,8 +109,10 @@ runtime_root() {
 		printf 'static runtime\n' >"$root/libonnxruntime.a"
 		run bash "$REPOSITORY_ROOT/scripts/ci/actions/setup-prebuilt-onnx/prepare.sh" "$target"
 		xberg_assert_status 0
-		xberg_assert_github_env "ORT_LIB_LOCATION=$root"
-		xberg_assert_github_env 'ORT_STRATEGY=system'
+		xberg_assert_github_env "ORT_STRATEGY=system
+ORT_LIB_LOCATION=$root
+ORT_SKIP_DOWNLOAD=1
+ORT_PREFER_DYNAMIC_LINK=1"
 		[ "$(wc -l <"$GITHUB_ENV" | tr -d '[:space:]')" = 4 ]
 	done
 	[ ! -e "$XBERG_TRACE" ]
