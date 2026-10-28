@@ -8,7 +8,7 @@ use super::*;
 fn validate_legacy_xls_container<R: Read + Seek>(mut reader: R, limits: &SecurityLimits) -> Result<()> {
     let container_size = reader.seek(std::io::SeekFrom::End(0))?;
     reader.seek(std::io::SeekFrom::Start(0))?;
-    let compound = cfb::OpenOptions::new()
+    let mut compound = cfb::OpenOptions::new()
         .open_with(reader)
         .map_err(|error| XbergError::validation(format!("Invalid XLS compound container: {error}")))?;
     let configured_limit = limits.max_archive_size as u64;
@@ -28,6 +28,15 @@ fn validate_legacy_xls_container<R: Read + Seek>(mut reader: R, limits: &Securit
         }
     }
 
+    let stream_name = if compound.is_stream("/Workbook") {
+        "/Workbook"
+    } else {
+        "/Book"
+    };
+    if compound.is_stream(stream_name) {
+        let mut workbook = compound.open_stream(stream_name)?;
+        super::table_budget::validate_xls(&mut workbook, limits)?;
+    }
     Ok(())
 }
 
@@ -374,12 +383,28 @@ fn validate_zip_container<R: Read + Seek>(mut reader: R, file_extension: &str, l
     archive.validate_header_consistency().map_err(|error| {
         XbergError::security_with_source(format!("Invalid spreadsheet ZIP header consistency: {error}"), error)
     })?;
+    if extension == ".xlsb" {
+        super::table_budget::validate_xlsb_parts(&mut archive, limits)?;
+    }
+    if extension == ".ods" {
+        super::table_budget::validate_ods(&mut archive, limits)?;
+    }
+    if matches!(extension.as_str(), ".xlsx" | ".xlsm" | ".xltm" | ".xlam") {
+        super::table_budget::validate_xlsx_string_parts(&mut archive, limits)?;
+    }
     Ok(())
 }
 
 pub(crate) fn read_excel_file(file_path: &str, limits: &SecurityLimits) -> Result<ExcelReadResult> {
     let lower_path = file_path.to_lowercase();
-    let mut warnings: Vec<ProcessingWarning> = Vec::new();
+    let supported_extension = [".xlsx", ".xlsm", ".xltm", ".xlam", ".xla", ".xlsb", ".ods"]
+        .iter()
+        .any(|extension| lower_path.ends_with(extension));
+    if !supported_extension {
+        // ~keep Never enter calamine's eager auto-detection constructors before format-specific guards (#2296).
+        return read_detected_spreadsheet_file(file_path, limits);
+    }
+    let warnings: Vec<ProcessingWarning> = Vec::new();
 
     #[cfg(any(feature = "excel", feature = "excel-wasm"))]
     {
@@ -414,35 +439,51 @@ pub(crate) fn read_excel_file(file_path: &str, limits: &SecurityLimits) -> Resul
         return read_xlsx_family_file(file_path, office_metadata, warnings, limits);
     }
     if lower_path.ends_with(".xlam") {
-        return read_xlam_file(file_path, office_metadata, warnings);
+        return read_xlam_file(file_path, office_metadata, warnings, limits);
     }
     if lower_path.ends_with(".xla") {
         return read_xla_file(file_path, office_metadata, warnings);
     }
     if lower_path.ends_with(".xlsb") {
-        return read_xlsb_file(file_path, office_metadata, warnings);
+        return read_xlsb_file(file_path, office_metadata, warnings, limits);
     }
     if lower_path.ends_with(".ods") {
         return read_ods_file(file_path, office_metadata, warnings, limits);
     }
 
-    let workbook = match open_workbook_auto(Path::new(file_path)) {
-        Ok(wb) => wb,
-        Err(calamine::Error::Io(io_err)) => {
-            if io_err.kind() == std::io::ErrorKind::InvalidData {
-                return Err(XbergError::parsing(format!(
-                    "Cannot detect Excel file format: {}",
-                    io_err
-                )));
-            }
-            // Real IO error - bubble up unchanged ~keep
-            return Err(io_err.into());
-        }
-        Err(e) => return Err(XbergError::parsing(format!("Failed to parse Excel file: {}", e))),
-    };
+    read_detected_spreadsheet_file(file_path, limits)
+}
 
-    let result = process_workbook(workbook, office_metadata, &mut warnings)?;
-    Ok((result, warnings))
+fn read_detected_spreadsheet_file(file_path: &str, limits: &SecurityLimits) -> Result<ExcelReadResult> {
+    let file = std::fs::File::open(file_path)?;
+    if file.metadata()?.len() > limits.max_archive_size as u64 {
+        return Err(XbergError::validation(
+            "Spreadsheet file exceeds the configured archive size".to_string(),
+        ));
+    }
+    let mut data = Vec::new();
+    file.take((limits.max_archive_size as u64).saturating_add(1))
+        .read_to_end(&mut data)?;
+    if data.len() > limits.max_archive_size {
+        return Err(XbergError::validation(
+            "Spreadsheet file exceeds the configured archive size".to_string(),
+        ));
+    }
+    const OLE_SIGNATURE: &[u8] = &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+    let extension = if data.starts_with(OLE_SIGNATURE) {
+        ".xls"
+    } else {
+        let mut archive = zip::ZipArchive::new(Cursor::new(&data))
+            .map_err(|error| XbergError::parsing(format!("Cannot detect spreadsheet format: {error}")))?;
+        if archive.by_name("mimetype").is_ok() {
+            ".ods"
+        } else if archive.by_name("xl/workbook.bin").is_ok() {
+            ".xlsb"
+        } else {
+            ".xlsx"
+        }
+    };
+    read_excel_bytes(&data, extension, limits)
 }
 
 /// Read an XLSX/XLSM/XLTM file: parse via calamine's XLSX reader, then merge sheet
@@ -459,8 +500,9 @@ fn read_xlsx_family_file(
         let bytes = std::fs::read(file_path)?;
         let normalized = normalize_xlsx_dimensions(&bytes, limits)?
             .ok_or_else(|| XbergError::parsing("Failed to normalize row-only XLSX worksheet dimensions".to_owned()))?;
-        let workbook = calamine::Xlsx::new(Cursor::new(normalized))
+        let mut workbook = calamine::Xlsx::new(Cursor::new(normalized))
             .map_err(|e| XbergError::parsing(format!("Failed to parse XLSX: {}", e)))?;
+        super::table_budget::validate_xlsx(&mut workbook, limits)?;
         let mut result = process_xlsx_workbook(workbook, office_metadata, &mut warnings)?;
         result.revisions = extract_xlsx_revisions_from_file(file_path);
         if let Some(comments) = extract_xlsx_comments_from_file(file_path) {
@@ -469,8 +511,9 @@ fn read_xlsx_family_file(
         return Ok((result, warnings));
     }
     let file = std::fs::File::open(file_path)?;
-    let workbook = calamine::Xlsx::new(std::io::BufReader::new(file))
+    let mut workbook = calamine::Xlsx::new(std::io::BufReader::new(file))
         .map_err(|e| XbergError::parsing(format!("Failed to parse XLSX: {}", e)))?;
+    super::table_budget::validate_xlsx(&mut workbook, limits)?;
     let mut result = process_xlsx_workbook(workbook, office_metadata, &mut warnings)?;
     result.revisions = extract_xlsx_revisions_from_file(file_path);
     if let Some(comments) = extract_xlsx_comments_from_file(file_path) {
@@ -486,10 +529,12 @@ fn read_xlam_file(
     file_path: &str,
     office_metadata: Option<HashMap<String, String>>,
     mut warnings: Vec<ProcessingWarning>,
+    limits: &SecurityLimits,
 ) -> Result<ExcelReadResult> {
     let file = std::fs::File::open(file_path)?;
     match calamine::Xlsx::new(std::io::BufReader::new(file)) {
-        Ok(workbook) => {
+        Ok(mut workbook) => {
+            super::table_budget::validate_xlsx(&mut workbook, limits)?;
             let result = process_xlsx_workbook(workbook, office_metadata, &mut warnings)?;
             Ok((result, warnings))
         }
@@ -547,10 +592,12 @@ fn read_xlsb_file(
     file_path: &str,
     office_metadata: Option<HashMap<String, String>>,
     mut warnings: Vec<ProcessingWarning>,
+    limits: &SecurityLimits,
 ) -> Result<ExcelReadResult> {
     let file = std::fs::File::open(file_path)?;
-    let workbook = calamine::Xlsb::new(std::io::BufReader::new(file))
+    let mut workbook = calamine::Xlsb::new(std::io::BufReader::new(file))
         .map_err(|e| XbergError::parsing(format!("Failed to parse XLSB: {}", e)))?;
+    super::table_budget::validate_xlsb(&mut workbook, limits)?;
     let result = process_workbook(workbook, office_metadata, &mut warnings)?;
     Ok((result, warnings))
 }
@@ -575,10 +622,10 @@ pub(crate) fn read_excel_bytes(data: &[u8], file_extension: &str, limits: &Secur
 
     match file_extension.to_lowercase().as_str() {
         ".xlsx" | ".xlsm" | ".xltm" => read_xlsx_family_bytes(data, office_metadata, warnings, limits),
-        ".xlam" => read_xlam_bytes(data, office_metadata, warnings),
+        ".xlam" => read_xlam_bytes(data, office_metadata, warnings, limits),
         ".xls" => read_xls_bytes(data, office_metadata, warnings),
         ".xla" => read_xla_bytes(data, office_metadata, warnings),
-        ".xlsb" => read_xlsb_bytes(data, office_metadata, warnings),
+        ".xlsb" => read_xlsb_bytes(data, office_metadata, warnings, limits),
         ".ods" => read_ods_bytes(data, office_metadata, warnings, limits),
         _ => Err(XbergError::parsing(format!(
             "Unsupported file extension: {}",
@@ -600,8 +647,9 @@ fn read_xlsx_family_bytes(
         None
     };
     let cursor = Cursor::new(normalized.as_deref().unwrap_or(data));
-    let workbook =
+    let mut workbook =
         calamine::Xlsx::new(cursor).map_err(|e| XbergError::parsing(format!("Failed to parse XLSX: {}", e)))?;
+    super::table_budget::validate_xlsx(&mut workbook, limits)?;
     let mut result = process_xlsx_workbook(workbook, office_metadata, &mut warnings)?;
     result.revisions = extract_xlsx_revisions_from_bytes(data);
     if let Some(comments) = extract_xlsx_comments_from_bytes(data) {
@@ -615,10 +663,12 @@ fn read_xlam_bytes(
     data: &[u8],
     office_metadata: Option<HashMap<String, String>>,
     mut warnings: Vec<ProcessingWarning>,
+    limits: &SecurityLimits,
 ) -> Result<ExcelReadResult> {
     let cursor = Cursor::new(data);
     match calamine::Xlsx::new(cursor) {
-        Ok(workbook) => {
+        Ok(mut workbook) => {
+            super::table_budget::validate_xlsx(&mut workbook, limits)?;
             let result = process_xlsx_workbook(workbook, office_metadata, &mut warnings)?;
             Ok((result, warnings))
         }
@@ -688,10 +738,12 @@ fn read_xlsb_bytes(
     data: &[u8],
     office_metadata: Option<HashMap<String, String>>,
     mut warnings: Vec<ProcessingWarning>,
+    limits: &SecurityLimits,
 ) -> Result<ExcelReadResult> {
     let cursor = Cursor::new(data);
-    let workbook =
+    let mut workbook =
         calamine::Xlsb::new(cursor).map_err(|e| XbergError::parsing(format!("Failed to parse XLSB: {}", e)))?;
+    super::table_budget::validate_xlsb(&mut workbook, limits)?;
     let result = process_workbook(workbook, office_metadata, &mut warnings)?;
     Ok((result, warnings))
 }

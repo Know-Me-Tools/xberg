@@ -1012,3 +1012,587 @@ fn should_warn_when_named_sheet_range_cannot_be_read() {
         warnings[0].message
     );
 }
+
+#[test]
+fn should_reject_xlsx_before_reading_cells_after_an_oversized_box_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1"><v>1</v></c></row>
+        <row r="2"><c r="E2"><v>2</v></c><c r="INVALID"><v>3</v></c></row></sheetData>
+        </worksheet>"#,
+    );
+    let limits = SecurityLimits {
+        max_table_cells: 8,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".xlsx", &limits).unwrap_err();
+    assert!(error.to_string().contains("observed 10 cells"), "{error}");
+}
+
+#[test]
+fn should_allow_the_exact_xlsx_table_budget_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1"><v>1</v></c></row>
+        <row r="2"><c r="B2"><v>2</v></c></row></sheetData></worksheet>"#,
+    );
+    let limits = SecurityLimits {
+        max_table_cells: 4,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".xlsx", &limits).unwrap();
+    assert_eq!(workbook.sheets.len(), 1);
+    assert_eq!(
+        workbook.sheets[0].table_cells.as_ref().unwrap(),
+        &[
+            vec!["1".to_string(), String::new()],
+            vec![String::new(), "2".to_string()]
+        ]
+    );
+}
+
+#[test]
+fn should_budget_formula_only_xlsx_ranges_before_collecting_formulas_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1"><f>1+1</f></c></row>
+        <row r="2"><c r="E2"><f>2+2</f></c></row></sheetData></worksheet>"#,
+    );
+    let limits = SecurityLimits {
+        max_table_cells: 8,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".xlsx", &limits).unwrap_err();
+    assert!(error.to_string().contains("observed 10 cells"), "{error}");
+}
+
+#[test]
+fn should_apply_the_xlsx_preflight_to_file_inputs_and_addins_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1"><v>1</v></c></row>
+        <row r="2"><c r="E2"><v>2</v></c></row></sheetData></worksheet>"#,
+    );
+    let limits = SecurityLimits {
+        max_table_cells: 8,
+        ..Default::default()
+    };
+    let directory = tempfile::tempdir().unwrap();
+    for extension in [".xlsx", ".xlsm", ".xltm", ".xlam"] {
+        let error = read_excel_bytes(&bytes, extension, &limits).unwrap_err();
+        assert!(error.to_string().contains("observed 10 cells"), "{extension}: {error}");
+        let path = directory.path().join(format!("budget{extension}"));
+        std::fs::write(&path, &bytes).unwrap();
+        let error = read_excel_file(path.to_str().unwrap(), &limits).unwrap_err();
+        assert!(error.to_string().contains("observed 10 cells"), "{extension}: {error}");
+    }
+}
+
+#[test]
+fn should_not_union_disjoint_xlsx_value_and_formula_ranges_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1"><v>1</v></c></row>
+        <row r="6"><c r="F6"><f>2+2</f></c></row></sheetData></worksheet>"#,
+    );
+    let limits = SecurityLimits {
+        max_table_cells: 1,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".xlsx", &limits).unwrap();
+    assert_eq!(workbook.sheets.len(), 1);
+    assert_eq!(
+        workbook.sheets[0].table_cells.as_ref().unwrap(),
+        &[vec!["1".to_string()]]
+    );
+    assert!(workbook.metadata.get("formulas_Sheet1").unwrap().contains("2+2"));
+}
+
+#[test]
+fn should_charge_cached_xlsx_formulas_once_at_the_table_budget_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1"><f>1+1</f><v>2</v></c></row>
+        <row r="2"><c r="B2"><f>2+2</f><v>4</v></c></row></sheetData></worksheet>"#,
+    );
+    let limits = SecurityLimits {
+        max_table_cells: 4,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".xlsx", &limits).unwrap();
+    assert_eq!((workbook.sheets[0].row_count, workbook.sheets[0].col_count), (2, 2));
+    let cells = workbook.sheets[0].table_cells.as_ref().unwrap();
+    assert_eq!(cells[0][0], "2");
+    assert_eq!(cells[1][1], "4");
+}
+
+#[test]
+fn should_keep_xlsx_cell_guards_when_a_file_is_renamed_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1"><v>1</v></c></row>
+        <row r="2"><c r="B2"><v>2</v></c></row></sheetData></worksheet>"#,
+    );
+    let directory = tempfile::tempdir().unwrap();
+    for filename in ["renamed.dat", "no_extension"] {
+        let path = directory.path().join(filename);
+        std::fs::write(&path, &bytes).unwrap();
+        let low = SecurityLimits {
+            max_table_cells: 3,
+            ..Default::default()
+        };
+        let error = read_excel_file(path.to_str().unwrap(), &low).unwrap_err();
+        assert!(error.to_string().contains("observed 4 cells"), "{error}");
+        let exact = SecurityLimits {
+            max_table_cells: 4,
+            ..Default::default()
+        };
+        let (workbook, _) = read_excel_file(path.to_str().unwrap(), &exact).unwrap();
+        assert_eq!((workbook.sheets[0].row_count, workbook.sheets[0].col_count), (2, 2));
+    }
+}
+
+fn xlsx_with_shared_strings(unique_count: usize) -> Vec<u8> {
+    use std::io::Write;
+    let original = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>"#,
+    );
+    let mut archive = zip::ZipArchive::new(Cursor::new(original)).unwrap();
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).unwrap();
+        let name = entry.name().unwrap().into_owned();
+        let mut xml = String::new();
+        entry.read_to_string(&mut xml).unwrap();
+        if name == "xl/_rels/workbook.xml.rels" {
+            xml = xml.replace("</Relationships>", r#"<Relationship Id="rIdStrings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>"#);
+        } else if name == "[Content_Types].xml" {
+            xml = xml.replace("</Types>", r#"<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>"#);
+        }
+        writer
+            .start_file(name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(xml.as_bytes()).unwrap();
+    }
+    writer
+        .start_file("xl/sharedStrings.xml", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    write!(writer, r#"<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" uniqueCount="{unique_count}"><si><t>x</t></si></sst>"#).unwrap();
+    writer.finish().unwrap().into_inner()
+}
+
+#[test]
+fn should_reject_shared_string_capacity_before_the_xlsx_constructor_gh2296() {
+    let bytes = xlsx_with_shared_strings(10);
+    let limits = SecurityLimits {
+        max_content_size: std::mem::size_of::<String>() * 9,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".xlsx", &limits).unwrap_err();
+    assert!(error.to_string().contains("Content too large"), "{error}");
+    let ample = SecurityLimits {
+        max_content_size: 4096,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".xlsx", &ample).unwrap();
+    assert_eq!(
+        workbook.sheets[0].table_cells.as_ref().unwrap(),
+        &[vec!["x".to_string()]]
+    );
+}
+
+#[test]
+fn should_bound_shared_formula_vector_capacity_before_formula_collection_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1"><f t="shared" si="3" ref="A1">1+1</f><v>2</v></c></row></sheetData></worksheet>"#,
+    );
+    let slot = std::mem::size_of::<Option<(String, calamine::Dimensions)>>();
+    let limits = SecurityLimits {
+        max_content_size: slot * 3,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".xlsx", &limits).unwrap_err();
+    assert!(error.to_string().contains("Content too large"), "{error}");
+    let ample = SecurityLimits {
+        max_content_size: 4096,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".xlsx", &ample).unwrap();
+    assert_eq!(
+        workbook.sheets[0].table_cells.as_ref().unwrap(),
+        &[vec!["2".to_string()]]
+    );
+    assert!(workbook.metadata.get("formulas_Sheet1").unwrap().contains("1+1"));
+}
+
+#[test]
+fn should_not_inflate_xlsx_formula_bounds_with_empty_formula_records_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData><row r="1"><c r="A1"><v>1</v></c><c r="F1"><f/></c></row>
+        <row r="6"><c r="F6"><f/></c></row></sheetData></worksheet>"#,
+    );
+    let limits = SecurityLimits {
+        max_table_cells: 1,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".xlsx", &limits).unwrap();
+    assert_eq!(
+        workbook.sheets[0].table_cells.as_ref().unwrap(),
+        &[vec!["1".to_string()]]
+    );
+    assert!(!workbook.metadata.contains_key("formulas_Sheet1"));
+}
+
+fn ods_with_table_rows(rows: &str) -> Vec<u8> {
+    use std::io::Write;
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    writer.start_file("mimetype", options).unwrap();
+    writer
+        .write_all(b"application/vnd.oasis.opendocument.spreadsheet")
+        .unwrap();
+    writer.start_file("META-INF/manifest.xml", options).unwrap();
+    writer.write_all(br#"<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"><manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.spreadsheet"/><manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/></manifest:manifest>"#).unwrap();
+    writer.start_file("content.xml", options).unwrap();
+    write!(writer, r#"<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2"><office:body><office:spreadsheet><table:table table:name="Data">{rows}</table:table></office:spreadsheet></office:body></office:document-content>"#).unwrap();
+    writer.finish().unwrap().into_inner()
+}
+
+#[test]
+fn should_bound_ods_repeated_rows_and_columns_before_construction_gh2296() {
+    let bytes = ods_with_table_rows(
+        r#"<table:table-row table:number-rows-repeated="3"><table:table-cell table:number-columns-repeated="2" office:value-type="float" office:value="1"/></table:table-row>"#,
+    );
+    let low = SecurityLimits {
+        max_table_cells: 5,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".ods", &low).unwrap_err();
+    assert!(error.to_string().contains("observed 6 cells"), "{error}");
+    let exact = SecurityLimits {
+        max_table_cells: 6,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".ods", &exact).unwrap();
+    assert_eq!((workbook.sheets[0].row_count, workbook.sheets[0].col_count), (3, 2));
+    assert_eq!(
+        workbook.sheets[0].table_cells.as_ref().unwrap(),
+        &vec![vec!["1".to_string(); 2]; 3]
+    );
+}
+
+#[test]
+fn should_ignore_ods_formatted_empty_tails_without_origin_padding_gh2296() {
+    let bytes = ods_with_table_rows(
+        r#"<table:table-row table:number-rows-repeated="1000"><table:table-cell/></table:table-row><table:table-row><table:table-cell table:number-columns-repeated="50"/><table:table-cell office:value-type="float" office:value="1"/><table:table-cell office:value-type="float" office:value="2"/><table:table-cell table:number-columns-repeated="16384"/></table:table-row><table:table-row table:number-rows-repeated="1048576"><table:table-cell table:number-columns-repeated="16384"/></table:table-row>"#,
+    );
+    let limits = SecurityLimits {
+        max_table_cells: 2,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".ods", &limits).unwrap();
+    assert_eq!(
+        workbook.sheets[0].table_cells.as_ref().unwrap(),
+        &[vec!["1".to_string(), "2".to_string()]]
+    );
+}
+
+#[test]
+fn should_keep_ods_value_and_formula_ranges_independent_gh2296() {
+    let bytes = ods_with_table_rows(
+        r#"<table:table-row><table:table-cell office:value-type="float" office:value="1"/></table:table-row><table:table-row table:number-rows-repeated="4"><table:table-cell/></table:table-row><table:table-row><table:table-cell table:number-columns-repeated="5"/><table:table-cell table:formula="of:=2+2"/></table:table-row>"#,
+    );
+    let limits = SecurityLimits {
+        max_table_cells: 1,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".ods", &limits).unwrap();
+    assert_eq!(
+        workbook.sheets[0].table_cells.as_ref().unwrap(),
+        &[vec!["1".to_string()]]
+    );
+    assert!(workbook.metadata.get("formulas_Data").unwrap().contains("2+2"));
+}
+
+#[test]
+fn should_bound_ods_space_expansion_before_the_constructor_gh2296() {
+    let bytes = ods_with_table_rows(
+        r#"<table:table-row><table:table-cell office:value-type="string"><text:p>x<text:s text:c="50"/></text:p></table:table-cell></table:table-row>"#,
+    );
+    let low = SecurityLimits {
+        max_content_size: 32,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".ods", &low).unwrap_err();
+    assert!(error.to_string().contains("Content too large"), "{error}");
+    let ample = SecurityLimits {
+        max_content_size: 128,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".ods", &ample).unwrap();
+    assert_eq!((workbook.sheets[0].row_count, workbook.sheets[0].col_count), (1, 1));
+}
+
+#[test]
+fn should_reject_nested_ods_annotations_before_backend_space_expansion_gh2296() {
+    let bytes = ods_with_table_rows(
+        r#"<table:table-row><table:table-cell office:value-type="string"><text:p>x<office:annotation><office:annotation/><text:s text:c="50"/></office:annotation></text:p></table:table-cell></table:table-row>"#,
+    );
+    let mut backend = calamine::Ods::new(Cursor::new(&bytes)).unwrap();
+    let range = backend.worksheet_range("Data").unwrap();
+    let Data::String(text) = range.get_value((0, 0)).unwrap() else {
+        panic!("expected a string cell");
+    };
+    assert_eq!(text, &format!("x{}", " ".repeat(50)));
+    let limits = SecurityLimits {
+        max_content_size: 32,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".ods", &limits).unwrap_err();
+    assert!(error.to_string().contains("nested annotations"), "{error}");
+}
+
+#[test]
+fn should_account_for_repeated_ods_cell_text_before_cloning_it_gh2296() {
+    let bytes = ods_with_table_rows(
+        r#"<table:table-row table:number-rows-repeated="3"><table:table-cell table:number-columns-repeated="2" office:value-type="string"><text:p>x</text:p></table:table-cell></table:table-row>"#,
+    );
+    let low = SecurityLimits {
+        max_content_size: 5,
+        max_table_cells: 6,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".ods", &low).unwrap_err();
+    assert!(error.to_string().contains("Content too large"), "{error}");
+    let exact = SecurityLimits {
+        max_content_size: 6,
+        max_table_cells: 6,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".ods", &exact).unwrap();
+    assert_eq!(
+        workbook.sheets[0].table_cells.as_ref().unwrap(),
+        &vec![vec!["x".to_string(); 2]; 3]
+    );
+}
+
+#[test]
+fn should_share_the_ods_table_budget_between_sheets_gh2296() {
+    let bytes = ods_with_table_rows(
+        r#"<table:table-row><table:table-cell office:value-type="float" office:value="1"/></table:table-row></table:table><table:table table:name="Second"><table:table-row><table:table-cell office:value-type="float" office:value="2"/></table:table-row>"#,
+    );
+    let low = SecurityLimits {
+        max_table_cells: 1,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".ods", &low).unwrap_err();
+    assert!(error.to_string().contains("observed 2 cells"), "{error}");
+    let exact = SecurityLimits {
+        max_table_cells: 2,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".ods", &exact).unwrap();
+    assert_eq!(workbook.sheets.len(), 2);
+}
+
+#[test]
+fn should_apply_ods_preflight_to_file_and_renamed_inputs_gh2296() {
+    let bytes = ods_with_table_rows(
+        r#"<table:table-row table:number-rows-repeated="3"><table:table-cell table:number-columns-repeated="2" office:value-type="float" office:value="1"/></table:table-row>"#,
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let low = SecurityLimits {
+        max_table_cells: 5,
+        ..Default::default()
+    };
+    let exact = SecurityLimits {
+        max_table_cells: 6,
+        ..Default::default()
+    };
+    for filename in ["budget.ods", "renamed.dat", "no_extension"] {
+        let path = directory.path().join(filename);
+        std::fs::write(&path, &bytes).unwrap();
+        let error = read_excel_file(path.to_str().unwrap(), &low).unwrap_err();
+        assert!(error.to_string().contains("observed 6 cells"), "{error}");
+        let (workbook, _) = read_excel_file(path.to_str().unwrap(), &exact).unwrap();
+        assert_eq!((workbook.sheets[0].row_count, workbook.sheets[0].col_count), (3, 2));
+    }
+}
+
+#[test]
+fn should_reject_nested_ods_rows_before_repeat_arithmetic_gh2296() {
+    let bytes = ods_with_table_rows(
+        r#"<table:table-row><table:table-row table:number-rows-repeated="1048576"/></table:table-row><table:table-row/>"#,
+    );
+    let error = read_excel_bytes(&bytes, ".ods", &SecurityLimits::default()).unwrap_err();
+    assert!(error.to_string().contains("nested worksheet row"), "{error}");
+}
+
+fn replace_first_xlsb_number_with_unsupported_formula(sheet: &mut Vec<u8>) {
+    let mut position = 0;
+    while position < sheet.len() {
+        let start = position;
+        let first = sheet[position];
+        position += 1;
+        let kind = if first & 0x80 == 0 {
+            u16::from(first)
+        } else {
+            let second = sheet[position];
+            position += 1;
+            u16::from(first & 0x7f) | (u16::from(second & 0x7f) << 7)
+        };
+        let mut length = 0usize;
+        for shift in 0..4 {
+            let byte = sheet[position];
+            position += 1;
+            length |= usize::from(byte & 0x7f) << (7 * shift);
+            if byte & 0x80 == 0 {
+                break;
+            }
+        }
+        let end = position.checked_add(length).unwrap();
+        let payload = &sheet[position..end];
+        if kind == 0x0002 {
+            assert_eq!(payload.len(), 12, "expected a complete BrtCellRk");
+            let encoded = u32::from_le_bytes(payload[8..12].try_into().unwrap());
+            let value = if encoded & 2 != 0 {
+                f64::from((encoded as i32) >> 2)
+            } else {
+                f64::from_bits(u64::from(encoded & !3) << 32)
+            };
+            let value = value / if encoded & 1 != 0 { 100.0 } else { 1.0 };
+            // ~keep BrtFmlaNum keeps the same cached number but has one deliberately unsupported Ptg.
+            let mut record = vec![0x0009, 23];
+            record.extend_from_slice(&payload[..8]);
+            record.extend_from_slice(&value.to_le_bytes());
+            record.extend_from_slice(&[0, 0]);
+            record.extend_from_slice(&1u32.to_le_bytes());
+            record.push(0xff);
+            sheet.splice(start..end, record);
+            return;
+        }
+        position = end;
+    }
+    panic!("fixture has no numeric cell to replace");
+}
+
+fn xlsb_with_unsupported_formula(bytes: &[u8]) -> Vec<u8> {
+    use std::io::{Read as _, Write as _};
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let mut replaced = 0;
+    for index in 0..archive.len() {
+        let mut member = archive.by_index(index).unwrap();
+        let name = member.name().unwrap().to_string();
+        let mut content = Vec::new();
+        member.read_to_end(&mut content).unwrap();
+        if name == "xl/worksheets/sheet1.bin" {
+            replace_first_xlsb_number_with_unsupported_formula(&mut content);
+            replaced += 1;
+        }
+        writer.start_file(name, options).unwrap();
+        writer.write_all(&content).unwrap();
+    }
+    assert_eq!(replaced, 1, "must mutate exactly one worksheet");
+    writer.finish().unwrap().into_inner()
+}
+
+#[test]
+fn should_preserve_xlsb_values_when_optional_formula_parsing_fails_gh2296() {
+    let original = crate::utils::read_test_fixture("xlsx/test_xlsb.xlsb").expect("required XLSB fixture");
+    let bytes = xlsb_with_unsupported_formula(&original);
+    let mut control = calamine::Xlsb::new(Cursor::new(&original)).unwrap();
+    let mut backend = calamine::Xlsb::new(Cursor::new(&bytes)).unwrap();
+    let names = backend.sheet_names();
+    assert!(!names.is_empty(), "the control must exercise actual worksheets");
+    let mut formula_errors = 0;
+    for name in &names {
+        let expected = control.worksheet_range(name).unwrap();
+        let actual = backend.worksheet_range(name).unwrap();
+        assert_eq!((actual.start(), actual.end()), (expected.start(), expected.end()));
+        let values = |range: &calamine::Range<Data>| {
+            range
+                .rows()
+                .map(|row| row.iter().map(ToString::to_string).collect::<Vec<_>>())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(values(&actual), values(&expected), "cached values in {name}");
+        match backend.worksheet_formula(name) {
+            Err(calamine::XlsbError::Ptg(0xff)) => formula_errors += 1,
+            other => {
+                other.unwrap();
+            }
+        }
+    }
+    assert_eq!(formula_errors, 1, "must exercise the exact optional formula failure");
+    let limits = SecurityLimits::default();
+    let (expected, _) = read_excel_bytes(&original, ".xlsb", &limits).unwrap();
+    let (workbook, _) = read_excel_bytes(&bytes, ".xlsb", &limits).unwrap();
+    assert_eq!(workbook.sheets.len(), expected.sheets.len());
+    assert!(
+        workbook
+            .sheets
+            .iter()
+            .any(|sheet| sheet.row_count > 0 && sheet.col_count > 0)
+    );
+    for (actual, expected) in workbook.sheets.iter().zip(&expected.sheets) {
+        assert_eq!(actual.table_cells, expected.table_cells);
+        assert_eq!(
+            (actual.row_count, actual.col_count),
+            (expected.row_count, expected.col_count)
+        );
+    }
+}
+
+#[test]
+fn should_bound_xlsx_declared_sparse_capacity_without_charging_padding_as_cells_gh2296() {
+    let bytes = make_xlsx_with_worksheet(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:J10"/><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>"#,
+    );
+    let low = SecurityLimits {
+        max_content_size: 300,
+        max_table_cells: 1,
+        ..Default::default()
+    };
+    let error = read_excel_bytes(&bytes, ".xlsx", &low).unwrap_err();
+    assert!(error.to_string().contains("sparse cell allocation"), "{error}");
+    let ample = SecurityLimits {
+        max_content_size: 8192,
+        max_table_cells: 1,
+        ..Default::default()
+    };
+    let (workbook, _) = read_excel_bytes(&bytes, ".xlsx", &ample).unwrap();
+    assert_eq!((workbook.sheets[0].row_count, workbook.sheets[0].col_count), (1, 1));
+}
+
+#[test]
+fn should_reject_truncated_xlsb_record_lengths_before_constructor_allocation_gh2296() {
+    use std::io::Write;
+    for path in [
+        "xl/workbook.bin",
+        "xl/styles.bin",
+        "XL/SHAREDSTRINGS.BIN",
+        "xl/worksheets/custom.data",
+    ] {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer.start_file("xl/_rels/workbook.bin.rels", options).unwrap();
+        writer
+            .write_all(br#"<Relationships><Relationship Id="rId1" Target="worksheets/custom.data"/></Relationships>"#)
+            .unwrap();
+        writer.start_file(path, options).unwrap();
+        writer.write_all(&[0, 0xff, 0xff, 0xff, 0x7f]).unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        let error = read_excel_bytes(&bytes, ".xlsb", &SecurityLimits::default()).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("declared payload exceeds remaining member bytes"),
+            "{path}: {error}"
+        );
+    }
+}

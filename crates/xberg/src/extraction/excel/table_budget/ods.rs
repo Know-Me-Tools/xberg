@@ -1,0 +1,297 @@
+//! ODS repeat preflight before calamine's eager dense-range construction.
+
+use std::io::{BufReader, Read, Seek};
+
+use quick_xml::events::{BytesStart, Event};
+
+use super::{SecurityBudget, SecurityLimits, SheetAllocation};
+use crate::{Result, XbergError};
+
+// ~keep Match calamine0.37's ODS row/column caps so formatted empty tails are not charged as dense data.
+const MAX_ROWS: u32 = 1_048_576;
+const MAX_COLS: u32 = 16_384;
+
+#[derive(Default)]
+struct Sheet {
+    bounds: SheetAllocation,
+    row: u32,
+    row_repeats: u32,
+    in_row: bool,
+    col: u32,
+}
+
+#[derive(Default)]
+struct Cell {
+    repeats: u32,
+    value_populated: bool,
+    formula_populated: bool,
+    string_content: bool,
+    text_bytes: usize,
+    first_paragraph: bool,
+    annotation_depth: usize,
+}
+
+fn xml_error(error: impl std::fmt::Display) -> XbergError {
+    XbergError::parsing(format!("Invalid ODS table XML: {error}"))
+}
+
+fn repeat(event: &BytesStart<'_>, key: &str) -> Result<u64> {
+    for attribute in event.attributes().with_checks(false) {
+        let attribute = attribute.map_err(xml_error)?;
+        if attribute.key.as_ref() == key {
+            let value = attribute
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .map_err(xml_error)?;
+            let count = value.parse::<u64>().map_err(xml_error)?;
+            if count == 0 {
+                return Err(xml_error("a row or column repeat count must be positive"));
+            }
+            return Ok(count);
+        }
+    }
+    Ok(1)
+}
+
+fn cell_state(event: &BytesStart<'_>, remaining: u32, budget: &SecurityBudget) -> Result<Cell> {
+    let mut cell = Cell {
+        repeats: repeat(event, "table:number-columns-repeated")?.min(u64::from(remaining)) as u32,
+        first_paragraph: true,
+        ..Default::default()
+    };
+    let mut value_set = false;
+    for attribute in event.attributes().with_checks(false) {
+        let attribute = attribute.map_err(xml_error)?;
+        let value = attribute
+            .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+            .map_err(xml_error)?;
+        match attribute.key.as_ref() {
+            "office:value-type" if !value_set => cell.string_content = value == "string",
+            "office:value"
+            | "office:string-value"
+            | "office:date-value"
+            | "office:time-value"
+            | "office:boolean-value"
+                if !value_set =>
+            {
+                value_set = true;
+                cell.value_populated = true;
+                add_text(&mut cell, value.len())?;
+                budget.check_entity(&value)?;
+            }
+            "table:formula" if !value.is_empty() => {
+                cell.formula_populated = true;
+                budget.check_entity(&value)?;
+                add_text(&mut cell, value.len())?;
+            }
+            _ => {}
+        }
+    }
+    cell.string_content &= !value_set;
+    cell.value_populated |= cell.string_content;
+    Ok(cell)
+}
+
+fn add_text(cell: &mut Cell, length: usize) -> Result<()> {
+    cell.text_bytes = cell
+        .text_bytes
+        .checked_add(length)
+        .ok_or_else(|| xml_error("cell text size overflow"))?;
+    Ok(())
+}
+
+fn account_cell(sheet: &mut Sheet, cell: Cell, budget: &mut SecurityBudget) -> Result<()> {
+    // ~keep Calamine constructs one cell string even if its repeated row/column is outside its fixed caps.
+    budget.account_text(cell.text_bytes)?;
+    if (cell.value_populated || cell.formula_populated) && cell.repeats > 0 && sheet.row_repeats > 0 {
+        let start = (sheet.row, sheet.col);
+        let end = (sheet.row + sheet.row_repeats - 1, sheet.col + cell.repeats - 1);
+        if cell.value_populated {
+            sheet.bounds.value(start, budget)?;
+            sheet.bounds.value(end, budget)?;
+        }
+        if cell.formula_populated {
+            sheet.bounds.formula(start, budget)?;
+            sheet.bounds.formula(end, budget)?;
+        }
+        let copies = u64::from(cell.repeats) * u64::from(sheet.row_repeats);
+        let length = u64::try_from(cell.text_bytes)
+            .ok()
+            .and_then(|value| value.checked_mul(copies.saturating_sub(1)))
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| xml_error("repeated cell text size overflow"))?;
+        budget.account_text(length)?;
+    }
+    sheet.col += cell.repeats;
+    Ok(())
+}
+
+pub(in crate::extraction::excel) fn validate_ods<R: Read + Seek>(
+    archive: &mut zip::ZipArchive<R>,
+    limits: &SecurityLimits,
+) -> Result<()> {
+    let member = archive.by_name("content.xml").map_err(xml_error)?;
+    let mut reader = quick_xml::Reader::from_reader(BufReader::new(
+        member.take((limits.max_archive_size as u64).saturating_add(1)),
+    ));
+    reader.config_mut().expand_empty_elements = true;
+    let mut budget = SecurityBudget::from_limits(limits);
+    let mut sheet: Option<Sheet> = None;
+    let mut cell: Option<Cell> = None;
+    let mut buffer = Vec::new();
+    loop {
+        budget.step()?;
+        buffer.clear();
+        let event = reader.read_event_into(&mut buffer).map_err(xml_error)?;
+        if reader.buffer_position() > limits.max_archive_size as u64 {
+            return Err(XbergError::validation(
+                "ODS content exceeds the configured archive size".to_string(),
+            ));
+        }
+        if handle_event(event, &mut sheet, &mut cell, &mut budget)? {
+            return Ok(());
+        }
+    }
+}
+
+fn active_string_cell(cell: &mut Option<Cell>) -> Option<&mut Cell> {
+    cell.as_mut()
+        .filter(|cell| cell.string_content && cell.annotation_depth == 0)
+}
+
+fn handle_event(
+    event: Event<'_>,
+    sheet: &mut Option<Sheet>,
+    cell: &mut Option<Cell>,
+    budget: &mut SecurityBudget,
+) -> Result<bool> {
+    match event {
+        Event::Start(start) => handle_start(&start, sheet, cell, budget)?,
+        Event::Text(text) => {
+            if let Some(cell) = active_string_cell(cell) {
+                let text = text.xml10_content();
+                budget.check_entity(&text)?;
+                add_text(cell, text.len())?;
+            }
+        }
+        Event::GeneralRef(reference) => {
+            if let Some(cell) = active_string_cell(cell) {
+                let escaped = format!("&{};", reference.as_ref());
+                let decoded = quick_xml::escape::unescape(&escaped).map_err(xml_error)?;
+                add_text(cell, decoded.len())?;
+            }
+        }
+        Event::End(end) => handle_end(end.name().as_ref(), sheet, cell, budget)?,
+        Event::Eof => {
+            if sheet.is_some() || cell.is_some() {
+                return Err(xml_error("unterminated table or cell"));
+            }
+            return Ok(true);
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn handle_end(
+    name: &str,
+    sheet: &mut Option<Sheet>,
+    cell: &mut Option<Cell>,
+    budget: &mut SecurityBudget,
+) -> Result<()> {
+    match name {
+        "office:annotation" => {
+            if let Some(cell) = cell.as_mut() {
+                cell.annotation_depth = cell.annotation_depth.saturating_sub(1);
+            }
+        }
+        "table:table-cell" | "table:covered-table-cell" => {
+            if let (Some(sheet), Some(cell)) = (sheet.as_mut(), cell.take()) {
+                account_cell(sheet, cell, budget)?;
+            }
+        }
+        "table:table-row" => {
+            if let Some(sheet) = sheet.as_mut() {
+                if !sheet.in_row || cell.is_some() {
+                    return Err(xml_error("invalid worksheet row end"));
+                }
+                sheet.row = sheet
+                    .row
+                    .checked_add(sheet.row_repeats)
+                    .ok_or_else(|| xml_error("worksheet row overflow"))?;
+                sheet.in_row = false;
+            }
+        }
+        "table:table" if cell.is_none() => *sheet = None,
+        _ => {}
+    }
+    Ok(())
+}
+
+fn handle_start(
+    start: &BytesStart<'_>,
+    sheet: &mut Option<Sheet>,
+    cell: &mut Option<Cell>,
+    budget: &SecurityBudget,
+) -> Result<()> {
+    match start.name().as_ref() {
+        "table:table" if cell.is_none() => {
+            if sheet.is_some() {
+                return Err(xml_error("nested worksheet table"));
+            }
+            *sheet = Some(Sheet::default());
+        }
+        "table:table-row" => {
+            if let Some(sheet) = sheet.as_mut() {
+                if sheet.in_row || cell.is_some() {
+                    return Err(xml_error("nested worksheet row"));
+                }
+                sheet.row_repeats = repeat(start, "table:number-rows-repeated")?
+                    .min(u64::from(MAX_ROWS.saturating_sub(sheet.row))) as u32;
+                sheet.col = 0;
+                sheet.in_row = true;
+            }
+        }
+        "table:table-cell" | "table:covered-table-cell" => {
+            if let Some(sheet) = sheet.as_ref() {
+                if cell.is_some() {
+                    return Err(xml_error("nested spreadsheet cell"));
+                }
+                if !sheet.in_row {
+                    return Err(xml_error("spreadsheet cell outside a row"));
+                }
+                *cell = Some(cell_state(start, MAX_COLS.saturating_sub(sheet.col), budget)?);
+            }
+        }
+        _ => handle_cell_start(start, cell)?,
+    }
+    Ok(())
+}
+
+fn handle_cell_start(start: &BytesStart<'_>, cell: &mut Option<Cell>) -> Result<()> {
+    match start.name().as_ref() {
+        "office:annotation" => {
+            if let Some(cell) = cell.as_mut() {
+                if cell.annotation_depth > 0 {
+                    return Err(xml_error("nested annotations are not supported"));
+                }
+                cell.annotation_depth = 1;
+            }
+        }
+        "text:p" => {
+            if let Some(cell) = active_string_cell(cell) {
+                if !cell.first_paragraph {
+                    add_text(cell, 1)?;
+                }
+                cell.first_paragraph = false;
+            }
+        }
+        "text:s" => {
+            if let Some(cell) = active_string_cell(cell) {
+                let spaces = usize::try_from(repeat(start, "text:c")?).map_err(xml_error)?;
+                add_text(cell, spaces)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
