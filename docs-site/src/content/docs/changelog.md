@@ -71,6 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(pptx): Remove floating-point storage noise from numeric chart values.**
+  Cached and literal numbers use Office's 15 significant digits; series names and category labels stay as written. (#2298)
+
 - **(docx): Keep the number Word paints on each numbered list item.**
   Labels such as `Q4.`, `(b)` and `3.2` are computed from `word/numbering.xml` as Word counts them, with start
   values, level and start overrides, level restarts, lists that share a definition, and letter and roman

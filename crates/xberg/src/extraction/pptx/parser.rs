@@ -16,6 +16,8 @@ use super::elements::{
 
 use crate::extraction::ooxml_constants::{DRAWINGML_NAMESPACE, PRESENTATIONML_NAMESPACE, RELATIONSHIPS_NAMESPACE};
 
+mod chart_numbers;
+
 /// Markup-compatibility namespace (`mc:AlternateContent`/`mc:Choice`/`mc:Fallback`).
 ///
 /// PowerPoint wraps most non-baseline shape content (extension shapes,
@@ -325,9 +327,7 @@ pub(super) fn parse_chart_text(xml_data: &[u8]) -> Result<Option<String>> {
     let values: Vec<String> = doc
         .descendants()
         .filter(|n| n.tag_name().namespace() == Some(CHART_NAMESPACE) && n.tag_name().name() == "v")
-        .filter_map(|n| n.text())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        .filter_map(chart_numbers::value_text)
         .collect();
 
     let mut parts = Vec::new();
