@@ -1,3 +1,6 @@
+#[path = "test_complex_prm_scripts.rs"]
+mod complex;
+
 use super::test_scripts::{script_doc, story_script_doc};
 use super::tests::{
     TestPiece, build_doc_ole, build_plc_pcd, compressed_fc, test_rg_fc_lcb_offset, test_rg_lw_offset, write_u32,
