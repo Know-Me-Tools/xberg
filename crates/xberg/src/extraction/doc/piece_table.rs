@@ -373,7 +373,7 @@ fn append_piece_to_stories(piece: &DecodedPiece, cp_start: usize, ranges: &Subdo
         cp_start,
         ranges.footnote,
         &mut text.footnote,
-        None,
+        Some(&mut text.footnote_fc_ends),
         Some(&mut text.footnote_cps),
     );
     append_range_overlap(
@@ -381,7 +381,7 @@ fn append_piece_to_stories(piece: &DecodedPiece, cp_start: usize, ranges: &Subdo
         cp_start,
         ranges.header,
         &mut text.header,
-        None,
+        Some(&mut text.header_fc_ends),
         Some(&mut text.header_cps),
     );
     append_range_overlap(
@@ -389,10 +389,17 @@ fn append_piece_to_stories(piece: &DecodedPiece, cp_start: usize, ranges: &Subdo
         cp_start,
         ranges.annotation,
         &mut text.annotation,
-        None,
+        Some(&mut text.annotation_fc_ends),
         Some(&mut text.annotation_cps),
     );
-    append_range_overlap(piece, cp_start, ranges.textbox, &mut text.textbox, None, None);
+    append_range_overlap(
+        piece,
+        cp_start,
+        ranges.textbox,
+        &mut text.textbox,
+        Some(&mut text.textbox_fc_ends),
+        None,
+    );
 }
 
 /// Extract text from the piece table (PlcPcd), bucketing each piece's
@@ -451,7 +458,6 @@ fn assemble_main_text(
     warnings: &mut Vec<ProcessingWarning>,
     budget: &mut crate::extractors::security::SecurityBudget,
 ) -> Result<MainText> {
-    let ranges = tables.ranges;
     let content = joined_subdocument_text(text);
     let paragraph_context = ParagraphContext {
         lists: &tables.lists,
@@ -472,7 +478,7 @@ fn assemble_main_text(
         paragraphs,
         picture_positions,
         unsupported_pictures,
-        subdocuments: collect_subdocuments(text, &tables.stories, ranges, warnings),
+        subdocuments: collect_subdocuments(text, tables, warnings, budget)?,
         content,
     })
 }
@@ -590,16 +596,43 @@ fn header_story_kind(index: usize) -> Option<DocSubdocumentKind> {
 
 /// Story bounds use source CPs: decoded scalars can occupy two units, and
 /// malformed units can disappear. Keep their original positions. ~keep
-fn split_stories(text: &str, cps: &[u32], start_cp: usize, bounds: &[usize]) -> Vec<String> {
-    let chars: Vec<char> = text.chars().collect();
+fn split_stories(cps: &[u32], start_cp: usize, bounds: &[usize]) -> Vec<std::ops::Range<usize>> {
     bounds
         .windows(2)
         .map(|story| {
             let start = cps.partition_point(|&cp| (cp as usize) < start_cp.saturating_add(story[0]));
             let end = cps.partition_point(|&cp| (cp as usize) < start_cp.saturating_add(story[1]));
-            normalize_doc_text(&chars[start..end].iter().collect::<String>())
+            start..end
         })
         .collect()
+}
+
+fn normalize_story(
+    raw: &str,
+    fcs: &[u32],
+    scripts: &chpx::ScriptIndex,
+    budget: &mut crate::extractors::security::SecurityBudget,
+    kind: DocSubdocumentKind,
+) -> Result<DocSubdocument> {
+    if raw.chars().count() != fcs.len() {
+        return Err(XbergError::parsing(
+            "DOC subdocument character-property alignment is invalid",
+        ));
+    }
+    let mut visible = String::new();
+    let mut properties = Vec::new();
+    for ((character, fc), markup) in raw.chars().zip(fcs).zip(field_markup_mask(raw)) {
+        if !markup {
+            visible.push(character);
+            properties.push(scripts.at(*fc));
+        }
+    }
+    let (text, annotations) = chpx::normalize(&visible, &properties, budget)?;
+    Ok(DocSubdocument {
+        kind,
+        text,
+        annotations,
+    })
 }
 
 /// Split the footnote, header and comment subdocuments into their stories, in
@@ -607,35 +640,59 @@ fn split_stories(text: &str, cps: &[u32], start_cp: usize, bounds: &[usize]) -> 
 /// Without a usable story table a subdocument stays one story, with a warning.
 fn collect_subdocuments(
     text: &SubdocumentText,
-    tables: &StoryTables,
-    ranges: &SubdocRanges,
+    tables: &DocTables<'_>,
     warnings: &mut Vec<ProcessingWarning>,
-) -> Vec<DocSubdocument> {
+    budget: &mut crate::extractors::security::SecurityBudget,
+) -> Result<Vec<DocSubdocument>> {
+    let mut subdocuments = collect_story_subdocuments(text, tables, warnings, budget)?;
+    let textbox = normalize_story(
+        &text.textbox,
+        &text.textbox_fc_ends,
+        &tables.scripts,
+        budget,
+        DocSubdocumentKind::TextBox,
+    )?;
+    if !textbox.text.is_empty() {
+        subdocuments.push(textbox);
+    }
+    Ok(subdocuments)
+}
+
+fn collect_story_subdocuments(
+    text: &SubdocumentText,
+    tables: &DocTables<'_>,
+    warnings: &mut Vec<ProcessingWarning>,
+    budget: &mut crate::extractors::security::SecurityBudget,
+) -> Result<Vec<DocSubdocument>> {
+    let ranges = tables.ranges;
     let mut subdocuments = Vec::new();
-    for (raw, cps, start_cp, bounds, kind, fallback_kind, fallback_warning) in [
+    for (raw, fcs, cps, start_cp, bounds, kind, fallback_kind, fallback_warning) in [
         (
             &text.footnote,
+            &text.footnote_fc_ends,
             &text.footnote_cps,
             ranges.footnote.start,
-            &tables.footnote,
+            &tables.stories.footnote,
             DocSubdocumentKind::Footnote,
             DocSubdocumentKind::Footnote,
             "Footnote table (PlcffndTxt) is missing or malformed; all footnote text is reported as one footnote",
         ),
         (
             &text.header,
+            &text.header_fc_ends,
             &text.header_cps,
             ranges.header.start,
-            &tables.header,
+            &tables.stories.header,
             DocSubdocumentKind::Header,
             DocSubdocumentKind::HeaderFooter,
             "Header table (PlcfHdd) is missing or malformed; all header and footer text is reported as combined header/footer text",
         ),
         (
             &text.annotation,
+            &text.annotation_fc_ends,
             &text.annotation_cps,
             ranges.annotation.start,
-            &tables.annotation,
+            &tables.stories.annotation,
             DocSubdocumentKind::Comment,
             DocSubdocumentKind::Comment,
             "Comment table (PlcfandTxt) is missing or malformed; all comment text is reported as one comment",
@@ -650,38 +707,32 @@ fn collect_subdocuments(
             fallback_warning
         };
         let Some(bounds) = bounds.as_ref().filter(|_| positions_valid) else {
-            let whole = normalize_doc_text(raw);
-            if !whole.is_empty() {
+            let whole = normalize_story(raw, fcs, &tables.scripts, budget, fallback_kind)?;
+            if !whole.text.is_empty() {
                 crate::core::diagnostics::push_warning(warnings, DOC_WARNING_SOURCE, fallback_warning);
-                subdocuments.push(DocSubdocument {
-                    kind: fallback_kind,
-                    text: whole,
-                });
+                subdocuments.push(whole);
             }
             continue;
         };
-        for (index, story) in split_stories(raw, cps, start_cp, bounds).into_iter().enumerate() {
+        let chars: Vec<char> = raw.chars().collect();
+        for (index, range) in split_stories(cps, start_cp, bounds).into_iter().enumerate() {
+            let raw_story: String = chars[range.clone()].iter().collect();
             let story_kind = if kind == DocSubdocumentKind::Header {
                 header_story_kind(index)
             } else {
                 Some(kind)
             };
-            if let Some(kind) = story_kind
-                && !story.is_empty()
-            {
-                subdocuments.push(DocSubdocument { kind, text: story });
+            let Some(kind) = story_kind else {
+                continue;
+            };
+            let story = normalize_story(&raw_story, &fcs[range], &tables.scripts, budget, kind)?;
+            if !story.text.is_empty() {
+                subdocuments.push(story);
             }
         }
     }
 
-    let textbox = normalize_doc_text(&text.textbox);
-    if !textbox.is_empty() {
-        subdocuments.push(DocSubdocument {
-            kind: DocSubdocumentKind::TextBox,
-            text: textbox,
-        });
-    }
-    subdocuments
+    Ok(subdocuments)
 }
 
 #[cfg(test)]

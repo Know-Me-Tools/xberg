@@ -1437,7 +1437,7 @@ pub(crate) fn build_comrak_ast<'a>(doc: &InternalDocument, arena: &'a comrak::Ar
             }),
         );
         let para = mk(arena, NodeValue::Paragraph);
-        para.append(mk_text(arena, &entry.text));
+        build_inlines(arena, para, &entry.text, &entry.annotations);
         fndef.append(para);
         root.append(fndef);
     }
@@ -1473,7 +1473,7 @@ pub(crate) fn build_comrak_ast<'a>(doc: &InternalDocument, arena: &'a comrak::Ar
                 }),
             );
             let para = mk(arena, NodeValue::Paragraph);
-            para.append(mk_text(arena, &elem.text));
+            build_inlines(arena, para, &elem.text, &elem.annotations);
             fndef.append(para);
             root.append(fndef);
         }

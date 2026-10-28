@@ -93,6 +93,8 @@ pub(crate) struct DocSubdocument {
     pub kind: DocSubdocumentKind,
     /// Normalized text, paragraphs separated by `\n`.
     pub text: String,
+    #[serde(default)]
+    pub annotations: Vec<crate::types::TextAnnotation>,
 }
 
 /// Where a [`DocSubdocument`] comes from. Headers and footers share one
@@ -454,20 +456,22 @@ impl SubdocRanges {
 struct SubdocumentText {
     main: String,
     /// Byte offset one past each character in `main`, same length as its char
-    /// count. Only the main document needs it: #1550 binds paragraph
-    /// properties for body text, and subdocument paragraphs carry no list
-    /// numbering a reader would see. ~keep
+    /// count. Character properties are addressed by physical source FC. ~keep
     main_fc_ends: Vec<u32>,
     /// CP of each character in `main`, same length as `main_fc_ends`.
     /// Floating pictures are anchored by CP (`PlcSpaMom`). ~keep
     main_cps: Vec<u32>,
     footnote: String,
+    footnote_fc_ends: Vec<u32>,
     footnote_cps: Vec<u32>,
     header: String,
+    header_fc_ends: Vec<u32>,
     header_cps: Vec<u32>,
     annotation: String,
+    annotation_fc_ends: Vec<u32>,
     annotation_cps: Vec<u32>,
     textbox: String,
+    textbox_fc_ends: Vec<u32>,
 }
 
 mod piece_table;

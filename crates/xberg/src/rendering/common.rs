@@ -269,6 +269,7 @@ pub(crate) fn render_annotated_text_with_plain(
 #[derive(Debug)]
 pub(crate) struct FootnoteEntry {
     pub(crate) text: String,
+    pub(crate) annotations: Vec<TextAnnotation>,
     pub(crate) number: u32,
 }
 
@@ -355,7 +356,16 @@ impl FootnoteCollector {
                         let n = next_number;
                         next_number += 1;
                         let text = def_by_anchor.get(anchor).map(|(_, t)| t.clone()).unwrap_or_default();
-                        definitions.push(FootnoteEntry { text, number: n });
+                        let annotations = def_by_anchor
+                            .get(anchor)
+                            .and_then(|(index, _)| doc.elements.get(*index as usize))
+                            .map(|element| element.annotations.clone())
+                            .unwrap_or_default();
+                        definitions.push(FootnoteEntry {
+                            text,
+                            annotations,
+                            number: n,
+                        });
                         n
                     });
                     ref_numbers.insert(idx, number);
@@ -385,6 +395,7 @@ impl FootnoteCollector {
             anchor_to_number.insert(anchor.clone(), number);
             definitions.push(FootnoteEntry {
                 text: elem.text.clone(),
+                annotations: elem.annotations.clone(),
                 number,
             });
         }

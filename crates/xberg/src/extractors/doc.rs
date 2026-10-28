@@ -384,22 +384,67 @@ fn push_subdocuments(
                 (ElementKind::CommentDefinition, ContentLayer::Footnote, Some(anchor))
             }
         };
-        let lines: Vec<&str> = subdocument
-            .text
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .collect();
-        let texts = match anchor {
-            Some(_) => vec![lines.join(" ")],
-            None => lines.iter().map(|line| line.to_string()).collect(),
-        };
-        for text in texts {
+        for (text, annotations) in subdocument_lines(subdocument, anchor.is_some()) {
             let mut element = InternalElement::text(kind, text, 0);
+            element.annotations = annotations;
             element.layer = layer;
             element.anchor = anchor.clone();
             doc.push_element(element);
         }
+    }
+}
+
+fn subdocument_lines(
+    subdocument: &DocSubdocument,
+    join_lines: bool,
+) -> Vec<(String, Vec<crate::types::TextAnnotation>)> {
+    let mut output: Vec<(String, Vec<crate::types::TextAnnotation>)> = Vec::new();
+    let mut source_offset = 0;
+    for line in subdocument.text.split_inclusive('\n') {
+        let trimmed = line.trim();
+        let start = source_offset + line.len() - line.trim_start().len();
+        source_offset += line.len();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !join_lines || output.is_empty() {
+            output.push((String::new(), Vec::new()));
+        }
+        let (text, annotations) = output.last_mut().expect("nonempty subdocument output");
+        if !text.is_empty() {
+            text.push(' ');
+        }
+        project_subdocument_annotations(subdocument, start, trimmed.len(), text.len(), annotations);
+        text.push_str(trimmed);
+    }
+    output
+}
+
+fn project_subdocument_annotations(
+    subdocument: &DocSubdocument,
+    start: usize,
+    length: usize,
+    target_offset: usize,
+    output: &mut Vec<crate::types::TextAnnotation>,
+) {
+    let end = start + length;
+    for annotation in &subdocument.annotations {
+        let from = (annotation.start as usize).max(start);
+        let to = (annotation.end as usize).min(end);
+        if from >= to || subdocument.text.get(from..to).is_none() {
+            continue;
+        }
+        let Some((from, to)) = target_offset
+            .checked_add(from - start)
+            .zip(target_offset.checked_add(to - start))
+            .and_then(|(from, to)| Some((u32::try_from(from).ok()?, u32::try_from(to).ok()?)))
+        else {
+            continue;
+        };
+        let mut projected = annotation.clone();
+        projected.start = from;
+        projected.end = to;
+        output.push(projected);
     }
 }
 
