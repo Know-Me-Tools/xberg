@@ -938,6 +938,9 @@ pub(super) fn parse_presentation_rels(rels_data: &[u8]) -> Result<Vec<String>> {
 }
 
 #[cfg(test)]
+mod chart_number_tests;
+
+#[cfg(test)]
 mod tests {
     #[test]
     fn test_slide_paths_sorted_numerically() {
