@@ -17,6 +17,8 @@ mod test_floating_images;
 #[cfg(test)]
 pub(crate) mod test_images;
 #[cfg(all(test, feature = "tokio-runtime"))]
+mod test_prm_scripts;
+#[cfg(all(test, feature = "tokio-runtime"))]
 mod test_scripts;
 
 use crate::error::{Result, XbergError};
