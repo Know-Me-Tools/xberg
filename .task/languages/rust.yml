@@ -18,7 +18,6 @@ tasks:
       - rustup component add rustfmt clippy
       - cmd: rustup component add llvm-tools
         platforms: [windows]
-      - cargo install cargo-llvm-cov --locked
       - cargo install cargo-edit --locked
       - cargo --version
       - rustc --version

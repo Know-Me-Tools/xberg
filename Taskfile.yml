@@ -76,13 +76,13 @@ tasks:
       - task --list
 
   setup:
-    desc: "Install all dependencies and setup development environment"
+    desc: "Install the mise toolchain and all dependencies, and set up the development environment"
     cmds:
+      - mise install
       - task: rust:install
       - alef setup
       - task: governance:generate
       - task: integrations:sync
-      - command -v poly >/dev/null 2>&1 || brew install goldziher/tap/poly
       - task: governance:hooks:install
 
   build:
@@ -192,7 +192,7 @@ tasks:
       BATS_LIB_PATH: "{{.ROOT_DIR}}/scripts/tests/lib"
     preconditions:
       - sh: command -v bats
-        msg: "bats is required: brew install bats-core"
+        msg: "bats is required: run `mise install`"
       - sh: test -f scripts/tests/lib/xberg-bats/load.bash
         msg: "shared Bats helpers are missing; run `task test:scripts:lib:sync`"
     cmds:
