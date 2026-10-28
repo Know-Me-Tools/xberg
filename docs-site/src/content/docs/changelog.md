@@ -76,6 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   values, level and start overrides, level restarts, lists that share a definition, and letter and roman
   formats, and reach `list_marker` and the Markdown. A plain `1.`, `2.` list is written as before. (#2293)
 
+- **(doc): Preserve superscript and subscript formatting inside legacy Word table cells.**
+  Plain cell text remains unchanged; Markdown and HTML retain script formatting across cell paragraphs. (#2275)
+
 - **(csv): Enforce table-cell limits against padded dimensions before retaining rows.** (#2296)
 - **(pdf): Preserve prose superscripts and subscripts when table detection is enabled.** (#2275)
 - **(docx): Preserve equations as math in table cells and table Markdown without changing public structs.** (#2256)

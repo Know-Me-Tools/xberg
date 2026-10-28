@@ -14,7 +14,10 @@ use crate::types::document_structure::ContentLayer;
 use crate::types::internal::{ElementKind, InternalDocument, InternalElement};
 use crate::types::{Metadata, Table};
 mod images;
+mod table;
+
 use images::{parse_doc, push_doc_image, push_paragraph_runs};
+use table::PendingTable;
 
 use ahash::AHashMap;
 use async_trait::async_trait;
@@ -283,7 +286,7 @@ fn push_paragraph_elements_with_images(
         let text = paragraph.content.trim();
         if let Some(mark) = paragraph.table {
             close_lists(doc, &mut open, 0);
-            table.add(text, mark, budget)?;
+            table.add(paragraph, mark, budget)?;
             continue;
         }
         table.flush(doc, budget)?;
@@ -397,87 +400,6 @@ fn push_subdocuments(
             element.anchor = anchor.clone();
             doc.push_element(element);
         }
-    }
-}
-
-/// The rows of the table being read, until a paragraph outside it ends it.
-#[derive(Default)]
-struct PendingTable {
-    rows: Vec<Vec<String>>,
-    row: Vec<String>,
-    cell: String,
-    columns: usize,
-    reserved_cells: usize,
-}
-
-impl PendingTable {
-    /// Add one table paragraph. A cell's paragraphs are joined by line breaks.
-    fn add(&mut self, text: &str, mark: DocTableMark, budget: &mut SecurityBudget) -> Result<()> {
-        if !text.is_empty() {
-            if !self.cell.is_empty() {
-                self.cell.push('\n');
-            }
-            self.cell.push_str(text);
-        }
-        if mark.cell_end {
-            self.end_cell(budget)?;
-        }
-        if mark.row_end {
-            self.end_row(budget)?;
-        }
-        Ok(())
-    }
-
-    fn end_cell(&mut self, budget: &mut SecurityBudget) -> Result<()> {
-        let grid = self
-            .row
-            .len()
-            .checked_add(1)
-            .map(|columns| columns.max(self.columns))
-            .and_then(|columns| {
-                self.rows
-                    .len()
-                    .checked_add(1)?
-                    .checked_mul(columns)
-                    .map(|cells| (columns, cells))
-            });
-        let (columns, cells) = grid.ok_or_else(|| crate::XbergError::security("DOC table cell count overflow"))?;
-        // Markdown pads every row to the widest one, including rows already read. ~keep
-        // Reserve that whole rectangle before allocating another cell. ~keep
-        budget.add_cells(cells - self.reserved_cells)?;
-        self.columns = columns;
-        self.reserved_cells = cells;
-        self.row.push(std::mem::take(&mut self.cell));
-        Ok(())
-    }
-
-    fn end_row(&mut self, budget: &mut SecurityBudget) -> Result<()> {
-        if !self.cell.is_empty() {
-            self.end_cell(budget)?;
-        }
-        if !self.row.is_empty() {
-            self.rows.push(std::mem::take(&mut self.row));
-        }
-        Ok(())
-    }
-
-    /// Emit the table read so far, unless it holds no text, and start over.
-    fn flush(&mut self, doc: &mut InternalDocument, budget: &mut SecurityBudget) -> Result<()> {
-        self.end_row(budget)?;
-        let cells = std::mem::take(&mut self.rows);
-        self.columns = 0;
-        self.reserved_cells = 0;
-        if cells.iter().flatten().all(|cell| cell.trim().is_empty()) {
-            return Ok(());
-        }
-        let markdown = crate::rendering::common::render_table_markdown(&cells);
-        let table_index = doc.push_table(Table {
-            cells,
-            markdown,
-            ..Default::default()
-        });
-        doc.push_element(InternalElement::text(ElementKind::Table { table_index }, "", 0));
-        Ok(())
     }
 }
 

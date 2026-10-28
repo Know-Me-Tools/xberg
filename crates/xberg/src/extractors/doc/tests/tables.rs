@@ -266,7 +266,9 @@ fn should_ignore_table_styles_when_classifying_body_headings() {
 
 fn script_table_paragraph(content: &str, table: Option<DocTableMark>, start: u32, end: u32) -> DocParagraph {
     let mut paragraph = paragraph(content, table);
-    paragraph.annotations.push(crate::types::builder::superscript(start, end));
+    paragraph
+        .annotations
+        .push(crate::types::builder::superscript(start, end));
     paragraph
 }
 
@@ -284,6 +286,8 @@ fn should_preserve_doc_table_scripts_without_changing_plain_cells_gh2275() {
     assert_eq!(doc.tables[0].cells, [vec!["Value"], vec!["7,2 x 109/l"]]);
     let markdown = crate::rendering::render_markdown(&doc);
     assert!(markdown.contains("7,2 x 10^9^/l"), "{markdown}");
+    let html = crate::rendering::render_html(&doc);
+    assert!(html.contains("7,2 x 10<sup>9</sup>/l"), "{html}");
     let plain = crate::rendering::render_plain(&doc);
     assert!(plain.contains("7,2 x 109/l"), "{plain}");
     assert!(!plain.contains('^'), "{plain}");
@@ -320,4 +324,21 @@ fn should_keep_literal_script_markers_and_unannotated_tables_literal_gh2275() {
     assert!(!html.contains("<sup>"), "{html}");
     assert!(!html.contains("<sub>"), "{html}");
     assert!(html.contains("10^9^ and H~2~O"), "{html}");
+}
+
+#[test]
+fn should_reset_doc_table_script_coordinates_between_tables_gh2275() {
+    let paragraphs = [
+        script_table_paragraph("109", CELL, 2, 3),
+        paragraph("", ROW),
+        paragraph("Between tables.", None),
+        paragraph("plain 109", CELL),
+        paragraph("", ROW),
+    ];
+    let mut doc = InternalDocument::new("doc");
+    push_paragraph_elements(&mut doc, &paragraphs, &mut SecurityBudget::with_defaults()).unwrap();
+    let html = crate::rendering::render_html(&doc);
+    assert_eq!(html.matches("<sup>").count(), 1, "{html}");
+    assert_eq!(doc.tables.len(), 2);
+    assert!(doc.elements[2].attributes.is_none());
 }

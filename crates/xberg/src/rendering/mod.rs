@@ -25,6 +25,7 @@ mod markdown;
 mod pdf;
 mod plain;
 pub(crate) mod table_math;
+pub(crate) mod table_scripts;
 
 pub(crate) use djot::render_djot;
 pub(crate) use doctags::render_doctags;

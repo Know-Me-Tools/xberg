@@ -757,7 +757,10 @@ fn build_table<'a>(
         return None;
     }
     let synthetic_header_rows = usize::from(!has_header);
-    let annotations = super::table_math::read_annotations(attributes, cells);
+    let mut annotations = super::table_math::read_annotations(attributes, cells);
+    for (cell, scripts) in super::table_scripts::read_annotations(attributes, cells) {
+        annotations.entry(cell).or_default().extend(scripts);
+    }
 
     let table_node = mk(
         arena,
