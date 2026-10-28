@@ -91,6 +91,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(pdf): Cache Type 3 font-mapping provenance during text extraction.**
+  Repeated glyphs retain their fallback markers without rescanning the font for every character. (#2307)
+- **(doc): Preserve superscript and subscript annotations in footnotes and comments.**
+  Markdown, Djot and HTML retain the annotations through story decoding and whitespace normalization. (#2275)
+
 - **(pptx): Preserve slide headings and table grids in plain document structures.**
   Tables retain literal pipe characters and remain available in extraction results. (#2302)
 - **(pdf): Recover word spaces when subset fonts omit a space-glyph width.**
