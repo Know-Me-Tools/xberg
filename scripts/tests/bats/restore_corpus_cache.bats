@@ -542,3 +542,28 @@ PY
 		"$(cache_fingerprint "${fixture_root}/test_documents/.corpus-cache")" \
 		"complete cache after legacy extra rejection"
 }
+
+@test "corpus restore should verify and install a current content addressed archive" {
+	setup_fixture "current-valid"
+	local fixture_root="$FIXTURE_ROOT"
+	write_manifest "$fixture_root" "current-pdf" "current-markdown" "current-text"
+	commit_documents "$fixture_root" "manifest"
+	seed_existing_cache "$fixture_root"
+	local digest object
+	digest="$(cache_digest "$fixture_root")"
+	object="gs://test-bucket/corpus-cache/v2/${digest}.tar.zst"
+	create_archive \
+		"${fixture_root}/fake-gcs/${object#gs://}" \
+		"current-pdf" "current-markdown" "current-text"
+	run_restore "$fixture_root"
+
+	assert_equals "0" "$RUN_STATUS" "current archive restore status"
+	assert_contains "Safely extracted archive for 1 reference PDFs." "$RUN_OUTPUT" "actual archive validation"
+	assert_contains "Atomically installed verified corpus cache." "$RUN_OUTPUT" "actual cache installation"
+	assert_file_content "current-pdf" "${fixture_root}/test_documents/.corpus-cache/pdf/reference.pdf" "current PDF"
+	assert_file_content "current-markdown" "${fixture_root}/test_documents/.corpus-cache/ground_truth/pdf/reference.md" "current markdown"
+	assert_file_content "current-text" "${fixture_root}/test_documents/.corpus-cache/ground_truth/pdf/reference.txt" "current text"
+	assert_file_content "preserve-me" "${fixture_root}/test_documents/.corpus-cache/model-store/model.bin" "unrelated namespace"
+	assert_equals "storage objects describe ${object}
+storage cp ${object}" "$(cat "${fixture_root}/gcloud.log")" "exact current object calls"
+}

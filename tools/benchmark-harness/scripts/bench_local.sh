@@ -190,35 +190,35 @@ if { [ -n "$HEURISTIC_FIXTURES$OCR_FIXTURES" ] && frameworks_include_xberg "$FRA
   echo "[bench:local] xberg profile: $BENCH_PROFILE_LABEL ($BENCH_PROFILE_BINARY)"
 fi
 
-SHARD_ARGS=()
-[ -n "$SHARD" ] && SHARD_ARGS=(--shard "$SHARD")
-
+# ~keep Nonempty command vectors support optional flags under Bash 3.2 nounset.
 run_single() {
   local fixture_root="$1"
   local manifest="$2"
   local output="$3"
   local ocr_flag="$4"
-  local cohort_args=()
-  [ -n "$manifest" ] && cohort_args=(--cohort "$manifest")
   echo "[bench:local] === single-file run ($ocr_flag): $fixture_root ==="
   mkdir -p "$output"
   write_benchmark_profile_provenance "$output" "$FRAMEWORKS"
-  local ocr_args=()
-  [ "$ocr_flag" = "OCR enabled" ] && ocr_args=(--ocr)
-  "$HARNESS" run \
-    --fixtures "$fixture_root" \
-    "${cohort_args[@]}" \
-    --frameworks "$FRAMEWORKS" \
-    --output "$output" \
-    --mode single-file \
-    --max-concurrent 1 \
-    --xberg-max-threads "$XBERG_MAX_THREADS" \
-    --iterations "$ITERATIONS" \
-    --timeout "$TIMEOUT" \
-    --measure-quality \
-    --output-format markdown \
-    "${ocr_args[@]}" \
-    "${SHARD_ARGS[@]}"
+  local args=(run --fixtures "$fixture_root")
+  if [ -n "$manifest" ]; then
+    args+=(--cohort "$manifest")
+  fi
+  args+=(--frameworks "$FRAMEWORKS"
+    --output "$output"
+    --mode single-file
+    --max-concurrent 1
+    --xberg-max-threads "$XBERG_MAX_THREADS"
+    --iterations "$ITERATIONS"
+    --timeout "$TIMEOUT"
+    --measure-quality
+    --output-format markdown)
+  if [ "$ocr_flag" = "OCR enabled" ]; then
+    args+=(--ocr)
+  fi
+  if [ -n "$SHARD" ]; then
+    args+=(--shard "$SHARD")
+  fi
+  "$HARNESS" "${args[@]}"
   "$HARNESS" gap-report --results "$output" --output "$output"
 }
 
@@ -227,31 +227,33 @@ run_batch() {
   local manifest="$2"
   local output="$3"
   local ocr_flag="$4"
-  local cohort_args=()
-  [ -n "$manifest" ] && cohort_args=(--cohort "$manifest")
   echo "[bench:local] === batch run ($ocr_flag): $fixture_root ==="
   mkdir -p "$output"
   write_benchmark_profile_provenance "$output" "$BATCH_FRAMEWORKS"
-  local ocr_args=()
-  [ "$ocr_flag" = "OCR enabled" ] && ocr_args=(--ocr)
   if [ -z "$BATCH_FRAMEWORKS" ]; then
     echo "[bench:local] no verified native-batch framework selected." >&2
     exit 1
   fi
-  "$HARNESS" run \
-    --fixtures "$fixture_root" \
-    "${cohort_args[@]}" \
-    --frameworks "$BATCH_FRAMEWORKS" \
-    --output "$output" \
-    --mode batch \
-    --max-concurrent "$BATCH_WORKERS" \
-    --xberg-max-threads "$XBERG_MAX_THREADS" \
-    --iterations "$ITERATIONS" \
-    --timeout "$TIMEOUT" \
-    --measure-quality \
-    --output-format markdown \
-    "${ocr_args[@]}" \
-    "${SHARD_ARGS[@]}"
+  local args=(run --fixtures "$fixture_root")
+  if [ -n "$manifest" ]; then
+    args+=(--cohort "$manifest")
+  fi
+  args+=(--frameworks "$BATCH_FRAMEWORKS"
+    --output "$output"
+    --mode batch
+    --max-concurrent "$BATCH_WORKERS"
+    --xberg-max-threads "$XBERG_MAX_THREADS"
+    --iterations "$ITERATIONS"
+    --timeout "$TIMEOUT"
+    --measure-quality
+    --output-format markdown)
+  if [ "$ocr_flag" = "OCR enabled" ]; then
+    args+=(--ocr)
+  fi
+  if [ -n "$SHARD" ]; then
+    args+=(--shard "$SHARD")
+  fi
+  "$HARNESS" "${args[@]}"
 }
 
 if [ -n "$HEURISTIC_FIXTURES" ]; then

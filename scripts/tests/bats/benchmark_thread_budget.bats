@@ -71,3 +71,17 @@ assert_harness_budget() {
 	assert_harness_budget single-file 1 7
 	assert_harness_budget batch 4 7
 }
+
+@test "local benchmark should preserve explicit cohort and shard options for both measured modes" {
+	export HEURISTIC_COHORT="$XBERG_WORK/heuristic-cohort.json"
+	export BATCH_HEURISTIC_COHORT="$HEURISTIC_COHORT"
+	export SHARD=1/2
+	printf '%s\n' '{"schema_version":1,"name":"heuristic","batch_size":1,"fixtures":["heuristic.json"]}' >"$HEURISTIC_COHORT"
+	run run_local_benchmark 7
+	xberg_assert_status 0
+	[ "$(grep -c '^run ' "$XBERG_TRACE")" -eq 2 ]
+	[ "$(grep -c -- "--cohort $HEURISTIC_COHORT" "$XBERG_TRACE")" -eq 2 ]
+	[ "$(grep -c -- '--shard 1/2' "$XBERG_TRACE")" -eq 2 ]
+	assert_harness_budget single-file 1 7
+	assert_harness_budget batch 4 7
+}

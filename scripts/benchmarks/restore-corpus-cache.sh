@@ -126,15 +126,15 @@ echo "Restoring reference corpus ${CACHE_KEY:0:12} from ${OBJECT}..."
 gcloud storage cp "$OBJECT" "$TARBALL"
 mkdir -p "${WORK_DIR}/extract"
 zstd -dc "$TARBALL" >"$RAW_TAR"
-ARCHIVE_COMPATIBILITY_ARGS=()
+# ~keep Bash 3.2 rejects empty-array expansion under nounset; keep the command vector nonempty.
+EXTRACTION_ARGS=(extract-archive
+  --manifest "$SNAPSHOT_MANIFEST"
+  --archive "$RAW_TAR"
+  --destination "${WORK_DIR}/extract")
 if [ "$LEGACY_OBJECT" = true ]; then
-  ARCHIVE_COMPATIBILITY_ARGS+=(--allow-legacy-appledouble)
+  EXTRACTION_ARGS+=(--allow-legacy-appledouble)
 fi
-python3 "$CACHE_MANIFEST" extract-archive \
-  --manifest "$SNAPSHOT_MANIFEST" \
-  --archive "$RAW_TAR" \
-  --destination "${WORK_DIR}/extract" \
-  "${ARCHIVE_COMPATIBILITY_ARGS[@]}"
+python3 "$CACHE_MANIFEST" "${EXTRACTION_ARGS[@]}"
 RESTORED_CACHE="${WORK_DIR}/extract/.corpus-cache"
 python3 "$CACHE_MANIFEST" verify --manifest "$SNAPSHOT_MANIFEST" --cache-root "$RESTORED_CACHE"
 
