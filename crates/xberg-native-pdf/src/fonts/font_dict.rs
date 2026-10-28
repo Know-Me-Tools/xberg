@@ -3895,6 +3895,17 @@ impl FontInfo {
                 _ => 250.0,
             };
         }
+        if matches!(self.subtype.as_str(), "Type1" | "TrueType")
+            && let (Some(widths), Some(first)) = (&self.widths, self.first_char)
+        {
+            let explicit_space = 0x20u32.checked_sub(first).and_then(|index| widths.get(index as usize));
+            const FIXED_PITCH_BIT: i32 = 1;
+            let fixed_pitch = self.flags.is_some_and(|flags| flags & FIXED_PITCH_BIT != 0);
+            // ~keep Subsets often omit unused space glyphs. Their generic missing-glyph width is not a space advance.
+            if explicit_space.is_none() && !fixed_pitch && self.get_standard_font_width(0x20).is_none() {
+                return 250.0;
+            }
+        }
         let w = self.get_glyph_width(0x20);
         // Many simple subset fonts (notably shaped Arabic from Chrome /
         // browser print) omit a glyph for code 0x20 entirely, so this returns
@@ -9947,6 +9958,38 @@ mod tests {
             f.default_width = 333.0;
         });
         assert_eq!(font.get_space_glyph_width(), 333.0);
+    }
+
+    #[test]
+    fn should_not_use_missing_subset_glyph_width_as_space_advance_gh2303() {
+        let font = make_font(|font| {
+            font.subtype = "TrueType".to_owned();
+            font.base_font = "ABCDEF+SubsetProportional".to_owned();
+            font.widths = Some(vec![600.0; 58]);
+            font.first_char = Some(33);
+            font.last_char = Some(90);
+            font.default_width = 550.0;
+        });
+        assert_eq!(font.get_glyph_width(32), 550.0);
+        assert_eq!(font.get_space_glyph_width(), 250.0);
+    }
+
+    #[test]
+    fn should_preserve_explicit_and_fixed_pitch_space_advances_gh2303() {
+        let explicit = make_font(|font| {
+            font.widths = Some(vec![700.0]);
+            font.first_char = Some(32);
+            font.last_char = Some(32);
+        });
+        assert_eq!(explicit.get_space_glyph_width(), 700.0);
+        let fixed = make_font(|font| {
+            font.widths = Some(vec![600.0; 58]);
+            font.first_char = Some(33);
+            font.last_char = Some(90);
+            font.flags = Some(1);
+            font.default_width = 600.0;
+        });
+        assert_eq!(fixed.get_space_glyph_width(), 600.0);
     }
 
     #[test]
