@@ -4,6 +4,8 @@ import copy
 import hashlib
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -162,3 +164,128 @@ def test_conflicting_orphan_sidecar_does_not_overwrite_text(source: ImportSource
     assert text.read_text() == "Reviewed text"
     assert sidecar.read_text() == "frozen older annotations"
     assert list(source[1].iterdir()) == []
+
+
+def cli_source(source: ImportSource, tmp_path: Path) -> tuple[Path, Path]:
+    dataset = tmp_path / "dataset"
+    originals = dataset / "ori_pdfs"
+    originals.mkdir(parents=True)
+    (originals / "document.pdf").write_bytes((source[0] / "document.pdf").read_bytes())
+    (dataset / "OmniDocBench.json").write_text(json.dumps(source[3]))
+    return dataset, tmp_path / "repository"
+
+
+def run_cli(dataset: Path, repository: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), str(dataset), str(repository), *arguments],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize("missing", ["directory", "empty_directory", "unmatched_pdf", "empty_content"])
+def test_cli_rejects_zero_validated_documents(source: ImportSource, tmp_path: Path, missing: str) -> None:
+    dataset, repository = cli_source(source, tmp_path)
+    if missing == "empty_content":
+        pages = copy.deepcopy(source[3])
+        pages[0]["layout_dets"] = [pages[0]["layout_dets"][1]]
+        (dataset / "OmniDocBench.json").write_text(json.dumps(pages))
+    else:
+        (dataset / "ori_pdfs" / "document.pdf").unlink()
+        if missing == "directory":
+            (dataset / "ori_pdfs").rmdir()
+        elif missing == "unmatched_pdf":
+            (dataset / "ori_pdfs" / "unrelated.pdf").write_bytes(b"%PDF-1.7\nunrelated input\n")
+    result = run_cli(dataset, repository)
+    assert result.returncode != 0
+    assert "no documents and pages were validated" in result.stderr
+    assert "Done:" not in result.stderr
+
+
+def test_cli_rejects_empty_annotation_set(source: ImportSource, tmp_path: Path) -> None:
+    dataset, repository = cli_source(source, tmp_path)
+    (dataset / "OmniDocBench.json").write_text("[]")
+    result = run_cli(dataset, repository)
+    assert result.returncode != 0
+    assert "no documents and pages were validated" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("arguments", "reason"),
+    [
+        (("--expected-documents", "2", "--expected-pages", "3"), "expected 2 validated documents, found 1"),
+        (("--expected-documents", "1", "--expected-pages", "3"), "expected 3 validated pages, found 2"),
+    ],
+)
+def test_cli_rejects_partial_expected_counts(
+    source: ImportSource, tmp_path: Path, arguments: tuple[str, ...], reason: str
+) -> None:
+    dataset, repository = cli_source(source, tmp_path)
+    missing = copy.deepcopy(source[3][0])
+    missing["page_info"]["image_path"] = "missing_p1.jpg"
+    (dataset / "OmniDocBench.json").write_text(json.dumps([*source[3], missing]))
+    result = run_cli(dataset, repository, *arguments)
+    assert result.returncode != 0
+    assert reason in result.stderr
+    assert "Done:" not in result.stderr
+
+
+@pytest.mark.parametrize("option", ["--expected-documents", "--expected-pages"])
+@pytest.mark.parametrize("count", ["0", "-1"])
+def test_cli_rejects_nonpositive_expected_counts(source: ImportSource, tmp_path: Path, option: str, count: str) -> None:
+    dataset, repository = cli_source(source, tmp_path)
+    result = run_cli(dataset, repository, option, count)
+    assert result.returncode != 0
+    assert "must be a positive integer" in result.stderr
+    assert not repository.exists()
+
+
+@pytest.mark.parametrize("first_page", [0, 1])
+def test_cli_counts_verified_existing_fixtures_without_new_writes(
+    source: ImportSource, tmp_path: Path, first_page: int
+) -> None:
+    dataset, repository = cli_source(source, tmp_path)
+    pages = copy.deepcopy(source[3])
+    for index, page in enumerate(pages, start=first_page):
+        page["page_info"]["page_no"] = index
+        page["page_info"]["image_path"] = f"document_p{index}.jpg"
+    (dataset / "OmniDocBench.json").write_text(json.dumps(pages))
+    arguments = ("--expected-documents", "1", "--expected-pages", "2")
+    first = run_cli(dataset, repository, *arguments)
+    assert first.returncode == 0, first.stderr
+    outputs = [path for path in repository.rglob("*") if path.is_file()]
+    assert len(outputs) == 4
+    before = {path: path.read_bytes() for path in outputs}
+    repeated = run_cli(dataset, repository, *arguments)
+    assert repeated.returncode == 0, repeated.stderr
+    assert "Created: 0" in repeated.stderr
+    assert "Existing text fixtures (layout verified/backfilled): 1" in repeated.stderr
+    assert {path: path.read_bytes() for path in outputs} == before
+
+
+def test_cli_does_not_count_unrelated_existing_fixtures(source: ImportSource, tmp_path: Path) -> None:
+    dataset, repository = cli_source(source, tmp_path)
+    assert run_cli(dataset, repository).returncode == 0
+    pages = copy.deepcopy(source[3])
+    for index, page in enumerate(pages, start=1):
+        page["page_info"]["image_path"] = f"unavailable_p{index}.jpg"
+    (dataset / "OmniDocBench.json").write_text(json.dumps(pages))
+    result = run_cli(dataset, repository)
+    assert result.returncode != 0
+    assert "no documents and pages were validated" in result.stderr
+
+
+@pytest.mark.parametrize("invalid", ["empty_image", "duplicate_page"])
+def test_cli_rejects_invalid_source_page_ids(source: ImportSource, tmp_path: Path, invalid: str) -> None:
+    dataset, repository = cli_source(source, tmp_path)
+    pages = copy.deepcopy(source[3])
+    if invalid == "empty_image":
+        pages[0]["page_info"]["image_path"] = ""
+    else:
+        pages.append(copy.deepcopy(pages[0]))
+    (dataset / "OmniDocBench.json").write_text(json.dumps(pages))
+    result = run_cli(dataset, repository)
+    assert result.returncode != 0
+    assert "invalid source page identity" in result.stderr
+    assert not repository.exists()

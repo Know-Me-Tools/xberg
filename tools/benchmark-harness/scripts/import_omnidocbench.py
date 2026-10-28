@@ -19,6 +19,7 @@ Where:
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import html
 import json
@@ -209,15 +210,27 @@ def strip_markdown_to_text(md: str) -> str:
 
 def group_pages_by_pdf(pages: list[dict]) -> dict[str, list[dict]]:
     """Group OmniDocBench pages by their source PDF."""
+    if not isinstance(pages, list):
+        raise ValueError("invalid source page identity: expected a page list")
     groups: dict[str, list[dict]] = defaultdict(list)
+    seen: set[tuple[str, int]] = set()
 
     for page in pages:
-        page_info = page.get("page_info", {})
-        image_path = page_info.get("image_path", "")
+        page_info = page.get("page_info") if isinstance(page, dict) else None
+        if not isinstance(page_info, dict):
+            raise ValueError("invalid source page identity: missing page_info")
+        image_path = page_info.get("image_path")
+        page_no = page_info.get("page_no")
+        if not isinstance(image_path, str) or not image_path.strip() or "\x00" in image_path:
+            raise ValueError("invalid source page identity: missing image_path")
+        if not isinstance(page_no, int) or isinstance(page_no, bool) or page_no < 0:
+            raise ValueError("invalid source page identity: page_no must be nonnegative")
 
         basename = os.path.splitext(os.path.basename(image_path))[0]
-
         pdf_name = re.sub(r"_p\d+$", "", basename)
+        if not pdf_name.strip() or pdf_name in {".", ".."} or (pdf_name, page_no) in seen:
+            raise ValueError("invalid source page identity: empty or duplicate document page")
+        seen.add((pdf_name, page_no))
 
         groups[pdf_name].append(page)
 
@@ -387,15 +400,16 @@ def import_single_document(
 
 
 def main() -> None:
-    if len(sys.argv) < 3:
-        print(
-            "Usage: import_omnidocbench.py <omnidocbench_dir> <repo_root>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    omnidoc_dir = Path(sys.argv[1]).resolve()
-    repo_root = Path(sys.argv[2]).resolve()
+    parser = argparse.ArgumentParser(description="Import PDF-bound OmniDocBench annotations.")
+    parser.add_argument("omnidocbench_dir", type=Path)
+    parser.add_argument("repo_root", type=Path)
+    parser.add_argument("--expected-documents", type=int)
+    parser.add_argument("--expected-pages", type=int)
+    args = parser.parse_args()
+    if any(count is not None and count < 1 for count in (args.expected_documents, args.expected_pages)):
+        parser.error("expected counts must be a positive integer")
+    omnidoc_dir = args.omnidocbench_dir.resolve()
+    repo_root = args.repo_root.resolve()
 
     json_path = omnidoc_dir / "OmniDocBench.json"
     ori_pdfs_dir = omnidoc_dir / "ori_pdfs"
@@ -404,46 +418,50 @@ def main() -> None:
         print(f"ERROR: {json_path} not found. Run download_omnidocbench.sh first.", file=sys.stderr)
         sys.exit(1)
 
+    print(f"Loading {json_path}...", file=sys.stderr)
+    with open(json_path) as f:
+        pages = json.load(f)
+    try:
+        doc_groups = group_pages_by_pdf(pages)
+    except ValueError as error:
+        parser.error(str(error))
+    print(f"Loaded {len(pages)} pages", file=sys.stderr)
+    print(f"Found {len(doc_groups)} documents", file=sys.stderr)
+
     fixtures_dir = repo_root / "tools" / "benchmark-harness" / "fixtures" / "pdf"
     gt_dir = repo_root / "test_documents" / "ground_truth" / "pdf"
     fixtures_dir.mkdir(parents=True, exist_ok=True)
     gt_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"Loading {json_path}...", file=sys.stderr)
-    with open(json_path) as f:
-        pages = json.load(f)
-    print(f"Loaded {len(pages)} pages", file=sys.stderr)
-
-    doc_groups = group_pages_by_pdf(pages)
-    print(f"Found {len(doc_groups)} documents", file=sys.stderr)
-
-    created = 0
-    skipped_no_pdf = 0
-    skipped_exists = 0
-    skipped_empty = 0
+    counts: dict[str, int] = defaultdict(int)
+    validated_pages = 0
 
     for pdf_name, doc_pages in sorted(doc_groups.items()):
         status = import_single_document(pdf_name, doc_pages, ori_pdfs_dir, fixtures_dir, gt_dir)
+        counts[status] += 1
+        if status in (IMPORT_STATUS_CREATED, IMPORT_STATUS_EXISTS):
+            validated_pages += len(doc_pages)
+        if status == IMPORT_STATUS_CREATED and counts[status] % 50 == 0:
+            print(f"  {counts[status]} fixtures created...", file=sys.stderr)
 
-        if status == IMPORT_STATUS_EXISTS:
-            skipped_exists += 1
-            continue
-        if status == IMPORT_STATUS_NO_PDF:
-            skipped_no_pdf += 1
-            continue
-        if status == IMPORT_STATUS_EMPTY:
-            skipped_empty += 1
-            continue
-
-        created += 1
-        if created % 50 == 0:
-            print(f"  {created} fixtures created...", file=sys.stderr)
+    validated_documents = counts[IMPORT_STATUS_CREATED] + counts[IMPORT_STATUS_EXISTS]
+    if validated_documents == 0 or validated_pages == 0:
+        parser.error("no documents and pages were validated; matching source PDFs and nonempty text are required")
+    for expected, actual, kind in (
+        (args.expected_documents, validated_documents, "documents"),
+        (args.expected_pages, validated_pages, "pages"),
+    ):
+        if expected is not None and actual != expected:
+            parser.error(f"expected {expected} validated {kind}, found {actual}")
 
     print("\nDone:", file=sys.stderr)
-    print(f"  Created: {created}", file=sys.stderr)
-    print(f"  Existing text fixtures (layout verified/backfilled): {skipped_exists}", file=sys.stderr)
-    print(f"  Skipped (no PDF found): {skipped_no_pdf}", file=sys.stderr)
-    print(f"  Skipped (empty content): {skipped_empty}", file=sys.stderr)
+    print(f"  Created: {counts[IMPORT_STATUS_CREATED]}", file=sys.stderr)
+    print(f"  Existing text fixtures (layout verified/backfilled): {counts[IMPORT_STATUS_EXISTS]}", file=sys.stderr)
+    print(f"  Skipped (no PDF found): {counts[IMPORT_STATUS_NO_PDF]}", file=sys.stderr)
+    print(f"  Skipped (empty content): {counts[IMPORT_STATUS_EMPTY]}", file=sys.stderr)
+    print(
+        f"  Validated import identities: {validated_documents} documents, {validated_pages} annotated pages",
+        file=sys.stderr,
+    )
     print(f"  Fixtures: {fixtures_dir}", file=sys.stderr)
     print(f"  Ground truth: {gt_dir}", file=sys.stderr)
 
