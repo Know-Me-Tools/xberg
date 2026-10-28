@@ -564,6 +564,18 @@ PY
 	assert_file_content "current-markdown" "${fixture_root}/test_documents/.corpus-cache/ground_truth/pdf/reference.md" "current markdown"
 	assert_file_content "current-text" "${fixture_root}/test_documents/.corpus-cache/ground_truth/pdf/reference.txt" "current text"
 	assert_file_content "preserve-me" "${fixture_root}/test_documents/.corpus-cache/model-store/model.bin" "unrelated namespace"
-	assert_equals "storage objects describe ${object}
-storage cp ${object}" "$(cat "${fixture_root}/gcloud.log")" "exact current object calls"
+	local download_line destination expected_prefix
+	assert_equals "2" "$(wc -l <"${fixture_root}/gcloud.log" | tr -d '[:space:]')" "current object call count"
+	assert_equals "storage objects describe ${object}" "$(sed -n '1p' "${fixture_root}/gcloud.log")" "exact current lookup"
+	download_line="$(sed -n '2p' "${fixture_root}/gcloud.log")"
+	expected_prefix="storage cp ${object} "
+	case "$download_line" in
+	"$expected_prefix"*) destination="${download_line#"$expected_prefix"}" ;;
+	*) fail "current archive download has an unexpected source: $download_line" ;;
+	esac
+	case "$destination" in
+	"${fixture_root}/test_documents/.corpus-cache-restore-"??????/corpus-cache.tar.zst) ;;
+	*) fail "current archive destination is outside the private restore directory: $destination" ;;
+	esac
+	[ ! -e "$destination" ] || fail "current archive temporary download was not cleaned up"
 }
