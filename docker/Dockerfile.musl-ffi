@@ -1,8 +1,10 @@
 # =============================================================================
 # =============================================================================
-FROM alpine:3.21 AS builder
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS builder
 
-ARG RUST_TOOLCHAIN=nightly-2026-03-10
+ARG CARGO_BUILD_JOBS=1
+
+ARG RUST_TOOLCHAIN=1.99.1
 
 WORKDIR /build
 

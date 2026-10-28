@@ -39,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Font ascenders and descenders use normalized above/below-baseline signs.
 - **(ocr): Statically built Tesseract moves to 5.5.4.**
   `build-tesseract` and `build-tesseract-wasm` builds compile the signed 5.5.4 tag and need CMake 3.22 or newer.
+- **(native): Refresh Docker bases and system OCR/image codecs.**
+  Docker and CI use Tesseract 5.5.4, Leptonica 1.87.0, libheif 1.23.7, libde265 1.1.3 and libaom 3.15.2.
+  Windows builds verified Tesseract source; Linux and macOS provisioning checks selected runtimes and real decoding.
 
 ### Security
 

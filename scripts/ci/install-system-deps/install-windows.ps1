@@ -14,7 +14,9 @@ function Retry-Command {
   while ($attempt -le $MaxAttempts) {
     try {
       Write-Host "Attempt $attempt of $MaxAttempts..."
-      & $Command
+      $global:LASTEXITCODE = 0
+      & $Command | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "Native dependency command failed with exit $LASTEXITCODE" }
       return $true
     }
     catch {
@@ -31,8 +33,17 @@ function Retry-Command {
   }
 }
 
+function Assert-LibheifVersion {
+  param([string[]]$Packages)
+  $matching = @($Packages | Where-Object { $_ -match '^libheif:x64-windows-static-md\s+1\.23\.7(?:#\d+)?\s' })
+  if ($matching.Count -ne 1) { throw 'Expected exactly one installed libheif 1.23.7 x64-windows-static-md port' }
+  Write-Host "Verified $($matching[0])"
+}
+
 $tesseractCacheHit = $env:TESSERACT_CACHE_HIT -eq "true"
 $llvmCacheHit = $env:LLVM_CACHE_HIT -eq "true"
+. "$PSScriptRoot/ensure-tesseract-windows.ps1"
+. "$PSScriptRoot/ensure-build-tools-windows.ps1"
 $cmakeCacheHit = $env:CMAKE_CACHE_HIT -eq "true"
 $cmakeInstalled = $false
 
@@ -50,98 +61,57 @@ catch {
   Write-Host "CMake not found, will attempt to install"
 }
 
-if (-not $tesseractCacheHit) {
-  Write-Host "Tesseract cache miss, installing (optional for build - needed for tests only)..."
-  if (-not (Retry-Command { choco install -y tesseract --no-progress } -MaxAttempts 3)) {
-    Write-Host "::warning::Failed to install Tesseract (optional dependency - gem build does not require it)"
-  }
-  else {
-    Write-Host "✓ Tesseract installed"
-    $tesseractPath = "C:\Program Files\Tesseract-OCR"
-    if (Test-Path $tesseractPath) {
-      Write-Host "  Configuring Tesseract data paths..."
-
-      $tessdataPath = "$tesseractPath\tessdata"
-      if (-not (Test-Path $tessdataPath)) {
-        Write-Host "  Creating tessdata directory at: $tessdataPath"
-        New-Item -ItemType Directory -Path $tessdataPath -Force | Out-Null
-      }
-
-      if (-not (Test-Path "$tessdataPath\eng.traineddata")) {
-        Write-Host "  Downloading English language data..."
-        try {
-          $engUrl = "https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata"
-          Invoke-WebRequest -Uri $engUrl -OutFile "$tessdataPath\eng.traineddata" -ErrorAction Stop
-          Write-Host "  ✓ Downloaded eng.traineddata"
-        }
-        catch {
-          Write-Host "  ::warning::Failed to download eng.traineddata: $($_.Exception.Message)"
-        }
-      }
-
-      if (-not (Test-Path "$tessdataPath\osd.traineddata")) {
-        Write-Host "  Downloading OSD data..."
-        try {
-          $osdUrl = "https://github.com/tesseract-ocr/tessdata_fast/raw/main/osd.traineddata"
-          Invoke-WebRequest -Uri $osdUrl -OutFile "$tessdataPath\osd.traineddata" -ErrorAction Stop
-          Write-Host "  ✓ Downloaded osd.traineddata"
-        }
-        catch {
-          Write-Host "  ::warning::Failed to download osd.traineddata: $($_.Exception.Message)"
-        }
-      }
-    }
-  }
-}
-else {
-  Write-Host "✓ Tesseract found in cache"
-}
-
-if (-not $llvmCacheHit) {
-  Write-Host "LLVM cache miss, installing LLVM/Clang (required for bindgen)..."
-  if (-not (Retry-Command { choco install -y llvm --no-progress } -MaxAttempts 3)) {
-    Write-Host "::warning::Failed to install LLVM/Clang via Chocolatey"
-  }
-  else {
-    Write-Host "✓ LLVM/Clang installed"
-  }
-}
-else {
-  Write-Host "✓ LLVM/Clang found in cache"
-}
+Ensure-BuildTool -Package 'llvm' -Executable 'C:\Program Files\LLVM\bin\clang.exe' -Version '23.1.3'
 
 $libheifCacheHit = $env:LIBHEIF_CACHE_HIT -eq "true"
 if (-not $libheifCacheHit) {
   Write-Host "libheif/boost/zlib cache miss, installing via vcpkg..."
-  $vcpkgRoot = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { "C:\vcpkg" }
+  $vcpkgRoot = 'C:\xberg-vcpkg-5363acb7'
   $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
-  if (-not (Test-Path $vcpkgExe)) {
-    Write-Host "::warning::vcpkg.exe not found at $vcpkgExe; skipping libheif/boost/zlib install"
+  if (-not (Test-Path (Join-Path $vcpkgRoot '.git'))) {
+    & git clone --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg.git $vcpkgRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to clone the dedicated vcpkg root' }
+  }
+  $baseline = '5363acb796e576328288fae60c25304e227e9839'
+  & git -C $vcpkgRoot fetch --depth=1 origin $baseline
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to fetch the verified vcpkg baseline' }
+  & git -C $vcpkgRoot checkout --detach $baseline
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to select the verified vcpkg baseline' }
+  & (Join-Path $vcpkgRoot 'bootstrap-vcpkg.bat') -disableMetrics
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to bootstrap the verified vcpkg baseline' }
+  if (-not (Retry-Command { & $vcpkgExe install "libheif[aom]:x64-windows-static-md" --recurse } -MaxAttempts 2)) {
+    throw "Failed to install libheif via the verified vcpkg baseline"
   }
   else {
-    if (-not (Retry-Command { & $vcpkgExe install "libheif:x64-windows-static-md" --recurse } -MaxAttempts 2)) {
-      Write-Host "::warning::Failed to install libheif via vcpkg after retries (Windows wheels for python/node/ruby/php/elixir/swift/jni may fail to link)"
-    }
-    else {
-      Write-Host "✓ libheif installed via vcpkg (x64-windows-static-md)"
-    }
-    # boost-spirit + boost-serialization (header-only, used by librevenge/libwpd:
-    # RVNGBinaryData.cpp needs boost/archive/iterators/*) and zlib (linked
-    # by librevenge's zip stream) — needed by xberg-libwpd's build.rs.
-    if (-not (Retry-Command { & $vcpkgExe install "boost-spirit:x64-windows-static-md" "boost-serialization:x64-windows-static-md" "zlib:x64-windows-static-md" --recurse } -MaxAttempts 2)) {
-      Write-Host "::warning::Failed to install boost/zlib via vcpkg after retries (xberg-libwpd build will fail)"
-    }
-    else {
-      Write-Host "✓ boost-spirit + boost-serialization + zlib installed via vcpkg (x64-windows-static-md)"
-    }
+    Write-Host "✓ libheif installed via vcpkg (x64-windows-static-md)"
+  }
+  # boost-spirit + boost-serialization (header-only, used by librevenge/libwpd:
+  # RVNGBinaryData.cpp needs boost/archive/iterators/*) and zlib (linked
+  # by librevenge's zip stream) — needed by xberg-libwpd's build.rs.
+  if (-not (Retry-Command { & $vcpkgExe install "boost-spirit:x64-windows-static-md" "boost-serialization:x64-windows-static-md" "zlib:x64-windows-static-md" --recurse } -MaxAttempts 2)) {
+    throw "Failed to install boost/zlib via the verified vcpkg baseline"
+  }
+  else {
+    Write-Host "✓ boost-spirit + boost-serialization + zlib installed via vcpkg (x64-windows-static-md)"
   }
   Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$vcpkgRoot"
+  Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_INSTALLATION_ROOT=$vcpkgRoot"
 }
 else {
   Write-Host "✓ libheif/boost/zlib found in cache"
-  $vcpkgRoot = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { "C:\vcpkg" }
+  $vcpkgRoot = 'C:\xberg-vcpkg-5363acb7'
   Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$vcpkgRoot"
+  Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_INSTALLATION_ROOT=$vcpkgRoot"
 }
+
+$actualBaseline = & git -C $vcpkgRoot rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or $actualBaseline -ne '5363acb796e576328288fae60c25304e227e9839') {
+  throw 'The cached vcpkg checkout does not match its verified baseline'
+}
+$vcpkgExe = Join-Path $vcpkgRoot 'vcpkg.exe'
+$heifPackages = @(& $vcpkgExe list 'libheif:x64-windows-static-md')
+if ($LASTEXITCODE -ne 0) { throw 'Failed to query the installed libheif port' }
+Assert-LibheifVersion -Packages $heifPackages
 
 # Neither branch above proves zlib is on disk: the install path prints its "✓" whenever the
 # vcpkg call merely does not throw, and the cache path prints one unconditionally. When the port
@@ -162,6 +132,11 @@ else {
   exit 1
 }
 
+foreach ($header in @('boost/spirit/include/qi.hpp', 'boost/archive/iterators/base64_from_binary.hpp')) {
+  $path = Join-Path $vcpkgRoot "installed/x64-windows-static-md/include/$header"
+  if (-not (Test-Path -LiteralPath $path)) { throw "Required Boost header is missing: $path" }
+}
+
 Write-Host "Installing PHP..."
 $phpInstalled = $false
 try {
@@ -180,17 +155,11 @@ catch {
   }
 }
 
-Write-Host "Installing CMake..."
-if (-not $cmakeCacheHit) {
-  Write-Host "CMake cache miss, installing..."
-  if (-not (Retry-Command { choco install -y cmake --no-progress } -MaxAttempts 3)) {
-    throw "Failed to install CMake after 3 attempts"
-  }
-  Write-Host "✓ CMake installed"
-}
-else {
-  Write-Host "✓ CMake found in cache"
-}
+Ensure-BuildTool -Package 'cmake' -Executable 'C:\Program Files\CMake\bin\cmake.exe' -Version '4.4.4'
+
+Ensure-Tesseract -Executable 'C:\Program Files\Tesseract-OCR\tesseract.exe' `
+  -SourceArchive (Join-Path $env:TEMP 'xberg-tesseract-5.5.4.zip') -VcpkgRoot $vcpkgRoot
+Ensure-TesseractData -Directory 'C:\Program Files\Tesseract-OCR\tessdata'
 
 Write-Host "Configuring PATH and environment variables..."
 $paths = @(

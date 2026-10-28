@@ -1,6 +1,10 @@
 # =============================================================================
 # =============================================================================
-FROM rust:1.95-trixie AS builder
+FROM rust:1.99.1-trixie@sha256:931c2c0531a8b143e044f0f3914dfe802f15bb3d1955f0b657e9359327ac2ffc AS builder
+
+ARG CARGO_BUILD_JOBS=1
+
+ARG CMAKE_BUILD_PARALLEL_LEVEL=1
 
 WORKDIR /build
 
@@ -12,11 +16,15 @@ RUN apt-get update && \
         libssl-dev \
         libleptonica-dev \
         libtesseract-dev \
-        libde265-dev \
-        libaom-dev \
+        tesseract-ocr-eng \
+        python3 \
+        libpng-dev libjpeg-dev libtiff-dev zlib1g-dev \
+        libgif-dev libwebp-dev libopenjp2-7-dev \
+        libarchive-dev libcurl4-openssl-dev \
         libx265-dev \
         libdav1d-dev \
         clang \
+        nasm \
         curl \
         file \
         ca-certificates \
@@ -24,14 +32,47 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+COPY scripts/ci/install-system-deps/build-ocr-linux.sh scripts/ci/install-system-deps/verify-ocr-linux.py scripts/ci/install-system-deps/verify-ocr-fixture.sh /opt/xberg-ocr/
+RUN OCR_BUILD_JOBS="${CMAKE_BUILD_PARALLEL_LEVEL:-1}" bash /opt/xberg-ocr/build-ocr-linux.sh
+
 RUN cd /tmp && \
-    curl -fsSL -o libheif.tar.gz https://github.com/strukturag/libheif/releases/download/v1.23.0/libheif-1.23.0.tar.gz && \
-    tar -xzf libheif.tar.gz && \
-    cd libheif-1.23.0 && \
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DWITH_EXAMPLES=OFF -DWITH_GDK_PIXBUF=OFF -DBUILD_TESTING=OFF && \
-    cmake --build build -j"$(nproc)" && \
+    curl -fsSL -o libde265.tar.gz https://github.com/strukturag/libde265/releases/download/v1.1.3/libde265-1.1.3.tar.gz && \
+    echo "554228bd17788c99a7e63b37ab5634722190e6e2bf60c1dcb01cef328e133905  libde265.tar.gz" | sha256sum -c - && \
+    tar -xzf libde265.tar.gz && \
+    cd libde265-1.1.3 && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=ON -DENABLE_SDL=OFF && \
+    cmake --build build -j"${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}" && \
     cmake --install build && \
     ldconfig && \
+    cd / && rm -rf /tmp/libde265*
+
+RUN cd /tmp && \
+    curl -fsSL -o libaom.tar.gz https://storage.googleapis.com/aom-releases/libaom-3.15.2.tar.gz && \
+    echo "67bb54b245f33ed98600e08269e6139986e48114e14042474ddd8885801dfddc  libaom.tar.gz" | sha256sum -c - && \
+    tar -xzf libaom.tar.gz && \
+    cd libaom-3.15.2 && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=ON \
+        -DENABLE_APPS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TESTS=OFF -DENABLE_DOCS=OFF -DENABLE_TOOLS=OFF && \
+    cmake --build build -j"${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}" && \
+    cmake --install build && \
+    ldconfig && \
+    cd / && rm -rf /tmp/libaom*
+
+RUN cd /tmp && \
+    export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig && \
+    curl -fsSL -o libheif.tar.gz https://github.com/strukturag/libheif/releases/download/v1.23.7/libheif-1.23.7.tar.gz && \
+    echo "f7483e818503ea6224c8863e4a56ac02c7089021a98472c811c12aa19faf2475  libheif.tar.gz" | sha256sum -c - && \
+    tar -xzf libheif.tar.gz && \
+    cd libheif-1.23.7 && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DWITH_EXAMPLES=OFF -DWITH_GDK_PIXBUF=OFF -DBUILD_TESTING=OFF && \
+    cmake --build build -j"${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}" && \
+    cmake --install build && \
+    ldconfig && \
+    test "$(pkg-config --modversion libheif)" = 1.23.7 && \
+    test "$(pkg-config --modversion libde265)" = 1.1.3 && \
+    test "$(pkg-config --modversion aom)" = 3.15.2 && \
     cd / && rm -rf /tmp/libheif*
 
 # Must equal the binding set compiled into xberg-pdfium-render
@@ -107,7 +148,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cp target/release/xberg /build/xberg && \
     strip /build/xberg
 
-FROM debian:trixie-slim
+FROM debian:trixie-20261020-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
 
 LABEL org.opencontainers.image.source="https://github.com/xberg-io/xberg"
 LABEL org.opencontainers.image.description="Xberg document intelligence - full variant"
@@ -120,6 +161,9 @@ RUN apt-get update && \
         ca-certificates \
         curl \
         tini \
+        python3 libpng16-16t64 libjpeg62-turbo libtiff6 zlib1g \
+        libgif7 libwebp7 libwebpmux3 libopenjp2-7 \
+        libarchive13t64 libcurl4t64 libgomp1 \
         tesseract-ocr \
         tesseract-ocr-eng \
         tesseract-ocr-osd \
@@ -136,17 +180,26 @@ RUN apt-get update && \
         tesseract-ocr-hin \
         fontconfig \
         libssl3 \
-        libde265-0 \
-        libaom3 \
         libx265-215 \
         libdav1d7 \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+COPY --from=builder /usr/local/lib/libtesseract.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libleptonica.so* /usr/local/lib/
+COPY --from=builder /usr/local/bin/tesseract /usr/local/bin/tesseract
+COPY --from=builder /usr/local/share/licenses/xberg-system-ocr /usr/local/share/licenses/xberg-system-ocr
+COPY scripts/ci/install-system-deps/verify-ocr-linux.py scripts/ci/install-system-deps/verify-ocr-fixture.sh /opt/xberg-ocr/
 COPY --from=builder /usr/local/lib/libheif* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libde265.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libaom.so* /usr/local/lib/
 COPY --from=builder /usr/local/lib/pkgconfig/libheif.pc /usr/local/lib/pkgconfig/libheif.pc
-RUN ldconfig
+RUN ldconfig && \
+    python3 /opt/xberg-ocr/verify-ocr-linux.py /usr/local && \
+    tesseract --version >/tmp/ocr-version 2>&1 && grep -q '^tesseract 5\.5\.4$' /tmp/ocr-version && \
+    tesseract --list-langs >/tmp/ocr-languages && grep -qx eng /tmp/ocr-languages && \
+    bash /opt/xberg-ocr/verify-ocr-fixture.sh /usr/local/bin/tesseract /usr/share/tesseract-ocr/5/tessdata
 
 COPY --from=builder /build/onnxruntime/lib/libonnxruntime.so* /usr/local/lib/
 COPY --from=builder /build/pdfium/lib/libpdfium.so /usr/local/lib/

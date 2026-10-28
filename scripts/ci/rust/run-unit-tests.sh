@@ -216,9 +216,10 @@ if ! {
   extra_excludes+=(--exclude xberg-pdfium-render)
   # xberg-libheif: --all-features turns on its `latest` feature, which chains to
   # `libheif-sys/v1_21` and so raises the build script's `pkg-config --atleast-version`
-  # floor to `libheif >= 1.21`. CI installs 1.19.8 on purpose -- artifacts link libheif
-  # dynamically and must stay loadable on Debian 13 (#1541), which is why the crate's
-  # default is `v1_19` and not `latest`. `--all-features` bypasses that default exactly
+  # floor to `libheif >= 1.21`. Primary CI installs the current security release;
+  # the explicit 1.19.8 compatibility mode still checks Debian 13's ABI floor (#1541).
+  # Keep the crate's default `v1_19` API surface rather than letting `--all-features`
+  # bypass that compatibility contract, exactly
   # as `cargo clippy --workspace` once did. Tested separately below with its real
   # (default) feature set, so the crate keeps its coverage. ~keep
   extra_excludes+=(--exclude xberg-libheif)
@@ -295,8 +296,8 @@ if ! {
   fi
 
   echo "=== cargo test -p xberg-libheif (default features) ==="
-  # Default features, not --all-features: `latest` would demand libheif >= 1.21 while
-  # CI installs the 1.19.8 the shipped artifacts must load against. ~keep
+  # Default features preserve the v1_19 API contract on both current primary CI
+  # and the explicitly selected minimum-runtime compatibility experiment. ~keep
   RUST_BACKTRACE=full cargo test --locked --no-fail-fast -p xberg-libheif --all-targets --verbose || exit
 } 2>&1 | tee "$TEST_LOG"; then
   echo "=== Test execution failed ==="

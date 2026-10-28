@@ -1,7 +1,9 @@
 # =============================================================================
-FROM alpine:3.22 AS builder
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS builder
 
-ARG RUST_TOOLCHAIN=nightly-2026-03-10
+ARG CARGO_BUILD_JOBS=1
+
+ARG RUST_TOOLCHAIN=1.99.1
 ARG TARGET=x86_64-unknown-linux-musl
 
 WORKDIR /build
@@ -23,7 +25,7 @@ RUN apk add --no-cache \
 
 # Alpine's system python3 is externally-managed (PEP 668); use an isolated venv
 # for maturin instead of `pip install --break-system-packages`.
-RUN python3 -m venv /venv && /venv/bin/pip install --no-cache-dir maturin
+RUN python3 -m venv /venv && /venv/bin/pip install --no-cache-dir maturin==1.15.0
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --default-toolchain "${RUST_TOOLCHAIN}" --component rust-src && \

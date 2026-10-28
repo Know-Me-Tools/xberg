@@ -316,3 +316,9 @@ tasks:
     cmds:
       - task: check:android
       - task: check:ios
+
+  check:libheif-runtime:
+    desc: "Verify real v1_19 Rust decoding against the selected system runtime"
+    platforms: [linux]
+    cmds:
+      - bash scripts/ci/rust/check-libheif-runtime.sh

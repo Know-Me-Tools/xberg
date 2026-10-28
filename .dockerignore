@@ -27,6 +27,9 @@
 !packages/elixir/native/xberg_nif/
 !docker/
 !scripts/ci/vendor-native-closure.sh
+!scripts/ci/install-system-deps/build-ocr-linux.sh
+!scripts/ci/install-system-deps/verify-ocr-linux.py
+!scripts/ci/install-system-deps/verify-ocr-fixture.sh
 
 # Re-exclude build artifacts inside allowed dirs
 **/target/

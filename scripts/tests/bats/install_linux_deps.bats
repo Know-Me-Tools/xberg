@@ -73,3 +73,31 @@ PC
 	xberg_assert_status 1
 	xberg_assert_output "0"
 }
+
+@test "install_linux should_default_to_the_current_security_release" {
+	awk '/^LIBHEIF_VERSION=/{capture=1} /^LIBHEIF_PREFIX=/{capture=0} capture' \
+		"$INSTALL_SCRIPT" >"$XBERG_WORK/select-version.sh"
+	[ "$(grep -c '^LIBHEIF_VERSION=' "$XBERG_WORK/select-version.sh")" -eq 1 ]
+	run env -u LIBHEIF_VERSION bash -euo pipefail -c 'source "$1"; printf "%s\n" "$LIBHEIF_VERSION"' \
+		_ "$XBERG_WORK/select-version.sh"
+	xberg_assert_status 0
+	xberg_assert_output 1.23.7
+}
+
+@test "install_linux should_allow_an_explicit_minimum_abi_runtime" {
+	awk '/^LIBHEIF_VERSION=/{capture=1} /^LIBHEIF_PREFIX=/{capture=0} capture' \
+		"$INSTALL_SCRIPT" >"$XBERG_WORK/select-version.sh"
+	[ "$(grep -c '^LIBHEIF_VERSION=' "$XBERG_WORK/select-version.sh")" -eq 1 ]
+	run bash -euo pipefail -c 'source "$1"; printf "%s\n" "$LIBHEIF_VERSION"' _ "$XBERG_WORK/select-version.sh"
+	xberg_assert_status 0
+	xberg_assert_output 1.19.8
+}
+
+@test "install_linux should_reject_an_unverified_runtime_version" {
+	awk '/^LIBHEIF_VERSION=/{capture=1} /^LIBHEIF_PREFIX=/{capture=0} capture' \
+		"$INSTALL_SCRIPT" >"$XBERG_WORK/select-version.sh"
+	[ "$(grep -c '^LIBHEIF_VERSION=' "$XBERG_WORK/select-version.sh")" -eq 1 ]
+	run env LIBHEIF_VERSION=9.9.9 bash -euo pipefail "$XBERG_WORK/select-version.sh"
+	xberg_assert_status 1
+	xberg_assert_output_contains "Unverified libheif version: 9.9.9"
+}

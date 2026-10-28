@@ -968,14 +968,14 @@ jobs:
               arch: x86_64,
               napi_arch: x64,
               target: x86_64-unknown-linux-gnu,
-              image: quay.io/pypa/manylinux_2_28_x86_64,
+              image: quay.io/pypa/manylinux_2_28_x86_64:2026.10.26-1@sha256:e0adf18521ad35192df733a6c62d35df7801957d24e0470238aacecfab2188a3,
             }
           - {
               os: ubuntu-24.04-arm,
               arch: aarch64,
               napi_arch: arm64,
               target: aarch64-unknown-linux-gnu,
-              image: quay.io/pypa/manylinux_2_28_aarch64,
+              image: quay.io/pypa/manylinux_2_28_aarch64:2026.10.26-1@sha256:a3e02308c822fb6ce0d12248b0c941817ba5e1a1bc9e7bb5929f29c50eaa40a9,
             }
     steps:
       - uses: actions/checkout@v7
@@ -1020,6 +1020,12 @@ jobs:
             echo "::error::no vendored shared libs produced by manylinux build for ${platform}"; exit 1
           fi
           cp "crates/xberg-node/npm/${platform}/package.json" "staging/npm/${platform}/package.json"
+          for notice in tesseract-5.5.4/LICENSE tesseract-5.5.4/AUTHORS leptonica-1.87.0/leptonica-license.txt; do
+            test -s "build-output/licenses/xberg-system-ocr/$notice" || {
+              echo "::error::Missing OCR notice: $notice" >&2; exit 1; }
+          done
+          mkdir -p "staging/npm/${platform}/licenses"
+          cp -R build-output/licenses/xberg-system-ocr "staging/npm/${platform}/licenses/"
           # Reconcile `files` with the binaries on disk — napi create-npm-dirs
           # regenerates the committed package.json to list only *.node, so the
           # vendored libs must be re-added here or npm publish drops them.
@@ -1029,7 +1035,7 @@ jobs:
           pkg = json.load(open(p))
           ship = re.compile(r"\.(node|dylib|dll)$|\.so(\.[0-9]+)*$")
           on_disk = sorted(f for f in os.listdir(d) if ship.search(f))
-          pkg["files"] = sorted(set(pkg.get("files", [])) | set(on_disk))
+          pkg["files"] = sorted(set(pkg.get("files", [])) | set(on_disk) | {"licenses"})
           with open(p, "w") as fh:
               json.dump(pkg, fh, indent=2); fh.write("\n")
           print("reconciled files:", pkg["files"])
@@ -1561,14 +1567,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {
-              os: ubuntu-24.04,
-              target: x86_64-unknown-linux-gnu,
-            }
-          - {
-              os: ubuntu-24.04-arm,
-              target: aarch64-unknown-linux-gnu,
-            }
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
           - {
               os: macos-26,
               target: aarch64-apple-darwin,
@@ -2644,12 +2644,12 @@ jobs:
           - os: ubuntu-latest
             label: linux-x86_64
             target: x86_64-unknown-linux-gnu
-            image: quay.io/pypa/manylinux_2_28_x86_64
+            image: quay.io/pypa/manylinux_2_28_x86_64:2026.10.26-1@sha256:e0adf18521ad35192df733a6c62d35df7801957d24e0470238aacecfab2188a3
             nif: "2.16"
           - os: ubuntu-24.04-arm
             label: linux-aarch64
             target: aarch64-unknown-linux-gnu
-            image: quay.io/pypa/manylinux_2_28_aarch64
+            image: quay.io/pypa/manylinux_2_28_aarch64:2026.10.26-1@sha256:a3e02308c822fb6ce0d12248b0c941817ba5e1a1bc9e7bb5929f29c50eaa40a9
             nif: "2.16"
     steps:
       - uses: actions/checkout@v7
@@ -2709,6 +2709,12 @@ jobs:
           mkdir -p dist/elixir-natives staging
           RENAMED="libxberg_nif-v${NIF_VERSION}-nif-${NIF_API}-${TARGET}.so"
           cp build-output/libxberg_nif.so "staging/${RENAMED}"
+          for notice in tesseract-5.5.4/LICENSE tesseract-5.5.4/AUTHORS leptonica-1.87.0/leptonica-license.txt; do
+            test -s "build-output/licenses/xberg-system-ocr/$notice" || {
+              echo "::error::Missing OCR notice: $notice" >&2; exit 1; }
+          done
+          mkdir -p staging/licenses
+          cp -R build-output/licenses/xberg-system-ocr staging/licenses/
           find build-output -maxdepth 1 -name '*.so*' ! -name 'libxberg_nif.so' -exec cp {} staging/ \;
           # ~keep A zero-match `find` exits 0 and would ship the NIF with no closure --
           # verify-glibc-floor.sh would then pass trivially, having examined nothing.
@@ -2756,18 +2762,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {
-              os: ubuntu-latest,
-              target: x86_64-unknown-linux-gnu,
-              blob: linux-x86_64,
-              lib: libxberg_dart.so,
-            }
-          - {
-              os: ubuntu-24.04-arm,
-              target: aarch64-unknown-linux-gnu,
-              blob: linux-aarch64,
-              lib: libxberg_dart.so,
-            }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, blob: linux-x86_64, lib: libxberg_dart.so }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, blob: linux-aarch64, lib: libxberg_dart.so }
           - {
               os: macos-26,
               target: aarch64-apple-darwin,
@@ -2777,12 +2773,7 @@ jobs:
               blob: macos-aarch64,
               lib: libxberg_dart.dylib,
             }
-          - {
-              os: windows-latest,
-              target: x86_64-pc-windows-msvc,
-              blob: windows-x86_64,
-              lib: xberg_dart.dll,
-            }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, blob: windows-x86_64, lib: xberg_dart.dll }
     steps:
       - uses: actions/checkout@v7
         with:

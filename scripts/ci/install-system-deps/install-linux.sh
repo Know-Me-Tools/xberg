@@ -32,6 +32,15 @@ packages=(
   libssl-dev
   pkg-config
   build-essential
+  python3
+  libpng-dev
+  libjpeg-dev
+  libtiff-dev
+  libgif-dev
+  libwebp-dev
+  libopenjp2-7-dev
+  libarchive-dev
+  libcurl4-openssl-dev
   patchelf
   cmake
   libmagic-dev
@@ -98,14 +107,20 @@ fi
 
 echo "::endgroup::"
 
-echo "::group::Building libheif from source (Noble ships 1.17.6, xberg needs >=1.19)"
+echo "::group::Building the selected libheif runtime"
 
-# Pinned to the oldest libheif a supported distro ships (Debian 13 trixie: 1.19.8), not the
-# newest release: binaries built here link libheif dynamically and must load against the
-# host's copy. Building against newer headers would emit references to symbols and struct
-# layouts (heif_security_limits grew in 1.20) that a 1.19 runtime does not provide.
-# Must stay in step with the `v1_*` feature on `xberg-libheif` in crates/xberg/Cargo.toml.
-LIBHEIF_VERSION="${LIBHEIF_VERSION:-1.19.8}"
+# Keep Rust's v1_19 API floor while exercising current security fixes by default.
+# Select 1.19.8 explicitly only for minimum-runtime ABI qualification; that old
+# upstream source is not a security-qualified production dependency. ~keep
+LIBHEIF_VERSION="${LIBHEIF_VERSION:-1.23.7}"
+case "$LIBHEIF_VERSION" in
+1.23.7) LIBHEIF_SHA256=f7483e818503ea6224c8863e4a56ac02c7089021a98472c811c12aa19faf2475 ;;
+1.19.8) LIBHEIF_SHA256=6c4a5b08e6eae66d199977468859dea3b5e059081db8928f7c7c16e53836c906 ;;
+*)
+  echo "::error::Unverified libheif version: $LIBHEIF_VERSION" >&2
+  exit 1
+  ;;
+esac
 LIBHEIF_PREFIX="${LIBHEIF_PREFIX:-/usr/local}"
 
 echo "Removing apt's libheif to prevent shadowing..."
@@ -126,6 +141,7 @@ else
 
   if retry_with_backoff_timeout 300 curl -fsSL -o libheif.tar.gz \
     "https://github.com/strukturag/libheif/releases/download/v${LIBHEIF_VERSION}/libheif-${LIBHEIF_VERSION}.tar.gz"; then
+    printf '%s  libheif.tar.gz\n' "$LIBHEIF_SHA256" | sha256sum -c -
     tar xzf libheif.tar.gz
     cd "libheif-${LIBHEIF_VERSION}"
     mkdir build
@@ -172,8 +188,7 @@ resolved_libheif_version="$(PKG_CONFIG_PATH="$LIBHEIF_PREFIX/lib/pkgconfig:${PKG
   pkg-config --modversion libheif 2>/dev/null || true)"
 if [ "$resolved_libheif_version" != "$LIBHEIF_VERSION" ]; then
   echo "::error::pkg-config resolves libheif ${resolved_libheif_version:-<not found>}, expected ${LIBHEIF_VERSION}."
-  echo "::error::The highest v1_* feature on xberg-libheif sets libheif-sys's pkg-config floor;"
-  echo "::error::keep LIBHEIF_VERSION here in step with crates/xberg-libheif/Cargo.toml."
+  echo "::error::The selected runtime must match its versioned CI cache and build receipt."
   exit 1
 fi
 if ! PKG_CONFIG_PATH="$LIBHEIF_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}" \
@@ -317,4 +332,9 @@ if [ $tessdata_found -eq 0 ]; then
   exit 1
 fi
 
+echo "::endgroup::"
+
+echo "::group::Verifying current source-built OCR stack"
+bash "$(dirname "${BASH_SOURCE[0]}")/build-ocr-linux.sh"
+if [[ -n "${GITHUB_PATH:-}" ]]; then echo /usr/local/bin >>"$GITHUB_PATH"; fi
 echo "::endgroup::"
