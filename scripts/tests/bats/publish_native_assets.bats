@@ -39,9 +39,9 @@ PY
 
 @test "native directory guard should count actual files only under the selected RID" {
 	mkdir -p runtimes/linux-x64/native/subdir runtimes/win-x64/native
-	printf 'ffi\n' > runtimes/linux-x64/native/xberg_ffi.so
-	printf 'dependency\n' > runtimes/linux-x64/native/subdir/dependency.so
-	printf 'other platform\n' > runtimes/win-x64/native/xberg_ffi.dll
+	printf 'ffi\n' >runtimes/linux-x64/native/xberg_ffi.so
+	printf 'dependency\n' >runtimes/linux-x64/native/subdir/dependency.so
+	printf 'other platform\n' >runtimes/win-x64/native/xberg_ffi.dll
 	run env RID=linux-x64 bash "$REPOSITORY_ROOT/scripts/publish/csharp/verify-native-assets-dir.sh" win-x64
 	xberg_assert_status 0
 	[ "$output" = 'Found 2 native asset files' ]
@@ -49,11 +49,11 @@ PY
 
 @test "native assembly should prefer target-specific FFI and copy only platform dependencies" {
 	mkdir -p target/aarch64-unknown-linux-gnu/release target/release target/csharp-native/linux-arm64/subdir
-	printf 'target-specific\n' > target/aarch64-unknown-linux-gnu/release/libxberg_ffi.so
-	printf 'fallback\n' > target/release/libxberg_ffi.so
-	printf 'runtime\n' > target/csharp-native/linux-arm64/libonnxruntime.so.1
-	printf 'wrong platform\n' > target/csharp-native/linux-arm64/runtime.dll
-	printf 'nested\n' > target/csharp-native/linux-arm64/subdir/nested.so
+	printf 'target-specific\n' >target/aarch64-unknown-linux-gnu/release/libxberg_ffi.so
+	printf 'fallback\n' >target/release/libxberg_ffi.so
+	printf 'runtime\n' >target/csharp-native/linux-arm64/libonnxruntime.so.1
+	printf 'wrong platform\n' >target/csharp-native/linux-arm64/runtime.dll
+	printf 'nested\n' >target/csharp-native/linux-arm64/subdir/nested.so
 	run env RID=linux-arm64 RUST_TARGET=aarch64-unknown-linux-gnu FFI_NAME=libxberg_ffi.so RUNNER_OS=Linux \
 		bash "$REPOSITORY_ROOT/scripts/publish/csharp/assemble-native-assets.sh"
 	xberg_assert_status 0
@@ -64,9 +64,9 @@ PY
 
 @test "native assembly should use the fallback FFI with only Windows DLL dependencies" {
 	mkdir -p target/release target/csharp-native/win-x64
-	printf 'fallback dll\n' > target/release/xberg_ffi.dll
-	printf 'runtime dll\n' > target/csharp-native/win-x64/onnxruntime.dll
-	printf 'wrong platform\n' > target/csharp-native/win-x64/libonnxruntime.so
+	printf 'fallback dll\n' >target/release/xberg_ffi.dll
+	printf 'runtime dll\n' >target/csharp-native/win-x64/onnxruntime.dll
+	printf 'wrong platform\n' >target/csharp-native/win-x64/libonnxruntime.so
 	run env RID=win-x64 RUST_TARGET=x86_64-pc-windows-msvc FFI_NAME=xberg_ffi.dll RUNNER_OS=Windows \
 		bash "$REPOSITORY_ROOT/scripts/publish/csharp/assemble-native-assets.sh"
 	xberg_assert_status 0
@@ -77,7 +77,7 @@ PY
 
 @test "native assembly should fail before copying dependencies when both FFI paths are absent" {
 	mkdir -p target/csharp-native/linux-x64
-	printf 'dependency\n' > target/csharp-native/linux-x64/libonnxruntime.so
+	printf 'dependency\n' >target/csharp-native/linux-x64/libonnxruntime.so
 	run env RID=linux-x64 RUST_TARGET=x86_64-unknown-linux-gnu FFI_NAME=libxberg_ffi.so RUNNER_OS=Linux \
 		bash "$REPOSITORY_ROOT/scripts/publish/csharp/assemble-native-assets.sh"
 	xberg_assert_status 1

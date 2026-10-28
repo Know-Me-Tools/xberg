@@ -17,8 +17,8 @@ setup() {
 write_platform() {
 	local platform="$1"
 	mkdir -p "npm/$platform"
-	printf '{"name":"@xberg-io/%s","version":"1.4.0"}\n' "$platform" > "npm/$platform/package.json"
-	printf 'native fixture for %s\n' "$platform" > "npm/$platform/xberg.node"
+	printf '{"name":"@xberg-io/%s","version":"1.4.0"}\n' "$platform" >"npm/$platform/package.json"
+	printf 'native fixture for %s\n' "$platform" >"npm/$platform/xberg.node"
 }
 
 @test "Node platform pack should reject a missing package root without invoking npm" {
@@ -30,7 +30,7 @@ write_platform() {
 
 @test "Node platform pack should reject a manifest without a native binary before npm pack" {
 	mkdir -p npm/linux-x64
-	printf '{"name":"@xberg-io/linux-x64","version":"1.4.0"}\n' > npm/linux-x64/package.json
+	printf '{"name":"@xberg-io/linux-x64","version":"1.4.0"}\n' >npm/linux-x64/package.json
 	run bash "$SCRIPT" "$XBERG_WORK/npm"
 	xberg_assert_status 1
 	xberg_assert_output_contains 'Platform package missing .node binary: linux-x64/'
@@ -42,7 +42,7 @@ write_platform() {
 	write_platform linux-x64
 	write_platform darwin-arm64
 	mkdir -p npm/not-a-package
-	printf 'not a package\n' > npm/not-a-package/README.md
+	printf 'not a package\n' >npm/not-a-package/README.md
 	run bash "$SCRIPT" "$XBERG_WORK/npm"
 	xberg_assert_status 0
 	xberg_assert_output_contains 'Successfully packed 2 platform package(s)'
@@ -55,10 +55,10 @@ write_platform() {
 	xberg_assert_trace 'npm pack in darwin-arm64' 'npm pack in linux-x64'
 	[ "$(find npm -maxdepth 1 -name '*.tgz' | wc -l | tr -d '[:space:]')" -eq 2 ]
 	[ "$(find npm -mindepth 2 -name '*.tgz' | wc -l | tr -d '[:space:]')" -eq 0 ]
-	tar -tzf npm/fixture-linux-x64-1.4.0.tgz > "$XBERG_WORK/archive-entries"
+	tar -tzf npm/fixture-linux-x64-1.4.0.tgz >"$XBERG_WORK/archive-entries"
 	grep -Fxq package.json "$XBERG_WORK/archive-entries"
 	grep -Fxq ./xberg.node "$XBERG_WORK/archive-entries"
-	[ "$(wc -l < "$XBERG_WORK/archive-entries" | tr -d '[:space:]')" -eq 2 ]
+	[ "$(wc -l <"$XBERG_WORK/archive-entries" | tr -d '[:space:]')" -eq 2 ]
 	[ "$(tar -xOzf npm/fixture-linux-x64-1.4.0.tgz ./xberg.node)" = 'native fixture for linux-x64' ]
 }
 
