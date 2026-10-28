@@ -17,6 +17,8 @@ on:
       - "scripts/ci/install-system-deps/**"
       - ".github/actions/install-system-deps/**"
       - ".github/workflows/ci-e2e.yaml"
+      - "mise.toml"
+      - "mise.lock"
   workflow_dispatch:
 
 concurrency:

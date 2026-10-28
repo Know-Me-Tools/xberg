@@ -20,6 +20,8 @@ on:
       # uv.lock pinning xberg at 1.1.6 survived two releases that way. ~keep
       - "uv.lock"
       - "Cargo.lock"
+      - "mise.lock"
+      - "mise.ci.lock"
       - "package.json"
       - ".github/**"
       - ".task/**"

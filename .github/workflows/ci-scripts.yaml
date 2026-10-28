@@ -11,6 +11,8 @@ on:
       - ".editorconfig"
       - "Taskfile.yml"
       - ".github/workflows/ci-scripts.yaml"
+      - "mise.toml"
+      - "mise.lock"
   workflow_dispatch:
 
 concurrency:

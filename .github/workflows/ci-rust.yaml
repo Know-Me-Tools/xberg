@@ -13,6 +13,8 @@ on:
       - "Cargo.lock"
       - "rust-toolchain.toml"
       - ".github/workflows/ci-rust.yaml"
+      - "mise.toml"
+      - "mise.lock"
       - ".task/languages/rust.yml"
       - "scripts/ci/rust/**"
       - "scripts/ci/install-system-deps/**"
