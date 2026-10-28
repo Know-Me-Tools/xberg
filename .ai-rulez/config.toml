@@ -102,7 +102,23 @@ include_outputs = false
 # ~keep The local feature-flag-conventions skill carries the languages module's shared flag contract verbatim plus the
 # Xberg feature sets, so one skill is listed instead of two. Re-copy the shared part when that module changes it.
 allow_overrides = ["feature-flag-conventions"]
+# ~keep Generated plugin bundle copies, checked through plugin/.ai-rulez and verify --plugin. Codex never lists them,
+# but AR964 counts every tracked SKILL.md copy toward its skill listing.
+ignore_paths = [
+  "plugin/.cursor-plugin/**",
+  "plugin/.hermes/**",
+  "plugin/.opencode/**",
+  "plugin/.pi/**",
+  "plugin/skills/**",
+]
+
+[lint.load_budgets]
+# ~keep AR964's 8000-char Codex skill-listing figure is unverified; the counted listing after folding the fallback
+# skills, plus about 5%. Trim skill descriptions to lower it; re-measure on every pin bump.
+codex-skill-listing = 14100
 
 [rules]
 # ~keep Glob-scoped rules stay out of AGENTS.md: rule files for Claude, path-gated skills for Codex.
 scoped_fallback = "skill"
+# ~keep One path-gated skill per directory keeps the Codex skill listing short (AR964).
+scoped_fallback_group = "directory"
