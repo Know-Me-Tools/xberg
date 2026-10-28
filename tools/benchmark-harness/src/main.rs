@@ -60,7 +60,32 @@ async fn main() -> Result<()> {
             fixtures,
             model_a,
             model_b,
-        } => commands::model_benchmark::execute(fixtures, model_a, model_b).await,
+            cohort,
+            max_pages,
+            iterations,
+            dpi,
+            confidence_threshold,
+            expected_pages,
+            output,
+        } => {
+            commands::model_benchmark::execute(
+                benchmark_harness::model_benchmark::ModelBenchmarkConfig {
+                    fixtures_dir: fixtures,
+                    model_a,
+                    model_b,
+                    cohort,
+                    max_pages,
+                    iterations,
+                    dpi,
+                    confidence_threshold,
+                    expected_pages,
+                },
+                output,
+            )
+            .await
+        }
+
+        Commands::ModelBenchmarkValidate { artifact } => commands::model_benchmark::validate_artifact(artifact).await,
 
         Commands::SplitBenchmark {
             fixtures,

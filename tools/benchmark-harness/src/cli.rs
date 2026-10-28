@@ -168,13 +168,47 @@ pub(crate) enum Commands {
         #[arg(short, long)]
         fixtures: PathBuf,
 
-        /// First table model name (e.g. "tatr", "slanet_wired", "slanet_auto")
-        #[arg(long, default_value = "tatr")]
+        /// First layout detector (rtdetr or pp_doclayout_v3)
+        #[arg(long, default_value = "rtdetr")]
         model_a: String,
 
-        /// Second table model name (e.g. "tatr", "slanet_wired", "slanet_auto")
-        #[arg(long, default_value = "slanet_auto")]
+        /// Second layout detector (rtdetr or pp_doclayout_v3)
+        #[arg(long, default_value = "pp_doclayout_v3")]
         model_b: String,
+
+        /// Exact ordered fixture cohort; missing members fail the run
+        #[arg(long, default_value = "tools/benchmark-harness/cohorts/layout-pdf-fast.json")]
+        cohort: PathBuf,
+
+        /// Maximum physical pages per PDF, starting at page one
+        #[arg(long, default_value_t = 3)]
+        max_pages: usize,
+
+        /// Paired repeats per rendered page
+        #[arg(long, default_value_t = 1)]
+        iterations: usize,
+
+        /// Shared native PDF render DPI
+        #[arg(long, default_value_t = 150)]
+        dpi: i32,
+
+        /// Explicit common confidence threshold; generic layout heuristics stay disabled
+        #[arg(long, default_value_t = 0.5)]
+        confidence_threshold: f32,
+
+        /// Independently expected total pages after applying the per-document limit
+        #[arg(long)]
+        expected_pages: Option<usize>,
+
+        /// Complete detector artifact (timing/counts only, not quality acceptance)
+        #[arg(long, default_value = "benchmark-results/layout-models.json")]
+        output: PathBuf,
+    },
+
+    /// Validate an existing detector timing/count artifact without running inference
+    ModelBenchmarkValidate {
+        #[arg(long)]
+        artifact: PathBuf,
     },
 
     /// Multi-document PDF split-boundary benchmark (Auto boundary accuracy,

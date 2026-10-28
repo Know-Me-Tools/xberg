@@ -173,14 +173,21 @@ impl LayoutEngine {
         Self::from_config_with_thread_budget(config, crate::core::config::concurrency::resolve_thread_budget(None))
     }
 
+    /// Create a layout engine with an explicit per-session intra-op thread budget.
+    ///
+    /// ORT applies this budget while retaining one inter-op thread. Zero is normalized
+    /// to one; values above the native signed 32-bit limit are rejected before runtime
+    /// initialization or model resolution. Other inference backends may not expose
+    /// configurable session threads. This does not cap all threads in the process.
+    #[cfg_attr(alef, alef(skip))]
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn from_config_with_thread_budget(
+    pub fn from_config_with_thread_budget(
         config: LayoutEngineConfig,
         thread_budget: usize,
     ) -> Result<Self, LayoutError> {
+        let thread_budget = validate_thread_budget(thread_budget)?;
         #[cfg(feature = "layout-detection")]
         crate::ort_discovery::ensure_ort_available();
-        let thread_budget = thread_budget.max(1);
 
         let model: Box<dyn LayoutModel> = match &config.backend {
             ModelBackend::YoloDocLayNet => {
@@ -231,6 +238,16 @@ impl LayoutEngine {
             #[cfg(feature = "layout-detection")]
             thread_budget,
         })
+    }
+
+    /// Return the intra-op budget passed when constructing this ORT session.
+    ///
+    /// This is the configured session budget, not an OS process thread count.
+    #[cfg_attr(alef, alef(skip))]
+    #[cfg(feature = "layout-detection")]
+    #[must_use]
+    pub const fn intra_op_thread_budget(&self) -> usize {
+        self.thread_budget
     }
 
     /// Create a layout engine directly from RT-DETR model bytes already resolved by the caller.
@@ -408,6 +425,19 @@ impl LayoutEngine {
     ) -> Result<Vec<(DetectionResult, DetectTimings)>, LayoutError> {
         self.detect_batch(images)
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn validate_thread_budget(thread_budget: usize) -> Result<usize, LayoutError> {
+    let thread_budget = thread_budget.max(1);
+    // ~keep ort's with_intra_threads casts usize to C int without checking its range.
+    i32::try_from(thread_budget).map_err(|_| {
+        LayoutError::Inference(format!(
+            "layout thread budget {thread_budget} exceeds native maximum {}",
+            i32::MAX
+        ))
+    })?;
+    Ok(thread_budget)
 }
 
 fn validate_layout_peak(
@@ -722,3 +752,40 @@ mod region_replace_native_paragraph_tests;
     feature = "tokio-runtime"
 ))]
 mod mixed_ocr_formula_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod explicit_thread_budget_tests {
+    use super::*;
+
+    #[test]
+    fn should_preserve_zero_floor_and_native_thread_budget_bounds() {
+        assert_eq!(validate_thread_budget(0).unwrap(), 1);
+        assert_eq!(validate_thread_budget(1).unwrap(), 1);
+        let maximum = usize::try_from(i32::MAX).unwrap();
+        assert_eq!(validate_thread_budget(maximum).unwrap(), maximum);
+        assert!(validate_thread_budget(maximum + 1).is_err());
+    }
+
+    #[test]
+    fn should_reject_oversized_public_budget_before_loading_runtime_or_model() {
+        let budget = usize::try_from(i32::MAX).unwrap() + 1;
+        let config = LayoutEngineConfig {
+            backend: ModelBackend::Custom {
+                path: PathBuf::from("nonexistent-model-must-not-be-opened.onnx"),
+                variant: CustomModelVariant::RtDetr,
+            },
+            ..Default::default()
+        };
+        let Err(error) = LayoutEngine::from_config_with_thread_budget(config, budget) else {
+            panic!("oversized native budget must be rejected");
+        };
+        assert!(matches!(&error, LayoutError::Inference(_)));
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "inference error: layout thread budget {budget} exceeds native maximum {}",
+                i32::MAX
+            )
+        );
+    }
+}

@@ -71,6 +71,7 @@ regex = "1"
 serde = { workspace = true }
 serde_ignored = "0.1"
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 shellexpand = "3"
 
 sysinfo = "0.39"

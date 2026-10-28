@@ -59,9 +59,10 @@ CLI (clap)
 ## Detector evaluation ground truth
 
 PP-DocLayoutV3 qualification is tracked in #2284 as an optional secondary detector;
-RT-DETR remains the default. `model-benchmark` currently times **table-model**
-configurations, counts Markdown headings, and does not enforce its page limit.
-It must not be used as detector identity, region-count or PP-DocLayoutV3 quality evidence.
+RT-DETR remains the default. `model-benchmark` runs real detector A/B calls on shared
+page renders with actual canonical detections, artifact identities and complete count checks.
+It is a timing/count foundation and does not score independent annotations or establish
+PP-DocLayoutV3 quality. See [Detector A/B foundation](#detector-ab-foundation) for its exact scope.
 
 The existing OmniDocBench importer preserves each imported document's complete
 original page records in a `.layout.json` sidecar alongside the text/Markdown
@@ -519,11 +520,17 @@ benchmark-harness survey -f fixtures/ --types pdf,docx
 
 ### `model-benchmark` -- Layout model A/B comparison
 
-Compares two layout model presets across the fixture corpus.
+Compares RT-DETR and PP-DocLayoutV3 directly on an exact PDF cohort; table recognition stays separate.
 
 ```bash
-benchmark-harness model-benchmark -f fixtures/ --model-a fast --model-b accurate
+benchmark-harness model-benchmark -f tools/benchmark-harness/fixtures/ \
+  --cohort tools/benchmark-harness/cohorts/layout-pdf-fast.json \
+  --model-a rtdetr --model-b pp_doclayout_v3 --max-pages 3 \
+  --output /tmp/xberg-layout-detectors.json
+benchmark-harness model-benchmark-validate --artifact /tmp/xberg-layout-detectors.json
 ```
+
+This produces timing/count evidence with `quality_assessed: false`, not model-quality acceptance.
 
 ### `embed-benchmark` -- Embedding throughput
 
@@ -670,3 +677,54 @@ The harness uses `tracing` with `RUST_LOG` env-filter support. For quality scori
 ```bash
 RUST_LOG=benchmark_harness::markdown_quality=debug cargo run -p benchmark-harness -- compare ...
 ```
+
+
+## Detector A/B foundation
+
+`model-benchmark` runs `LayoutEngine` directly on identical native-rendered PDF pages. It does not
+select table-recognition models or count Markdown headings. RT-DETR remains the extraction default;
+this benchmark-only comparison does not expose a production model selector.
+
+Use an exact existing cohort and independently establish the selected physical page count before a
+qualification run. `--max-pages` is a per-document limit; pages are 1-indexed in artifacts. For example:
+
+```bash
+: "${EXPECTED_PAGES:?set the independently verified limited cohort page count}"
+task benchmark:models -- \
+  --cohort tools/benchmark-harness/cohorts/layout-pdf-fast.json \
+  --model-a rtdetr --model-b pp_doclayout_v3 --max-pages 3 --iterations 1 \
+  --expected-pages "$EXPECTED_PAGES" --output /tmp/xberg-layout-detectors.json
+task benchmark:models:validate -- --artifact /tmp/xberg-layout-detectors.json
+```
+
+The runtime resolves and checksum-verifies published model files before timing, records their actual
+SHA-256/size and cold session-load time, and forces CPU. It requests 150 DPI by default (native safety guards may reduce it) and feeds
+the same PNG to both arms, alternating paired order. Each timed call includes PNG decode and the
+current detector adapter's preprocessing/inference/postprocessing. Generic Xberg heuristics are
+explicitly disabled; the common confidence threshold defaults to 0.5 and is recorded. No OCR, table
+recognition or extraction cache participates. Both ORT arms explicitly configure intra-op and inter-op
+budgets of one; the intra-op budget is read back from the constructed engine. This is a session
+budget, not a claim that the whole process has one OS thread.
+
+Schema 2 also records runtime host CPU/core/OS identity, before/after system load, and actual process-tree
+resource samples at 10 ms intervals. Sampling must start before detector work and produce at least two samples with strictly increasing
+timestamps, including an observed sample after the work. The sampler is stopped and joined before worker errors are propagated. Baseline and peak
+sampled RSS and CPU core-seconds cover the **whole paired process, including loading, PDF rendering and both
+resident models**; they cannot be attributed to one model. Timings are flagged as contended using the
+existing `SystemLoad` policy, and contended values must not qualify comparative latency budgets.
+These observations are still not isolated per-model resource acceptance.
+
+The JSON artifact records document, fixture, cohort and render hashes, physical pages, repetitions,
+actual canonical detections/boxes/confidences and per-class counts. Missing documents fail exact
+cohort loading; unknown names (including table model names), identical names/artifacts, zero work,
+skipped inference, missing/duplicate rows, changed inputs/renders and mismatched counts fail loudly.
+A genuinely inferred blank page may have zero detections; it still contributes two inference calls.
+A failed inference fails the run rather than becoming a successful zero-count row.
+
+Every artifact sets `quality_assessed: false`. The V3 adapter currently collapses its 25 source
+classes to canonical classes, uses Triangle resize and ignores reading-order/mask outputs. This
+harness therefore cannot establish native Paddle parity, raw source-class accuracy, learned reading
+order, mask quality or downstream extraction quality. The small smoke cohorts are not held-out
+quality evaluation. Keep native Paddle/export/pixel parity, independent annotated held-out scoring,
+resource budgets and a preregistered non-inferiority decision as separate gates in #2284. No result
+from this command changes the RT-DETR default or qualifies V3 for production selection.

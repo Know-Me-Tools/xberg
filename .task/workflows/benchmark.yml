@@ -128,9 +128,14 @@ tasks:
       - cargo run --locked -p benchmark-harness -- survey --fixtures "{{.FIXTURES_DIR}}" --types pdf
 
   models:
-    desc: "Layout model A/B comparison (fast vs accurate)"
+    desc: "Compare actual RT-DETR and PP-DocLayoutV3 detector timing and counts"
     cmds:
-      - cargo run --locked -p benchmark-harness -- model-benchmark --fixtures "{{.FIXTURES_DIR}}"
+      - cargo run --locked -p benchmark-harness -- model-benchmark --fixtures "{{.FIXTURES_DIR}}" {{.CLI_ARGS}}
+
+  models:validate:
+    desc: "Validate detector artifact identities and complete page/arm counts"
+    cmds:
+      - cargo run --locked -p benchmark-harness -- model-benchmark-validate {{.CLI_ARGS}}
 
   split:
     desc: "Multi-document split-boundary benchmark (Auto accuracy, reconstruction, single-parse timing)"

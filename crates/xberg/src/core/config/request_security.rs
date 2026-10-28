@@ -105,6 +105,7 @@ mod tests {
 
     #[cfg(feature = "url-config-types")]
     const FORBIDDEN_CRAWL_FIELDS: &[&str] = &[
+        "/danger_accept_invalid_certs",
         "/ssrf",
         "/ssrf_deny_private_explicit",
         "/max_redirects",
@@ -264,5 +265,52 @@ mod tests {
             }
         });
         assert_eq!(validate_caller_extraction_config(&config), Ok(()));
+    }
+
+    #[test]
+    #[cfg(feature = "url-config-types")]
+    fn should_reject_caller_tls_verification_overrides_for_both_boolean_values() {
+        for enabled in [false, true] {
+            let config = serde_json::json!({
+                "url": {"crawl": {"danger_accept_invalid_certs": enabled}}
+            });
+            let error = validate_caller_extraction_config(&config).expect_err("TLS policy is operator-owned");
+            assert_eq!(
+                error,
+                "Caller extraction config contains forbidden url.crawl setting: \
+                 invalid_config: untrusted caller may not set /danger_accept_invalid_certs"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "url-config-types")]
+    fn should_preserve_operator_tls_verification_policy_for_both_config_surfaces() {
+        for enabled in [false, true] {
+            let mut operator = crate::ExtractionConfig::default();
+            operator.url.crawl.danger_accept_invalid_certs = enabled;
+            let mut config = crate::ExtractionConfig::default();
+            config.url.crawl.danger_accept_invalid_certs = !enabled;
+            adopt_operator_crawl_egress(&mut config, &operator);
+            assert_eq!(config.url.crawl.danger_accept_invalid_certs, enabled);
+
+            let mut file = crate::FileExtractionConfig {
+                url: Some(config.url.clone()),
+                ..Default::default()
+            };
+            file.url
+                .as_mut()
+                .expect("URL configuration exists")
+                .crawl
+                .danger_accept_invalid_certs = !enabled;
+            adopt_file_operator_crawl_egress(&mut file, &operator);
+            assert_eq!(
+                file.url
+                    .expect("URL configuration stays present")
+                    .crawl
+                    .danger_accept_invalid_certs,
+                enabled
+            );
+        }
     }
 }
