@@ -171,7 +171,7 @@ pub(super) fn write_u32(buf: &mut [u8], offset: usize, val: u32) {
 }
 
 /// `rg_lw_offset` for the layout built by `build_fib`.
-fn test_rg_lw_offset() -> usize {
+pub(super) fn test_rg_lw_offset() -> usize {
     let csw_offset = TEST_FIB_BASE;
     let rg_w_offset = csw_offset + 2;
     let cslw_offset = rg_w_offset + TEST_CSW * 2;

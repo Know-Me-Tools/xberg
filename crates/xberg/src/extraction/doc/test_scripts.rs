@@ -15,6 +15,10 @@ const PROPERTY_OFFSET: usize = 256;
 const SCRIPT_RUNS: &[(&str, u8)] = &[("7,2 x 10", 0), ("9", 1), ("/l; H", 0), ("2", 2), ("O\r", 0)];
 
 pub(super) fn script_doc(runs: &[(&str, u8)], compressed: bool) -> Vec<u8> {
+    story_script_doc(runs, compressed, None)
+}
+
+fn story_script_doc(runs: &[(&str, u8)], compressed: bool, footnotes: Option<(u32, &[u32])>) -> Vec<u8> {
     assert!(!runs.is_empty() && runs.len() <= 32);
     let text: String = runs.iter().map(|(text, _)| *text).collect();
     let bytes: Vec<u8> = if compressed {
@@ -47,7 +51,29 @@ pub(super) fn script_doc(runs: &[(&str, u8)], compressed: bool) -> Vec<u8> {
     let mut table = build_table_stream(&mut word, &piece);
     write_u32(&mut table, 9, piece.len() as u32);
     add_script_fkp(&mut word, &mut table, runs, compressed);
+    if let Some((main_cp, bounds)) = footnotes {
+        add_footnote_story_bounds(
+            &mut word,
+            &mut table,
+            main_cp,
+            text.encode_utf16().count() as u32,
+            bounds,
+        );
+    }
     build_doc_ole(&word, &table)
+}
+
+fn add_footnote_story_bounds(word: &mut [u8], table: &mut Vec<u8>, main_cp: u32, total_cp: u32, bounds: &[u32]) {
+    let lw = super::tests::test_rg_lw_offset();
+    write_u32(word, lw + super::FIB_LW_IDX_CCP_TEXT * 4, main_cp);
+    write_u32(word, lw + super::FIB_LW_IDX_CCP_FTN * 4, total_cp - main_cp);
+    let offset = table.len();
+    for bound in bounds {
+        table.extend_from_slice(&bound.to_le_bytes());
+    }
+    let pairs = test_rg_fc_lcb_offset();
+    write_u32(word, pairs + 3 * 8, offset as u32);
+    write_u32(word, pairs + 3 * 8 + 4, (bounds.len() * 4) as u32);
 }
 
 fn add_script_fkp(word: &mut [u8], table: &mut Vec<u8>, runs: &[(&str, u8)], compressed: bool) {
@@ -226,4 +252,74 @@ async fn should_align_doc_script_annotations_after_field_and_whitespace_normaliz
             ),
         ]
     );
+}
+
+#[tokio::test]
+async fn should_preserve_scripts_in_adjacent_doc_footnotes_gh2275() {
+    for (compressed, prefix) in [(true, "é"), (false, "é"), (false, "😀é")] {
+        let first = format!("  {prefix}10");
+        let runs = [
+            ("body\r", 0),
+            (first.as_str(), 0),
+            ("9", 1),
+            ("/l \r H", 0),
+            ("2", 2),
+            ("O \r\r", 0),
+        ];
+        let first_cp = first.encode_utf16().count() as u32 + 5;
+        let total_cp = first_cp + 6;
+        let bytes = story_script_doc(&runs, compressed, Some((5, &[0, first_cp, total_cp, total_cp + 1])));
+        let config = ExtractionConfig {
+            use_cache: false,
+            ..Default::default()
+        };
+        let doc = DocExtractor::new()
+            .extract_content(&bytes, "application/msword", &config)
+            .await
+            .unwrap();
+        let definitions: Vec<_> = doc
+            .elements
+            .iter()
+            .filter(|element| element.kind == crate::types::internal::ElementKind::FootnoteDefinition)
+            .collect();
+        assert_eq!(definitions.len(), 2);
+        assert_eq!(definitions[0].text, format!("{prefix}109/l"));
+        assert_eq!(
+            definitions[0].annotations,
+            [builder::superscript(prefix.len() as u32 + 2, prefix.len() as u32 + 3)]
+        );
+        assert_eq!(definitions[1].text, "H2O");
+        assert_eq!(definitions[1].annotations, [builder::subscript(1, 2)]);
+        let markdown = crate::extract(
+            crate::ExtractInput::from_bytes(bytes.clone(), "application/msword", None),
+            &ExtractionConfig {
+                output_format: OutputFormat::Markdown,
+                escape_markdown: false,
+                ..config.clone()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(markdown.results.len(), 1);
+        assert!(markdown.errors.is_empty());
+        assert!(
+            markdown.results[0].content.contains(&format!("{prefix}10^9^/l")),
+            "{}",
+            markdown.results[0].content
+        );
+        assert!(markdown.results[0].content.contains("H~2~O"));
+        let plain = crate::extract(
+            crate::ExtractInput::from_bytes(bytes, "application/msword", None),
+            &ExtractionConfig {
+                output_format: OutputFormat::Plain,
+                ..config
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(plain.results.len(), 1);
+        assert!(plain.errors.is_empty());
+        assert!(!plain.results[0].content.contains(['^', '~']));
+        assert!(plain.results[0].content.contains(&format!("{prefix}109/l")));
+    }
 }
