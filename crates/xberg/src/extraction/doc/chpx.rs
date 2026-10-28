@@ -1,4 +1,4 @@
-//! Direct main-story character scripts from authoritative CHPX runs. ~keep
+//! DOC character scripts from authoritative CHPX runs and compact piece properties. ~keep
 
 use super::{DOC_WARNING_SOURCE, normalized_doc_character, papx};
 use crate::error::{Result, XbergError};
@@ -16,6 +16,21 @@ pub(super) enum Script {
     Normal,
     Superscript,
     Subscript,
+}
+
+pub(super) fn compact_prm_script(prm: u16) -> Option<Script> {
+    const COMPLEX_FLAG: u16 = 1;
+    const ISPRM_MASK: u16 = 0x7f;
+    const ISPRM_C_ISS: u16 = 0x68;
+    if prm & COMPLEX_FLAG != 0 || (prm >> 1) & ISPRM_MASK != ISPRM_C_ISS {
+        return None;
+    }
+    match prm >> 8 {
+        0 => Some(Script::Normal),
+        1 => Some(Script::Superscript),
+        2 => Some(Script::Subscript),
+        _ => None,
+    }
 }
 
 struct ScriptRun {
