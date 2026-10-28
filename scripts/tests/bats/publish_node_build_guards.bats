@@ -20,7 +20,7 @@ setup() {
 	run bash "$REPOSITORY_ROOT/scripts/publish/node/build-native-module.sh"
 	xberg_assert_status 0
 	xberg_assert_trace '--filter {./crates/xberg-node} exec napi build --platform --release --target aarch64-apple-darwin --output-dir ./artifacts'
-	xberg_assert_output_contains 'Found 1 .node file(s)'
+	printf '%s\n' "$output" | grep -Eq 'Found[[:space:]]+1[[:space:]]+\.node file\(s\)$'
 }
 
 @test "Node native builder should preserve all explicit cross-compilation switches" {
