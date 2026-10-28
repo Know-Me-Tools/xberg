@@ -69,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(publish): Inspect the actual Node native binary before packing platform packages.**
+  File-size failures now stop publication instead of being hidden by the diagnostic output.
+- **(office): Recover native text from embedded EMF and WMF pictures without raster OCR failures.**
+  Preserve original image bytes, follow selected fonts, and report unsupported font encodings explicitly. (#2297)
 - **(ocr): Prevent crashes during repeated Tesseract orientation and script detection.**
   Script-name results remain valid across repeated calls and detector cleanup. (#2300)
 
