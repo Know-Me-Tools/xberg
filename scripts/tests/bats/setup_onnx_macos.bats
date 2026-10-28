@@ -16,6 +16,15 @@ setup() {
 	xberg_stub tar 'printf "tar\n" >>"$XBERG_TRACE"; exit 99'
 }
 
+run_setup_script() {
+	# ~keep SIP strips DYLD_* when launching /bin/bash; install fixture values inside the child shell.
+	run bash -c '
+		export DYLD_LIBRARY_PATH="$1" DYLD_FALLBACK_LIBRARY_PATH="$2"
+		shift 2
+		source "$@"
+	' bash /ambient/dyld /ambient/fallback "$SCRIPT" "$@"
+}
+
 assert_system_environment() {
 	local flags="$1"
 	cat >"$XBERG_WORK/expected-env" <<EXPECTED
@@ -48,52 +57,52 @@ EXPECTED
 }
 
 @test "setup_onnx_macos should_keep_default_rpath_and_all_system_environment_rows" {
-	run bash "$SCRIPT" 1.24.2 native arm64 system
+	run_setup_script 1.24.2 native arm64 system
 	xberg_assert_status 0
 	assert_system_environment "-L $ORT_ROOT/lib -C link-arg=-Wl,-rpath,@loader_path"
 }
 
 @test "setup_onnx_macos should_accept_explicit_true_rpath" {
-	run bash "$SCRIPT" 1.24.2 native arm64 system true
+	run_setup_script 1.24.2 native arm64 system true
 	xberg_assert_status 0
 	assert_system_environment "-L $ORT_ROOT/lib -C link-arg=-Wl,-rpath,@loader_path"
 }
 
 @test "setup_onnx_macos should_preserve_ambient_flags_with_default_rpath" {
 	export RUSTFLAGS='-D warnings -C debuginfo=1'
-	run bash "$SCRIPT" 1.24.2 native arm64 system
+	run_setup_script 1.24.2 native arm64 system
 	xberg_assert_status 0
 	assert_system_environment "$RUSTFLAGS -L $ORT_ROOT/lib -C link-arg=-Wl,-rpath,@loader_path"
 }
 
 @test "setup_onnx_macos should_omit_setup_rpath_when_the_package_owns_it" {
-	run bash "$SCRIPT" 1.24.2 native arm64 system false
+	run_setup_script 1.24.2 native arm64 system false
 	xberg_assert_status 0
 	assert_system_environment "-L $ORT_ROOT/lib"
 }
 
 @test "setup_onnx_macos should_preserve_ambient_flags_and_ort_search_when_rpath_is_disabled" {
 	export RUSTFLAGS='-D warnings -C debuginfo=1'
-	run bash "$SCRIPT" 1.24.2 native arm64 system false
+	run_setup_script 1.24.2 native arm64 system false
 	xberg_assert_status 0
 	assert_system_environment "$RUSTFLAGS -L $ORT_ROOT/lib"
 }
 
 @test "setup_onnx_macos should_preserve_default_bundled_environment" {
-	run bash "$SCRIPT" 1.24.2 native arm64 bundled
+	run_setup_script 1.24.2 native arm64 bundled
 	xberg_assert_status 0
 	assert_bundled_environment
 }
 
 @test "setup_onnx_macos should_preserve_bundled_environment_when_rpath_is_disabled" {
 	export RUSTFLAGS='-D warnings'
-	run bash "$SCRIPT" 1.24.2 native arm64 bundled false
+	run_setup_script 1.24.2 native arm64 bundled false
 	xberg_assert_status 0
 	assert_bundled_environment
 }
 
 assert_invalid_rpath() {
-	run bash "$SCRIPT" 1.24.2 native arm64 system "$1"
+	run_setup_script 1.24.2 native arm64 system "$1"
 	xberg_assert_status 2
 	xberg_assert_output_contains 'add-macos-rpath must be true or false'
 	[ ! -e "$DEST" ]
