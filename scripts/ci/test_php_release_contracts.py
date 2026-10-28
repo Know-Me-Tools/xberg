@@ -29,6 +29,10 @@ def test_php_linux_artifacts_are_floor_built_and_verified() -> None:
     assert "if: contains(matrix.platform.target, '-linux-gnu')" in ort_step
     assert "dest-dir: crates/xberg-php" in ort_step
     assert 'MISE_ZIG_VERSION: "0.13.0"' in block
+    assert re.search(r"(?m)^      MISE_ENV: ci$", block) is not None
+    zig_step = block[setup_zig : block.index("\n      - ", setup_zig)]
+    assert "uses: xberg-io/actions/setup-mise@v1\n" in zig_step
+    assert re.search(r"(?m)^          install-args: zig$", zig_step) is not None
     assert 'TARGET_ARG="${TARGET}.${GLIBC_FLOOR}"' in block
     assert 'cargo zigbuild --locked -p xberg-php --release --target "${TARGET_ARG}"' in block
     assert "contains(matrix.platform.target, '-linux-gnu')" in block

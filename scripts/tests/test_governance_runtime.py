@@ -84,7 +84,11 @@ class GovernanceRuntimeTests(unittest.TestCase):
             kind = "release" if path.name in release_paths else "ci"
             versions[kind].extend(re.findall(r'ai-rulez-version: "([^"\n]+)"', source))
             if kind == "release":
-                release_installs += len(re.findall(r"(?m)^ +install-args: [^\n]*github:Goldziher/ai-rulez", source))
+                release_installs += len(
+                    re.findall(r"(?m)^ +install-args: [^\n]*github:Goldziher/ai-rulez(?=\s|$)", source)
+                )
+                assert "github:Goldziher/ai-rulez@" not in source, f"{path} overrides the mise.toml ai-rulez pin"
+                assert re.search(r"MISE_\w*AI_RULEZ\w*_VERSION", source) is None, f"{path} overrides the mise.toml pin"
         assert versions["ci"] == ["latest"] * 3, versions
         assert versions["release"] == [], versions
         assert release_installs == 6, release_installs
