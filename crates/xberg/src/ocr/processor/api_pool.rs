@@ -229,8 +229,13 @@ impl<K: PartialEq, V> Drop for ReleaseReservation<K, V> {
     }
 }
 
+struct PooledTesseractApi {
+    primary: TesseractAPI,
+    secondary: super::dictionary::SecondaryDictionaries,
+}
+
 pub(super) struct TesseractApiPool {
-    resources: Arc<ResourcePool<ApiKey, TesseractAPI>>,
+    resources: Arc<ResourcePool<ApiKey, PooledTesseractApi>>,
 }
 
 impl TesseractApiPool {
@@ -270,27 +275,36 @@ impl TesseractApiPool {
             api.clear().map_err(|error| {
                 OcrError::ProcessingFailed(format!("Failed to clear newly initialized Tesseract API: {error}"))
             })?;
-            Ok(api)
+            Ok(PooledTesseractApi {
+                primary: api,
+                secondary: super::dictionary::SecondaryDictionaries::new(tessdata_path, language, oem),
+            })
         })?;
         Ok(TesseractApiLease { inner: lease })
     }
 }
 
 pub(super) struct TesseractApiLease {
-    inner: ResourceLease<ApiKey, TesseractAPI>,
+    inner: ResourceLease<ApiKey, PooledTesseractApi>,
+}
+
+impl TesseractApiLease {
+    pub(super) fn word_dictionary(&self) -> super::dictionary::WordDictionary<'_> {
+        super::dictionary::WordDictionary::new(self, &self.inner.secondary)
+    }
 }
 
 impl Deref for TesseractApiLease {
     type Target = TesseractAPI;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.inner.primary
     }
 }
 
 impl Drop for TesseractApiLease {
     fn drop(&mut self) {
-        self.inner.release_with(|api| match api.clear() {
+        self.inner.release_with(|api| match api.primary.clear() {
             Ok(()) => true,
             Err(error) => {
                 tracing::warn!(
@@ -308,6 +322,27 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
+
+    #[test]
+    #[ignore = "requires installed eng and khm Tesseract packs"]
+    fn should_reuse_secondary_dictionary_across_ocr_sessions_gh2306() {
+        let path = std::env::var("TESSDATA_PREFIX").expect("set TESSDATA_PREFIX to the qualified eng/khm packs");
+        for language in ["eng", "khm"] {
+            let pack = std::path::Path::new(&path).join(format!("{language}.traineddata"));
+            assert!(std::fs::metadata(pack).expect("required native language pack").len() > 0);
+        }
+        let pool = TesseractApiPool::new();
+        let before = super::super::dictionary::secondary_initialization_count();
+        for _ in 0..2 {
+            let api = pool
+                .checkout(&path, "eng+khm", 1)
+                .expect("initialize configured language session");
+            let word = "xbergsecondaryloadprobe";
+            assert_eq!(api.is_valid_word(word).unwrap(), 0, "the primary must reject the probe");
+            assert_eq!(api.word_dictionary().is_valid_word(word), Some(false));
+        }
+        assert_eq!(super::super::dictionary::secondary_initialization_count() - before, 1);
+    }
 
     #[test]
     fn should_keep_requested_engine_modes_separate_in_pool_keys() {
@@ -506,5 +541,149 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(pool.counts(), (0, 0));
         assert!(pool.checkout::<(), _>("eng", || Ok(2)).is_ok());
+    }
+    fn dictionary_key(path: &str, language: &str, oem: u8) -> ApiKey {
+        ApiKey {
+            tessdata_path: path.to_owned(),
+            language: language.to_owned(),
+            oem,
+        }
+    }
+
+    #[test]
+    fn should_separate_secondary_caches_by_primary_session_identity_gh2306() {
+        let pool = ResourcePool::new(1);
+        let loads = std::cell::Cell::new(0);
+        for (path, language, oem, expected) in [
+            ("models-a", "ita+eng", 1, 1),
+            ("models-a", "ita+eng", 1, 1),
+            ("models-b", "ita+eng", 1, 2),
+            ("models-b", "ita+eng", 3, 3),
+            ("models-b", "fra+eng", 3, 4),
+            ("models-b", "eng+ita", 3, 5),
+        ] {
+            let lease = pool
+                .checkout::<(), _>(dictionary_key(path, language, oem), || {
+                    Ok(super::super::dictionary::SecondaryDictionaries::new(
+                        path, language, oem,
+                    ))
+                })
+                .unwrap();
+            let secondary = language.split('+').nth(1).unwrap();
+            let engine = lease.initialize(0, |actual_path, actual_language, actual_oem| {
+                assert_eq!(
+                    (actual_path, actual_language, actual_oem),
+                    (path, secondary, i32::from(oem))
+                );
+                loads.set(loads.get() + 1);
+                Some(loads.get())
+            });
+            assert_eq!(engine, Some(&expected));
+        }
+        assert_eq!(loads.get(), 5);
+        assert_eq!(pool.counts(), (0, 1));
+    }
+
+    #[test]
+    fn should_drop_secondary_engines_when_primary_session_is_evicted_gh2306() {
+        struct Engine(std::sync::Arc<AtomicUsize>);
+        impl Drop for Engine {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let pool = ResourcePool::new(1);
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let session = pool
+            .checkout::<(), _>(dictionary_key("models-a", "ita+eng", 1), || {
+                Ok(super::super::dictionary::SecondaryDictionaries::new(
+                    "models-a", "ita+eng", 1,
+                ))
+            })
+            .unwrap();
+        assert!(
+            session
+                .initialize(0, |_, _, _| Some(Engine(Arc::clone(&dropped))))
+                .is_some()
+        );
+        drop(session);
+        assert_eq!(
+            dropped.load(Ordering::SeqCst),
+            0,
+            "idle primary must retain its dictionary"
+        );
+        let replacement = pool
+            .checkout::<(), _>(dictionary_key("models-b", "ita+eng", 1), || {
+                assert_eq!(
+                    dropped.load(Ordering::SeqCst),
+                    1,
+                    "eviction must release the secondary before replacement"
+                );
+                Ok(super::super::dictionary::SecondaryDictionaries::<Engine>::new(
+                    "models-b", "ita+eng", 1,
+                ))
+            })
+            .unwrap();
+        assert_eq!(pool.counts(), (1, 0));
+        drop(replacement);
+        assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn should_bound_concurrent_secondary_engines_to_pooled_sessions_gh2306() {
+        let pool = ResourcePool::new(2);
+        let loads = Arc::new(AtomicUsize::new(0));
+        let ready = Arc::new(std::sync::Barrier::new(2));
+        let mut workers = Vec::new();
+        for _ in 0..2 {
+            let pool = Arc::clone(&pool);
+            let loads = Arc::clone(&loads);
+            let ready = Arc::clone(&ready);
+            workers.push(thread::spawn(move || {
+                let session = pool
+                    .checkout::<(), _>(dictionary_key("models", "ita+eng+deu", 1), || {
+                        Ok(super::super::dictionary::SecondaryDictionaries::new(
+                            "models",
+                            "ita+eng+deu",
+                            1,
+                        ))
+                    })
+                    .unwrap();
+                ready.wait();
+                for index in 0..2 {
+                    assert!(
+                        session
+                            .initialize(index, |_, _, _| Some(loads.fetch_add(1, Ordering::SeqCst)))
+                            .is_some()
+                    );
+                    assert!(
+                        session
+                            .initialize(index, |_, _, _| panic!("one dictionary per session/language"))
+                            .is_some()
+                    );
+                }
+                ready.wait();
+            }));
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        assert_eq!(loads.load(Ordering::SeqCst), 4);
+        assert_eq!(pool.counts(), (0, 2));
+        for _ in 0..2 {
+            let session = pool
+                .checkout::<(), _>(dictionary_key("models", "ita+eng+deu", 1), || {
+                    panic!("both warmed sessions must stay pooled")
+                })
+                .unwrap();
+            for index in 0..2 {
+                assert!(
+                    session
+                        .initialize(index, |_, _, _| panic!("warmed dictionaries must not reload"))
+                        .is_some()
+                );
+            }
+        }
+        assert_eq!(loads.load(Ordering::SeqCst), 4);
     }
 }

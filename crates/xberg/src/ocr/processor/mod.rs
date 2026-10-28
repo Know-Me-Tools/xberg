@@ -9,6 +9,8 @@ mod api_pool;
 mod config;
 mod dictionary;
 mod execution;
+#[cfg(test)]
+mod secondary_dictionary_benchmark_tests;
 pub(crate) mod validation;
 
 pub(crate) use api_pool::tesseract_api_capacity;

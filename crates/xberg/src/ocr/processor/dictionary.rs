@@ -10,79 +10,142 @@ use xberg_tesseract::TesseractAPI;
 /// verdict instead of one opened handle per language. ~keep
 const MAX_SECONDARY_DICTIONARIES: usize = 4;
 
-struct SecondaryDictionary {
-    language: String,
-    api: OnceCell<Option<TesseractAPI>>,
+#[cfg(test)]
+thread_local! {
+    static SECONDARY_INITIALIZATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// Dictionary membership for a `lang1+lang2` run.
-///
-/// `TessBaseAPIIsValidWord` consults only the first language's dictionary, so in `rus+eng` every
-/// English word reads as not-a-word and the dictionary noise filters drop whole lines of the
-/// second language (#2158). A word is valid here when any configured language's dictionary
-/// accepts it. The other languages' dictionaries are opened lazily, once, and only when the
-/// primary one rejects a word, so a single-language run never pays for them.
-pub(super) struct WordDictionary<'a> {
-    primary: &'a TesseractAPI,
-    tessdata_path: &'a str,
+#[cfg(test)]
+pub(super) fn secondary_initialization_count() -> usize {
+    SECONDARY_INITIALIZATIONS.get()
+}
+
+fn initialize_secondary(tessdata_path: &str, language: &str, oem: i32) -> Option<TesseractAPI> {
+    let api = TesseractAPI::new().ok()?;
+    api.init_2(tessdata_path, language, oem).ok()?;
+    #[cfg(test)]
+    SECONDARY_INITIALIZATIONS.set(SECONDARY_INITIALIZATIONS.get() + 1);
+    Some(api)
+}
+
+struct SecondaryDictionary<T> {
+    language: String,
+    api: OnceCell<T>,
+}
+
+pub(super) struct SecondaryDictionaries<T = TesseractAPI> {
+    tessdata_path: String,
     oem: i32,
-    secondary: Vec<SecondaryDictionary>,
+    entries: Vec<SecondaryDictionary<T>>,
     too_many_languages: bool,
 }
 
-impl<'a> WordDictionary<'a> {
-    pub(super) fn new(primary: &'a TesseractAPI, tessdata_path: &'a str, language: &str, oem: u8) -> Self {
+impl<T> SecondaryDictionaries<T> {
+    pub(super) fn new(tessdata_path: &str, language: &str, oem: u8) -> Self {
         let mut languages = language.split('+').map(str::trim).filter(|lang| !lang.is_empty());
         let first = languages.next();
-        let mut secondary: Vec<SecondaryDictionary> = Vec::new();
+        let mut entries: Vec<SecondaryDictionary<T>> = Vec::new();
         for lang in languages {
-            if Some(lang) != first && !secondary.iter().any(|existing| existing.language == lang) {
-                secondary.push(SecondaryDictionary {
+            if Some(lang) != first && !entries.iter().any(|existing| existing.language == lang) {
+                entries.push(SecondaryDictionary {
                     language: lang.to_string(),
                     api: OnceCell::new(),
                 });
+                if entries.len() > MAX_SECONDARY_DICTIONARIES {
+                    break;
+                }
             }
         }
-        let too_many_languages = secondary.len() > MAX_SECONDARY_DICTIONARIES;
+        let too_many_languages = entries.len() > MAX_SECONDARY_DICTIONARIES;
         Self {
-            primary,
-            tessdata_path,
+            tessdata_path: tessdata_path.to_string(),
             oem: i32::from(oem),
-            secondary,
+            entries,
             too_many_languages,
         }
     }
 
+    pub(super) fn initialize(
+        &self,
+        index: usize,
+        constructor: impl FnOnce(&str, &str, i32) -> Option<T>,
+    ) -> Option<&T> {
+        if self.too_many_languages {
+            return None;
+        }
+        let entry = self.entries.get(index)?;
+        if entry.api.get().is_none() {
+            let api = constructor(&self.tessdata_path, &entry.language, self.oem)?;
+            let _ = entry.api.set(api);
+        }
+        entry.api.get()
+    }
+
+    fn for_call(&self) -> DictionaryLookups<'_, T> {
+        DictionaryLookups {
+            dictionaries: self,
+            cached: self.entries.iter().map(|_| OnceCell::new()).collect(),
+        }
+    }
+}
+
+struct DictionaryLookups<'a, T> {
+    dictionaries: &'a SecondaryDictionaries<T>,
+    cached: Vec<OnceCell<Option<&'a T>>>,
+}
+
+impl<'a, T> DictionaryLookups<'a, T> {
+    fn initialize(&self, index: usize, constructor: impl FnOnce(&str, &str, i32) -> Option<T>) -> Option<&'a T> {
+        let dictionaries: &'a SecondaryDictionaries<T> = self.dictionaries;
+        // ~keep A failed native initialization is memoized only for this OCR call, so later calls can retry it.
+        *self
+            .cached
+            .get(index)?
+            .get_or_init(|| dictionaries.initialize(index, constructor))
+    }
+}
+
+/// Dictionary membership for a `lang1+lang2` run.
+///
+/// `TessBaseAPIIsValidWord` consults only the first language's dictionary. A word is valid when
+/// any configured language accepts it. Secondary handles load lazily and remain owned by the
+/// keyed primary session, so pool capacity and eviction bound their lifetime and memory. ~keep
+pub(super) struct WordDictionary<'a> {
+    primary: &'a TesseractAPI,
+    secondary: DictionaryLookups<'a, TesseractAPI>,
+}
+
+impl<'a> WordDictionary<'a> {
+    pub(super) fn new(primary: &'a TesseractAPI, secondary: &'a SecondaryDictionaries) -> Self {
+        Self {
+            primary,
+            secondary: secondary.for_call(),
+        }
+    }
+
     /// `Some(true)` valid in some configured language, `Some(false)` invalid in all of them,
-    /// `None` no verdict (the lookup failed, or a dictionary needed to rule the word out is
-    /// unavailable).
+    /// `None` no verdict (a lookup failed or a dictionary needed to rule the word out is unavailable).
     pub(super) fn is_valid_word(&self, text: &str) -> Option<bool> {
         let primary = match self.primary.is_valid_word(text) {
             Ok(0) => Some(false),
             Ok(_) => Some(true),
             Err(_) => None,
         };
-        if self.secondary.is_empty() {
+        let dictionaries = self.secondary.dictionaries;
+        if dictionaries.entries.is_empty() {
             return primary;
         }
-        if self.too_many_languages {
+        if dictionaries.too_many_languages {
             return if primary == Some(true) { primary } else { None };
         }
         combine_verdicts(
             primary,
-            self.secondary.iter().map(|dictionary| self.lookup(dictionary, text)),
+            (0..dictionaries.entries.len()).map(|index| self.lookup(index, text)),
         )
     }
 
-    fn lookup(&self, dictionary: &SecondaryDictionary, text: &str) -> Option<bool> {
-        let api = dictionary
-            .api
-            .get_or_init(|| {
-                let api = TesseractAPI::new().ok()?;
-                api.init_2(self.tessdata_path, &dictionary.language, self.oem).ok()?;
-                Some(api)
-            })
-            .as_ref()?;
+    fn lookup(&self, index: usize, text: &str) -> Option<bool> {
+        let api = self.secondary.initialize(index, initialize_secondary)?;
         match api.is_valid_word(text) {
             Ok(0) => Some(false),
             Ok(_) => Some(true),
@@ -149,3 +212,7 @@ mod tests {
         assert_eq!(calls.get(), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "dictionary_cache_tests.rs"]
+mod cache_tests;

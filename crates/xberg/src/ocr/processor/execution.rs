@@ -1887,7 +1887,7 @@ pub(super) fn perform_ocr(
     validate_language_and_traineddata(&config.language, &tessdata_path)?;
 
     let api = api_pool.checkout(&tessdata_path, &config.language, config.oem)?;
-    let dictionary = WordDictionary::new(&api, &tessdata_path, &config.language, config.oem);
+    let dictionary = api.word_dictionary();
 
     log_ci_debug(ci_debug_enabled, "init", || {
         format!("language={} datapath='{}'", config.language, tessdata_path)
