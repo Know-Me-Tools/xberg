@@ -1789,6 +1789,7 @@ struct TjBuffer {
     /// Cached font reference — avoids per-Tj HashMap lookup in append.
     /// Set once at buffer creation, never changes (font change flushes buffer).
     cached_font: Option<Arc<FontInfo>>,
+    unmapped_type3: bool,
     /// Pre-computed effective font size (CTM × text_matrix scaling × font_size).
     /// Computed once at buffer creation to avoid matrix multiply + sqrt per flush.
     effective_font_size: f32,
@@ -1880,12 +1881,25 @@ fn run_is_mirrored(combined: &Matrix) -> bool {
 }
 
 impl TjBuffer {
-    /// Create a new empty buffer with current state.
+    #[cfg(test)]
     fn new(
         state: &crate::content::graphics_state::GraphicsState,
         mcid: Option<u32>,
         cached_font: Option<Arc<FontInfo>>,
     ) -> Self {
+        Self::new_with_provenance_cache(state, mcid, cached_font, &Default::default())
+    }
+
+    /// Create a new empty buffer with current state.
+    fn new_with_provenance_cache(
+        state: &crate::content::graphics_state::GraphicsState,
+        mcid: Option<u32>,
+        cached_font: Option<Arc<FontInfo>>,
+        provenance_cache: &font_provenance::FontProvenanceCache,
+    ) -> Self {
+        let unmapped_type3 = cached_font.as_ref().is_some_and(|font| {
+            font.subtype == "Type3" && provenance_cache.resolve(font) == crate::fonts::MappingProvenance::Fallback
+        });
         let combined = state.ctm.multiply(&state.text_matrix);
         let effective_font_size = state.font_size * (combined.d * combined.d + combined.b * combined.b).sqrt();
         let user_h_scale = (combined.a * combined.a + combined.c * combined.c).sqrt();
@@ -1928,6 +1942,7 @@ impl TjBuffer {
             mcid,
             accumulated_width: 0.0,
             cached_font,
+            unmapped_type3,
             effective_font_size,
             font_weight,
             is_italic,
@@ -2011,7 +2026,7 @@ impl TjBuffer {
                         Self::push_filtered_unicode(&mut self.unicode, &s);
                     }
                 } else {
-                    let fb = fallback_extraction_char_to_unicode(font, byte as u32);
+                    let fb = fallback_extraction_char_to_unicode(self.unmapped_type3, byte as u32);
                     if fb != "\u{FFFD}" || preserve_unmapped_glyphs() {
                         Self::push_filtered_unicode(&mut self.unicode, &fb);
                     }
@@ -2139,6 +2154,7 @@ pub struct TextExtractor<'doc> {
     state_stack: GraphicsStateStack,
     /// Loaded fonts (name -> FontInfo). Arc-wrapped to avoid deep cloning across pages.
     fonts: HashMap<String, Arc<FontInfo>>,
+    font_provenance_cache: font_provenance::FontProvenanceCache,
     /// Extracted text spans (complete strings from Tj/TJ operators)
     spans: Vec<TextSpan>,
     pub(crate) preserve_script_baselines: bool,
@@ -2391,6 +2407,7 @@ mod config_tests;
 mod adaptive_spacing;
 mod advance;
 mod clustering;
+mod font_provenance;
 mod marked_content;
 mod operators;
 mod run;

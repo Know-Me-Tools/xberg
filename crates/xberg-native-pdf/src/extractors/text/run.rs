@@ -149,7 +149,7 @@ impl<'doc> TextExtractor<'doc> {
                 self.fonts.get(&s.font_name).map_or((None, None), |f| {
                     (
                         Some(f.base_font.clone()).filter(|b| !b.is_empty()),
-                        Some(f.best_mapping_provenance()),
+                        Some(self.font_provenance_cache.resolve(f)),
                     )
                 })
             })

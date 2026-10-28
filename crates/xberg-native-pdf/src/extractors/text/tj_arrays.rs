@@ -205,10 +205,11 @@ impl<'doc> TextExtractor<'doc> {
         let char_space = self.state_stack.current().char_space;
         let word_space = self.state_stack.current().word_space;
 
-        let mut buffer = TjBuffer::new(
+        let mut buffer = TjBuffer::new_with_provenance_cache(
             self.state_stack.current(),
             self.current_mcid,
             self.cached_current_font.clone(),
+            &self.font_provenance_cache,
         );
         let mut _element_count = 0;
 
@@ -419,10 +420,11 @@ impl<'doc> TextExtractor<'doc> {
         // on the line inherits the missing tx. ~keep
         self.advance_position_for_offset(offset)?;
 
-        Ok(TjBuffer::new(
+        Ok(TjBuffer::new_with_provenance_cache(
             self.state_stack.current(),
             self.current_mcid,
             self.cached_current_font.clone(),
+            &self.font_provenance_cache,
         ))
     }
 

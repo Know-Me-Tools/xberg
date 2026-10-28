@@ -205,10 +205,11 @@ impl<'doc> TextExtractor<'doc> {
                             // Unicode directly into the buffer, bypassing
                             // font character mapping. ~keep
                             if self.tj_span_buffer.is_none() {
-                                self.tj_span_buffer = Some(TjBuffer::new(
+                                self.tj_span_buffer = Some(TjBuffer::new_with_provenance_cache(
                                     self.state_stack.current(),
                                     self.current_mcid,
                                     self.cached_current_font.clone(),
+                                    &self.font_provenance_cache,
                                 ));
                             }
                             if let Some(ref mut buffer) = self.tj_span_buffer {
@@ -232,10 +233,11 @@ impl<'doc> TextExtractor<'doc> {
                         // "text strings are as long as possible" ~keep
 
                         if self.tj_span_buffer.is_none() {
-                            self.tj_span_buffer = Some(TjBuffer::new(
+                            self.tj_span_buffer = Some(TjBuffer::new_with_provenance_cache(
                                 self.state_stack.current(),
                                 self.current_mcid,
                                 self.cached_current_font.clone(),
+                                &self.font_provenance_cache,
                             ));
                         }
 
@@ -267,10 +269,11 @@ impl<'doc> TextExtractor<'doc> {
                         );
                         self.mark_actual_text_emitted();
                         if self.extract_spans {
-                            let mut buffer = TjBuffer::new(
+                            let mut buffer = TjBuffer::new_with_provenance_cache(
                                 self.state_stack.current(),
                                 self.current_mcid,
                                 self.cached_current_font.clone(),
+                                &self.font_provenance_cache,
                             );
                             buffer.unicode.push_str(&actual_text);
                             self.flush_tj_buffer(buffer)?;
@@ -421,10 +424,11 @@ impl<'doc> TextExtractor<'doc> {
 
                 if self.extract_spans {
                     if self.tj_span_buffer.is_none() {
-                        self.tj_span_buffer = Some(TjBuffer::new(
+                        self.tj_span_buffer = Some(TjBuffer::new_with_provenance_cache(
                             self.state_stack.current(),
                             self.current_mcid,
                             self.cached_current_font.clone(),
+                            &self.font_provenance_cache,
                         ));
                     }
                     self.append_and_advance(&text)?;
@@ -453,10 +457,11 @@ impl<'doc> TextExtractor<'doc> {
 
                 if self.extract_spans {
                     if self.tj_span_buffer.is_none() {
-                        self.tj_span_buffer = Some(TjBuffer::new(
+                        self.tj_span_buffer = Some(TjBuffer::new_with_provenance_cache(
                             self.state_stack.current(),
                             self.current_mcid,
                             self.cached_current_font.clone(),
+                            &self.font_provenance_cache,
                         ));
                     }
                     self.append_and_advance(&text)?;

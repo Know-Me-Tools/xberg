@@ -150,8 +150,8 @@ pub(crate) fn fallback_char_to_unicode(char_code: u32) -> String {
 /// Keep one visible placeholder per unmapped Type 3 glyph in extracted text.
 /// The raw procedure code is not Unicode, and control-valued codes would
 /// otherwise disappear before the fabricated-text gate can count them. ~keep
-pub(crate) fn fallback_extraction_char_to_unicode(font: &FontInfo, char_code: u32) -> String {
-    if font.subtype == "Type3" && font.best_mapping_provenance() == MappingProvenance::Fallback {
+pub(crate) fn fallback_extraction_char_to_unicode(unmapped_type3: bool, char_code: u32) -> String {
+    if unmapped_type3 {
         return "?".to_string();
     }
     fallback_char_to_unicode(char_code)
@@ -540,7 +540,7 @@ pub(crate) fn char_codes_with_len(bytes: &[u8], font: &FontInfo) -> Vec<(u32, us
 /// the Unicode scalar range only becomes '?' under
 /// `DecodePolicy::question_mark_for_invalid` — otherwise it is returned as
 /// U+FFFD so the caller's drop/tally branch sees it.
-fn resolve_char(font: &FontInfo, code: u32, policy: DecodePolicy) -> String {
+fn resolve_char(font: &FontInfo, code: u32, policy: DecodePolicy, unmapped_type3: bool) -> String {
     if let Some(char_str) = font.char_to_unicode(code) {
         return char_str;
     }
@@ -548,7 +548,7 @@ fn resolve_char(font: &FontInfo, code: u32, policy: DecodePolicy) -> String {
         return "\u{FFFD}".to_string();
     }
     if policy.question_mark_for_invalid {
-        fallback_extraction_char_to_unicode(font, code)
+        fallback_extraction_char_to_unicode(unmapped_type3, code)
     } else {
         fallback_char_to_unicode(code)
     }
@@ -585,6 +585,9 @@ fn decode_simple_font_bytes(
     policy: DecodePolicy,
     mut drops: Option<&mut GlyphDropTally>,
 ) -> String {
+    let unmapped_type3 = policy.question_mark_for_invalid
+        && font.subtype == "Type3"
+        && font.best_mapping_provenance() == MappingProvenance::Fallback;
     let mut result = String::new();
     let table = font.get_byte_to_char_table();
     for &byte in bytes {
@@ -592,7 +595,7 @@ fn decode_simple_font_bytes(
         if c != '\0' {
             result.push(c);
         } else {
-            let char_str = resolve_char(font, byte as u32, policy);
+            let char_str = resolve_char(font, byte as u32, policy, unmapped_type3);
             if char_str != "\u{FFFD}" || policy.preserve_unmapped {
                 result.push_str(&char_str);
             } else if let Some(tally) = drops.as_deref_mut() {
@@ -621,7 +624,7 @@ fn decode_utf8_cmap_bytes(
 ) -> String {
     let mut result = String::new();
     for code in utf8_codes(bytes) {
-        let char_str = resolve_char(font, code, policy);
+        let char_str = resolve_char(font, code, policy, false);
         if char_str != "\u{FFFD}" || policy.preserve_unmapped {
             result.push_str(&char_str);
         } else if let Some(tally) = drops.as_deref_mut() {
@@ -643,7 +646,7 @@ fn decode_generic_type0_bytes(
 ) -> String {
     let mut result = String::new();
     for (char_code, _) in TextCharIter::new(bytes, Some(font)) {
-        let char_str = resolve_char(font, char_code as u32, policy);
+        let char_str = resolve_char(font, char_code as u32, policy, false);
 
         if char_str != "\u{FFFD}" || policy.preserve_unmapped {
             result.push_str(&char_str);

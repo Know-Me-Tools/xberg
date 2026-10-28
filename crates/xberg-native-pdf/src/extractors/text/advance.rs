@@ -211,7 +211,7 @@ impl<'doc> TextExtractor<'doc> {
                                 }
                             }
                         } else {
-                            let fb = fallback_extraction_char_to_unicode(font, byte as u32);
+                            let fb = fallback_extraction_char_to_unicode(buffer.unmapped_type3, byte as u32);
                             if fb != "\u{FFFD}" || preserve_unmapped_glyphs() {
                                 for ch in fb.chars() {
                                     if ch >= '\x20' || ch == '\t' || ch == '\n' || ch == '\r' {
@@ -424,7 +424,7 @@ impl<'doc> TextExtractor<'doc> {
                             }
                         }
                     } else {
-                        let fb = fallback_extraction_char_to_unicode(font, byte as u32);
+                        let fb = fallback_extraction_char_to_unicode(buffer.unmapped_type3, byte as u32);
                         if fb != "\u{FFFD}" || preserve_unmapped_glyphs() {
                             for ch in fb.chars() {
                                 if ch >= '\x20' || ch == '\t' || ch == '\n' || ch == '\r' {
@@ -864,6 +864,10 @@ impl<'doc> TextExtractor<'doc> {
         let wmode = state.text_wmode;
 
         let font = self.cached_current_font.as_deref();
+        let unmapped_type3 = self.cached_current_font.as_ref().is_some_and(|font| {
+            font.subtype == "Type3"
+                && self.font_provenance_cache.resolve(font) == crate::fonts::MappingProvenance::Fallback
+        });
 
         let simple_widths = font
             .filter(|font| font.subtype != "Type0")
@@ -876,7 +880,7 @@ impl<'doc> TextExtractor<'doc> {
 
             let unicode_string = if let Some(font) = font {
                 font.char_to_unicode(char_code as u32)
-                    .unwrap_or_else(|| fallback_extraction_char_to_unicode(font, char_code as u32))
+                    .unwrap_or_else(|| fallback_extraction_char_to_unicode(unmapped_type3, char_code as u32))
             } else if char_code < 256 && (char_code as u8).is_ascii() {
                 (char_code as u8 as char).to_string()
             } else {
