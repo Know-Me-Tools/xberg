@@ -29,7 +29,10 @@
   },
   "packageManager": "pnpm@12.15.0",
   "pi": {
-    "prompts": ["./plugin/.pi/prompts/xberg-extract.md", "./plugin/.pi/prompts/xberg-ocr.md"],
+    "prompts": [
+      "./plugin/.pi/prompts/xberg-extract.md",
+      "./plugin/.pi/prompts/xberg-ocr.md"
+    ],
     "skills": [
       "./plugin/.pi/skills/xberg-batch-extraction",
       "./plugin/.pi/skills/xberg-chunking",
