@@ -20,8 +20,6 @@ use std::path::Path;
 #[cfg(feature = "otel")]
 use tracing::Instrument;
 
-use super::helpers::get_extractor;
-
 pub(super) fn ensure_builtin_extraction_method(doc: &mut crate::types::internal::InternalDocument, is_builtin: bool) {
     if !is_builtin {
         return;
@@ -851,10 +849,11 @@ fn get_extraction_cache() -> Option<&'static crate::cache::GenericCache> {
         .as_ref()
 }
 
-pub(in crate::core::extractor) async fn extract_bytes_with_extractor(
+pub(in crate::core::extractor) async fn extract_bytes_with_extractor_and_layout_pages(
     content: &[u8],
     mime_type: &str,
     config: &ExtractionConfig,
+    pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
 ) -> Result<ExtractedDocument> {
     let config = config.normalized();
     let config = config.as_ref();
@@ -863,7 +862,7 @@ pub(in crate::core::extractor) async fn extract_bytes_with_extractor(
 
     crate::extractors::ensure_initialized()?;
 
-    let (extractor, is_builtin) = get_extractor(mime_type)?;
+    let (extractor, is_builtin) = super::helpers::get_extractor_with_layout_pages(mime_type, pages)?;
 
     #[cfg(feature = "otel")]
     let extraction = {

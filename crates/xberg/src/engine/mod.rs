@@ -101,6 +101,36 @@ impl Engine {
         extract_impl::extract(&self.inner, input, config).await
     }
 
+    /// Extract one PDF bytes input using request-owned explicit layout-page selection. ~keep
+    /// Enables the native layout path and bypasses both caches after resolving per-input overrides.
+    #[cfg(all(feature = "pdf", feature = "layout-detection"))]
+    pub async fn extract_with_layout_pages(
+        &self,
+        input: ExtractInput,
+        config: &ExtractionConfig,
+        pages: Vec<u32>,
+    ) -> Result<ExtractionResult> {
+        let selection = crate::core::layout_pages::LayoutPageSelection::new(pages);
+        // ~keep The native PDF future is large; erase it before progress/public wrappers embed its state.
+        #[cfg(not(target_arch = "wasm32"))]
+        let operation: std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<ExtractionResult>> + Send + '_>,
+        > = Box::pin(extract_impl::extract_with_layout_pages(
+            &self.inner,
+            input,
+            config,
+            &selection,
+        ));
+        #[cfg(target_arch = "wasm32")]
+        let operation: std::pin::Pin<Box<dyn std::future::Future<Output = Result<ExtractionResult>> + '_>> = Box::pin(
+            extract_impl::extract_with_layout_pages(&self.inner, input, config, &selection),
+        );
+        #[cfg(feature = "tokio-runtime")]
+        return seams::scope_progress(Arc::clone(&self.inner.progress), None, operation).await;
+        #[cfg(not(feature = "tokio-runtime"))]
+        operation.await
+    }
+
     /// Extract one bytes input and apply request-scoped external redaction findings.
     ///
     /// The findings run in the existing Late redaction stage, before an output

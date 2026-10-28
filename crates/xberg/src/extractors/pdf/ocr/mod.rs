@@ -71,9 +71,12 @@ pub(crate) use document::{
 
 #[cfg(all(paddle_ocr, any(feature = "ocr", feature = "ocr-pipeline"), feature = "pdf"))]
 pub(crate) use pipeline::extract_full_document_ocr_pipeline_per_page;
+#[cfg(all(test, feature = "ocr", feature = "pdf"))]
+#[allow(unused_imports)]
+pub(crate) use pipeline::extract_mixed_ocr_native_with_single_block_pages;
 #[cfg(all(any(feature = "ocr", feature = "ocr-pipeline"), feature = "pdf"))]
 pub(crate) use pipeline::{
-    extract_mixed_ocr_native_with_single_block_pages, failed_run_page_failures, route_level_ocr_page_failures,
+    extract_mixed_ocr_native_with_layout_pages, failed_run_page_failures, route_level_ocr_page_failures,
 };
 // ~keep Must match the definition's own gate in `pipeline.rs`; `#[cfg(test)]` alone left
 // this import unresolved on every leg without an OCR feature (GH#1951). The definition is

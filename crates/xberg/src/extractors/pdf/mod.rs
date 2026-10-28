@@ -1106,12 +1106,7 @@ fn config_with_layout_acceleration_override(
     std::borrow::Cow::Owned(effective)
 }
 
-/// Run OCR with optional layout detection on PDF bytes.
-///
-/// Reuses detections from native extraction when available. Otherwise, when
-/// layout detection is configured, it runs a soft-failing layout pass before
-/// OCR. Layout failures are logged and OCR continues without layout hints.
-#[cfg(any(feature = "ocr", feature = "ocr-pipeline"))]
+#[cfg(all(test, paddle_ocr, feature = "ocr"))]
 async fn run_ocr_with_layout(
     content: &[u8],
     config: &ExtractionConfig,
@@ -1137,6 +1132,65 @@ async fn run_ocr_with_layout(
     Option<crate::types::ProcessingWarning>,
     Vec<crate::types::ProcessingWarning>,
 )> {
+    run_ocr_with_layout_pages(
+        content,
+        config,
+        path,
+        PageOcrLayoutContext {
+            pages: None,
+            hints: page_ocr_hints,
+        },
+        #[cfg(feature = "layout-detection")]
+        precomputed_layout_images,
+        #[cfg(feature = "layout-detection")]
+        precomputed_layout_detections,
+        #[cfg(feature = "layout-detection")]
+        precomputed_layout_acceleration_override,
+    )
+    .await
+}
+
+#[cfg(any(feature = "ocr", feature = "ocr-pipeline"))]
+struct PageOcrLayoutContext<'a> {
+    pages: Option<&'a crate::core::layout_pages::LayoutPageSelection>,
+    hints: Option<ocr::PageOcrHints>,
+}
+
+/// Run OCR with optional layout detection on PDF bytes.
+///
+/// Reuses detections from native extraction when available. Otherwise, when
+/// layout detection is configured, it runs a soft-failing layout pass before
+/// OCR. Layout failures are logged and OCR continues without layout hints.
+#[cfg(any(feature = "ocr", feature = "ocr-pipeline"))]
+async fn run_ocr_with_layout_pages(
+    content: &[u8],
+    config: &ExtractionConfig,
+    path: Option<&std::path::Path>,
+    context: PageOcrLayoutContext<'_>,
+    #[cfg(feature = "layout-detection")] precomputed_layout_images: Option<Vec<image::RgbImage>>,
+    #[cfg(feature = "layout-detection")] precomputed_layout_detections: Option<Vec<crate::layout::DetectionResult>>,
+    #[cfg(feature = "layout-detection")] precomputed_layout_acceleration_override: Option<
+        crate::core::config::acceleration::AccelerationConfig,
+    >,
+) -> ocr::OcrRunResult<(
+    String,
+    Vec<crate::types::Table>,
+    Vec<crate::types::OcrElement>,
+    Option<crate::types::internal::InternalDocument>,
+    Vec<crate::types::LlmUsage>,
+    Vec<String>,
+    Option<Vec<crate::types::ExtractedImage>>,
+    Vec<crate::types::Formula>,
+    ahash::AHashMap<u32, crate::types::ImagePreprocessingMetadata>,
+    ahash::AHashMap<u32, crate::types::page::PageOcrConfidence>,
+    OcrLayoutGateDecisions,
+    Option<crate::types::ProcessingWarning>,
+    Vec<crate::types::ProcessingWarning>,
+)> {
+    let PageOcrLayoutContext {
+        pages: layout_pages,
+        hints: page_ocr_hints,
+    } = context;
     #[cfg(all(feature = "pdf", feature = "layout-detection"))]
     let mut layout_warning = None;
     #[cfg(not(all(feature = "pdf", feature = "layout-detection")))]
@@ -1155,6 +1209,7 @@ async fn run_ocr_with_layout(
     #[cfg(not(all(feature = "pdf", feature = "layout-detection")))]
     let ocr_layout_gate_decisions: OcrLayoutGateDecisions = (None, None);
 
+    let _ = &layout_pages;
     #[cfg(feature = "layout-detection")]
     let mut layout_acceleration_override = precomputed_layout_acceleration_override;
 
@@ -1164,12 +1219,13 @@ async fn run_ocr_with_layout(
             let thread_budget = crate::core::config::concurrency::resolve_thread_budget(config.concurrency.as_ref());
             let default_security_limits = crate::extractors::security::SecurityLimits::default();
             let security_limits = config.security_limits.as_ref().unwrap_or(&default_security_limits);
-            match layout_runner::run_layout_for_ocr(
+            match layout_runner::run_layout_for_ocr_with_pages(
                 content,
                 layout_config.as_ref(),
                 thread_budget,
                 security_limits,
                 config.images.as_ref(),
+                layout_pages,
             )
             .await
             {
@@ -1432,6 +1488,15 @@ fn formula_regions_in_reading_order(
     regions.sort_by(|a, b| a.bbox.y1.total_cmp(&b.bbox.y1).then(a.bbox.x1.total_cmp(&b.bbox.x1)));
     regions
 }
+
+#[cfg(all(
+    test,
+    feature = "pdf",
+    feature = "layout-detection",
+    feature = "tokio-runtime",
+    not(target_arch = "wasm32")
+))]
+mod layout_page_selection_tests;
 
 #[cfg(all(test, feature = "formula-recognition", feature = "layout-detection"))]
 mod formula_region_tests {
@@ -2235,6 +2300,40 @@ impl InternalDocumentExtractor for PdfExtractor {
     }
 }
 
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+impl crate::core::layout_pages::LayoutPagesExtractor for PdfExtractor {
+    async fn extract_with_layout_pages(
+        &self,
+        content: &[u8],
+        mime_type: &str,
+        config: &ExtractionConfig,
+        pages: &crate::core::layout_pages::LayoutPageSelection,
+    ) -> Result<InternalDocument> {
+        if config
+            .pdf_options
+            .as_ref()
+            .is_some_and(|options| options.backend != crate::core::config::PdfBackend::Native)
+        {
+            return Err(crate::XbergError::validation(
+                "explicit layout-page selection requires the native PDF backend".to_string(),
+            ));
+        }
+        enforce_page_limit(content, config)?;
+        let page_count = native_page_count(content).ok_or_else(|| {
+            crate::XbergError::validation("unable to count PDF pages for explicit layout selection".to_string())
+        })?;
+        let mut document = self
+            .extract_core_native_with_layout_pages(content, mime_type, config, None, Some(pages))
+            .await?;
+        for warning in pages.warnings(page_count) {
+            crate::core::diagnostics::push_warning_deduped(&mut document.processing_warnings, warning);
+        }
+        Ok(document)
+    }
+}
+
 impl PdfExtractor {
     /// Core extraction logic shared between extract_bytes and extract_file.
     ///
@@ -2341,7 +2440,20 @@ impl PdfExtractor {
         config: &ExtractionConfig,
         path: Option<&std::path::Path>,
     ) -> Result<InternalDocument> {
-        let _ = &path;
+        // ~keep Keep the added compatibility wrapper from doubling the native future's stack footprint.
+        Box::pin(self.extract_core_native_with_layout_pages(content, mime_type, config, path, None)).await
+    }
+
+    #[cfg(feature = "pdf")]
+    async fn extract_core_native_with_layout_pages(
+        &self,
+        content: &[u8],
+        mime_type: &str,
+        config: &ExtractionConfig,
+        path: Option<&std::path::Path>,
+        layout_pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
+    ) -> Result<InternalDocument> {
+        let _ = (&path, &layout_pages);
 
         enforce_page_limit(content, config)?;
 
@@ -2356,7 +2468,7 @@ impl PdfExtractor {
             markdown_layout_warning,
             mut markdown_layout_acceleration_override,
             markdown_layout_glyph_drop_warnings,
-        ) = layout_runner::maybe_run_layout_for_markdown(content, config).await;
+        ) = layout_runner::maybe_run_layout_for_markdown_with_pages(content, config, layout_pages).await;
 
         let blocking_content = content.to_vec();
         let blocking_config = config.clone();
@@ -2553,11 +2665,14 @@ impl PdfExtractor {
                 gate_audit,
                 layout_warning,
                 layout_glyph_drop_warnings,
-            ) = run_ocr_with_layout(
+            ) = run_ocr_with_layout_pages(
                 content,
                 config,
                 path,
-                None,
+                PageOcrLayoutContext {
+                    pages: layout_pages,
+                    hints: None,
+                },
                 #[cfg(feature = "layout-detection")]
                 markdown_layout_images.take(),
                 #[cfg(feature = "layout-detection")]
@@ -2587,14 +2702,13 @@ impl PdfExtractor {
             if !ocr_pages.is_empty() {
                 if let Some(ref bounds) = boundaries {
                     if !bounds.is_empty() {
-                        let mixed_run = ocr::extract_mixed_ocr_native_with_single_block_pages(
+                        let mixed_run = ocr::extract_mixed_ocr_native_with_layout_pages(
                             &native_text,
                             bounds,
-                            ocr_pages,
-                            &[],
+                            (ocr_pages, &[]),
                             content,
                             config,
-                            path,
+                            layout_pages,
                         )
                         .await?;
                         #[cfg(feature = "formula-recognition")]
@@ -2655,18 +2769,20 @@ impl PdfExtractor {
                 // EXPLICIT sites (`force_ocr_pages` above, `ocr_inline_images`) keep their
                 // hard error, because there the caller asked for something the build cannot
                 // do. See GH#1610. ~keep
-                match ocr::extract_mixed_ocr_native_with_single_block_pages(
+                match ocr::extract_mixed_ocr_native_with_layout_pages(
                     &native_text,
                     bounds,
-                    &scanned_pages,
-                    pdf_metadata
-                        .pdf_specific
-                        .fabricated_text_pages
-                        .as_deref()
-                        .unwrap_or(&[]),
+                    (
+                        &scanned_pages,
+                        pdf_metadata
+                            .pdf_specific
+                            .fabricated_text_pages
+                            .as_deref()
+                            .unwrap_or(&[]),
+                    ),
                     content,
                     config,
-                    path,
+                    layout_pages,
                 )
                 .await
                 {
@@ -2868,11 +2984,14 @@ impl PdfExtractor {
                     // silently suppress page OCR on scanned PDFs, leaving `pages[].content`
                     // empty (#1576). `RunFallbackOnPages` below has never read this field;
                     // this now matches it. ~keep
-                    match run_ocr_with_layout(
+                    match run_ocr_with_layout_pages(
                         content,
                         config,
                         path,
-                        automatic_unmapped_text_hints(&pdf_metadata),
+                        PageOcrLayoutContext {
+                            pages: layout_pages,
+                            hints: automatic_unmapped_text_hints(&pdf_metadata),
+                        },
                         #[cfg(feature = "layout-detection")]
                         markdown_layout_images.take(),
                         #[cfg(feature = "layout-detection")]
@@ -2949,18 +3068,20 @@ impl PdfExtractor {
                 }
                 ocr::OcrGateOutcome::RunFallbackOnPages(pages) => match boundaries.as_deref() {
                     Some(bounds) if !bounds.is_empty() => {
-                        match ocr::extract_mixed_ocr_native_with_single_block_pages(
+                        match ocr::extract_mixed_ocr_native_with_layout_pages(
                             &native_text,
                             bounds,
-                            &pages,
-                            pdf_metadata
-                                .pdf_specific
-                                .fabricated_text_pages
-                                .as_deref()
-                                .unwrap_or(&[]),
+                            (
+                                &pages,
+                                pdf_metadata
+                                    .pdf_specific
+                                    .fabricated_text_pages
+                                    .as_deref()
+                                    .unwrap_or(&[]),
+                            ),
                             content,
                             config,
-                            path,
+                            layout_pages,
                         )
                         .await
                         {

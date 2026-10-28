@@ -12,8 +12,6 @@ use crate::core::config::ExtractionConfig;
 use crate::core::mime::{LEGACY_POWERPOINT_MIME_TYPE, LEGACY_WORD_MIME_TYPE};
 use crate::types::ExtractedDocument;
 
-use super::file::extract_bytes_with_extractor;
-
 /// Extract content from a byte array.
 ///
 /// This is the main entry point for in-memory extraction. It performs the following steps:
@@ -70,6 +68,15 @@ pub(crate) async fn extract_bytes(
     mime_type: &str,
     config: &ExtractionConfig,
 ) -> Result<ExtractedDocument> {
+    extract_bytes_with_layout_pages(content, mime_type, config, None).await
+}
+
+pub(crate) async fn extract_bytes_with_layout_pages(
+    content: &[u8],
+    mime_type: &str,
+    config: &ExtractionConfig,
+    pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
+) -> Result<ExtractedDocument> {
     // `token.cancel()` below needs a token to signal, but `config.cancel_token` is
     // `None` on every binding-driven and CLI-driven call (see
     // `ExtractionConfig::ensure_cancel_token`) — install an internal fallback so a
@@ -90,7 +97,7 @@ pub(crate) async fn extract_bytes(
         config
     };
 
-    let extraction_future = Box::pin(run_byte_extraction(content, mime_type, config));
+    let extraction_future = Box::pin(run_byte_extraction(content, mime_type, config, pages));
 
     // without a JS/WASI shim), which aborts the whole module with an uncatchable
     // `unreachable` trap. `tokio-runtime` can be enabled transitively on that target
@@ -179,7 +186,12 @@ fn resolve_validated_mime(content: &[u8], mime_type: &str, config: &ExtractionCo
 ///
 /// Split out of [`extract_bytes`] so the timeout and cancellation wrapper there stays
 /// readable; the returned future is still only polled at the original await point.
-async fn run_byte_extraction(content: &[u8], mime_type: &str, config: &ExtractionConfig) -> Result<ExtractedDocument> {
+async fn run_byte_extraction(
+    content: &[u8],
+    mime_type: &str,
+    config: &ExtractionConfig,
+    pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
+) -> Result<ExtractedDocument> {
     if config.force_ocr && config.effective_disable_ocr() {
         return Err(crate::XbergError::Validation {
             message: "force_ocr and disable_ocr cannot both be true".to_string(),
@@ -221,7 +233,18 @@ async fn run_byte_extraction(content: &[u8], mime_type: &str, config: &Extractio
         let _ = LEGACY_POWERPOINT_MIME_TYPE;
     }
 
-    Box::pin(extract_bytes_with_extractor(content, &validated_mime, config)).await
+    if pages.is_some() && validated_mime != "application/pdf" {
+        return Err(crate::XbergError::validation(
+            "explicit layout-page selection accepts PDF input only".to_string(),
+        ));
+    }
+    Box::pin(super::file::extract_bytes_with_extractor_and_layout_pages(
+        content,
+        &validated_mime,
+        config,
+        pages,
+    ))
+    .await
 }
 
 #[cfg(test)]

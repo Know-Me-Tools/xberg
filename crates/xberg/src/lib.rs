@@ -263,6 +263,8 @@ pub use extraction::office_metadata::{CoreProperties, DocxAppProperties};
 
 #[cfg(feature = "redaction")]
 pub use core::extract::extract_with_external_redaction;
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+pub use core::extract::extract_with_layout_pages;
 #[cfg(feature = "url-ingestion")]
 pub use core::extract::map_url;
 pub use core::extract::{extract, extract_batch};

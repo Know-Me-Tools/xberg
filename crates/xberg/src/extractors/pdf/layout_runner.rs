@@ -266,7 +266,7 @@ fn merge_render_warning(
 /// back out through the return value instead, so the caller can merge them
 /// into the document's `processing_warnings` the same way the same-thread
 /// drain in `extractors::pdf::mod` already does for OCR rasterization.
-#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+#[cfg(all(test, feature = "pdf", feature = "layout-detection"))]
 async fn run_layout_for_pdf_pages_async(
     content: &[u8],
     layout_config: &LayoutDetectionConfig,
@@ -275,12 +275,35 @@ async fn run_layout_for_pdf_pages_async(
     security_limits: &crate::extractors::security::SecurityLimits,
     images_config: Option<&crate::core::config::ImageExtractionConfig>,
 ) -> Result<(LayoutAttempt<LayoutRunOutput>, Vec<crate::types::ProcessingWarning>)> {
+    run_layout_for_pdf_pages_async_with_pages(
+        content,
+        layout_config,
+        thread_budget,
+        gated_handling,
+        security_limits,
+        images_config,
+        None,
+    )
+    .await
+}
+
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+async fn run_layout_for_pdf_pages_async_with_pages(
+    content: &[u8],
+    layout_config: &LayoutDetectionConfig,
+    thread_budget: usize,
+    gated_handling: GatedPageHandling,
+    security_limits: &crate::extractors::security::SecurityLimits,
+    images_config: Option<&crate::core::config::ImageExtractionConfig>,
+    pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
+) -> Result<(LayoutAttempt<LayoutRunOutput>, Vec<crate::types::ProcessingWarning>)> {
     #[cfg(feature = "tokio-runtime")]
     {
         let owned_content = content.to_vec();
         let owned_config = layout_config.clone();
         let owned_limits = security_limits.clone();
         let owned_images_config = images_config.cloned();
+        let owned_pages = pages.cloned();
         let (result, glyph_drop_warnings) = tokio::task::spawn_blocking(move || {
             let execution_provider_overridden = crate::ort_discovery::execution_provider_override().is_some();
             let acceleration_override = rtdetr_acceleration_override(&owned_config, execution_provider_overridden);
@@ -289,13 +312,14 @@ async fn run_layout_for_pdf_pages_async(
                 execution_provider_overridden,
                 acceleration_override,
                 |attempt_config| {
-                    run_layout_for_pdf_pages_with_security_limits(
+                    run_layout_for_pdf_pages_with_security_limits_and_pages(
                         &owned_content,
                         attempt_config,
                         thread_budget,
                         gated_handling,
                         &owned_limits,
                         owned_images_config.as_ref(),
+                        owned_pages.as_ref(),
                     )
                 },
             )
@@ -362,6 +386,26 @@ fn auto_gate_decisions(
             Some(decisions)
         }
     }
+}
+
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+fn explicit_page_decisions(
+    selection: &crate::core::layout_pages::LayoutPageSelection,
+    page_count: usize,
+) -> Vec<PageGateDecision> {
+    (0..page_count)
+        .map(|index| {
+            let selected = selection.contains_index(index);
+            PageGateDecision {
+                run_layout: selected,
+                reason: if selected {
+                    crate::pdf::layout_gate::GateReason::ExplicitSelection
+                } else {
+                    crate::pdf::layout_gate::GateReason::ExplicitExclusion
+                },
+            }
+        })
+        .collect()
 }
 
 /// Whether the `Auto` gate selected `page_index` for the model.
@@ -817,7 +861,7 @@ pub(super) fn run_layout_for_pdf_pages(
     )
 }
 
-#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+#[cfg(all(test, feature = "pdf", feature = "layout-detection"))]
 fn run_layout_for_pdf_pages_with_security_limits(
     content: &[u8],
     layout_config: &LayoutDetectionConfig,
@@ -825,6 +869,27 @@ fn run_layout_for_pdf_pages_with_security_limits(
     gated_handling: GatedPageHandling,
     security_limits: &crate::extractors::security::SecurityLimits,
     images_config: Option<&crate::core::config::ImageExtractionConfig>,
+) -> Result<(LayoutRunOutput, Option<crate::types::ProcessingWarning>)> {
+    run_layout_for_pdf_pages_with_security_limits_and_pages(
+        content,
+        layout_config,
+        thread_budget,
+        gated_handling,
+        security_limits,
+        images_config,
+        None,
+    )
+}
+
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+fn run_layout_for_pdf_pages_with_security_limits_and_pages(
+    content: &[u8],
+    layout_config: &LayoutDetectionConfig,
+    thread_budget: usize,
+    gated_handling: GatedPageHandling,
+    security_limits: &crate::extractors::security::SecurityLimits,
+    images_config: Option<&crate::core::config::ImageExtractionConfig>,
+    pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
 ) -> Result<(LayoutRunOutput, Option<crate::types::ProcessingWarning>)> {
     let doc = xberg_native_pdf::PdfDocument::from_bytes(content.to_vec()).map_err(|e| XbergError::Parsing {
         message: format!("layout runner: failed to open PDF: {e}"),
@@ -846,7 +911,10 @@ fn run_layout_for_pdf_pages_with_security_limits(
         ));
     }
 
-    let gate_decisions = auto_gate_decisions(&doc, layout_config, page_count);
+    let gate_decisions = match pages {
+        Some(selection) => Some(explicit_page_decisions(selection, page_count)),
+        None => auto_gate_decisions(&doc, layout_config, page_count),
+    };
     if let Some(decisions) = &gate_decisions
         && decisions.iter().all(|decision| !decision.run_layout)
     {
@@ -978,9 +1046,10 @@ pub(super) fn layout_cpu_fallback_warning(error: &crate::XbergError) -> crate::t
 }
 
 #[cfg(all(feature = "pdf", feature = "layout-detection"))]
-pub(super) async fn maybe_run_layout_for_markdown(
+pub(super) async fn maybe_run_layout_for_markdown_with_pages(
     content: &[u8],
     config: &ExtractionConfig,
+    pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
 ) -> LayoutForMarkdownOptional {
     if !config.use_layout_for_markdown {
         return (None, None, None, None, None, None, None, Vec::new());
@@ -994,13 +1063,14 @@ pub(super) async fn maybe_run_layout_for_markdown(
     let thread_budget = crate::core::config::concurrency::resolve_thread_budget(config.concurrency.as_ref());
     let default_security_limits = crate::extractors::security::SecurityLimits::default();
     let security_limits = config.security_limits.as_ref().unwrap_or(&default_security_limits);
-    let outcome = run_layout_for_pdf_pages_async(
+    let outcome = run_layout_for_pdf_pages_async_with_pages(
         content,
         layout_config.as_ref(),
         thread_budget,
         GatedPageHandling::SkipRender,
         security_limits,
         config.images.as_ref(),
+        pages,
     )
     .await;
 
@@ -1100,12 +1170,13 @@ pub(super) fn ocr_layout_run_count() -> usize {
     feature = "layout-detection",
     any(feature = "ocr", feature = "ocr-pipeline")
 ))]
-pub(super) async fn run_layout_for_ocr(
+pub(super) async fn run_layout_for_ocr_with_pages(
     content: &[u8],
     layout_config: &LayoutDetectionConfig,
     thread_budget: usize,
     security_limits: &crate::extractors::security::SecurityLimits,
     images_config: Option<&crate::core::config::ImageExtractionConfig>,
+    pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
 ) -> Result<(LayoutAttempt<LayoutRunOutput>, Vec<crate::types::ProcessingWarning>)> {
     #[cfg(all(test, paddle_ocr))]
     if WATCHED_OCR_LAYOUT_CONTENT.load(std::sync::atomic::Ordering::SeqCst) == content.as_ptr() as usize {
@@ -1113,13 +1184,14 @@ pub(super) async fn run_layout_for_ocr(
     }
     // OCR consumes the layout pass's rasters as its input images, so gated
     // pages still render; only model inference is skipped for them.
-    run_layout_for_pdf_pages_async(
+    run_layout_for_pdf_pages_async_with_pages(
         content,
         layout_config,
         thread_budget,
         GatedPageHandling::RenderWithoutInference,
         security_limits,
         images_config,
+        pages,
     )
     .await
 }
@@ -1138,6 +1210,21 @@ mod tests {
     use crate::core::config::layout::LayoutDetectionConfig;
     use crate::ort_discovery::parse_execution_provider_override;
     use crate::pdf::layout_gate::PageGateDecision;
+
+    #[test]
+    fn should_select_only_explicit_physical_pages_across_layout_chunks_gh2255() {
+        let selection = crate::core::layout_pages::LayoutPageSelection::new(vec![1, 9, 9, 0, 11]);
+        let decisions = super::explicit_page_decisions(&selection, 10);
+        assert_eq!(decisions.len(), 10);
+        let selected: Vec<_> = decisions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, decision)| decision.run_layout.then_some(index + 1))
+            .collect();
+        assert_eq!(selected, vec![1, 9]);
+        assert_eq!(decisions[0].reason.wire_name(), "explicit_selection");
+        assert_eq!(decisions[1].reason.wire_name(), "explicit_exclusion");
+    }
 
     fn provider(config: &LayoutDetectionConfig) -> ExecutionProviderType {
         config
@@ -2313,3 +2400,7 @@ mod tests {
         assert_eq!(capacity_of(&letter_pages(Some((104, 104, 1_067, 1_333)))), 1);
     }
 }
+
+#[cfg(all(test, feature = "pdf", feature = "layout-detection"))]
+#[path = "layout_pages_inference_tests.rs"]
+mod layout_pages_inference_tests;

@@ -24,6 +24,21 @@ pub async fn extract(input: ExtractInput, config: &ExtractionConfig) -> Result<E
     DEFAULT_ENGINE.extract(input, config).await
 }
 
+/// Extract one PDF bytes input with layout inference restricted to explicit 1-based pages. ~keep
+///
+/// This call enables layout on the native PDF route even when ordinary extraction leaves it disabled.
+/// Selected pages override the automatic layout gate; an empty list skips layout inference.
+/// Invalid pages are ignored with processing warnings. Both extraction caches are bypassed.
+/// This additive entry point leaves existing extraction configuration structs unchanged.
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+pub async fn extract_with_layout_pages(
+    input: ExtractInput,
+    config: &ExtractionConfig,
+    pages: Vec<u32>,
+) -> Result<ExtractionResult> {
+    DEFAULT_ENGINE.extract_with_layout_pages(input, config, pages).await
+}
+
 /// Extract one bytes input and redact a JSON array or JSON Lines payload from an external inspection engine.
 ///
 /// The payload is parsed in Rust so vendor aliases and nested fields remain intact across language bindings.

@@ -46,7 +46,9 @@ use crate::types::ExtractedUri;
 use crate::types::{ExtractedDocument, UriKind};
 use crate::{Result, XbergError};
 
-use crate::core::extractor::{extract_bytes, extract_file};
+#[cfg(feature = "url-ingestion")]
+use crate::core::extractor::extract_bytes;
+use crate::core::extractor::extract_file;
 use crate::engine::seams::ProgressEvent;
 
 const HTTP_SCHEME: &str = "http://";
@@ -163,6 +165,55 @@ pub(crate) async fn extract(
     }
 
     result
+}
+
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+pub(crate) async fn extract_with_layout_pages(
+    inner: &super::EngineInner,
+    input: ExtractInput,
+    config: &ExtractionConfig,
+    pages: &crate::core::layout_pages::LayoutPageSelection,
+) -> Result<ExtractionResult> {
+    inner.progress.emit(ProgressEvent {
+        stage: PROGRESS_STAGE_START.to_string(),
+        message: None,
+        fraction: Some(0.0),
+    });
+    let result = async {
+        if input.kind != ExtractInputKind::Bytes {
+            return Err(XbergError::validation(
+                "explicit layout-page selection accepts one PDF bytes input; read URI input first".to_string(),
+            ));
+        }
+        let resolved = resolve_explicit_layout_page_config(&input, config)?;
+        extract_bytes_input_with_layout_pages(input, &resolved, 0, Some(pages)).await
+    }
+    .await;
+    inner.progress.emit(ProgressEvent {
+        stage: if result.is_ok() {
+            PROGRESS_STAGE_COMPLETE
+        } else {
+            PROGRESS_STAGE_ERROR
+        }
+        .to_string(),
+        message: result.as_ref().err().map(ToString::to_string),
+        fraction: None,
+    });
+    result
+}
+
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+fn resolve_explicit_layout_page_config(input: &ExtractInput, config: &ExtractionConfig) -> Result<ExtractionConfig> {
+    config.validate()?;
+    validate_input_overrides(std::slice::from_ref(input))?;
+    let mut resolved = resolve_input_config(input, config);
+    // ~keep Explicit page selection opts into layout even when the ordinary native route leaves it disabled.
+    resolved.use_layout_for_markdown = true;
+    resolved.layout.get_or_insert_with(Default::default);
+    resolved.use_cache = false;
+    resolved.validate()?;
+    ensure_not_cancelled(&resolved)?;
+    Ok(resolved)
 }
 
 fn ensure_not_cancelled(config: &ExtractionConfig) -> Result<()> {
@@ -1208,6 +1259,15 @@ async fn extract_one_resolved(
 }
 
 async fn extract_bytes_input(input: ExtractInput, config: &ExtractionConfig, index: usize) -> Result<ExtractionResult> {
+    extract_bytes_input_with_layout_pages(input, config, index, None).await
+}
+
+async fn extract_bytes_input_with_layout_pages(
+    input: ExtractInput,
+    config: &ExtractionConfig,
+    index: usize,
+    pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
+) -> Result<ExtractionResult> {
     let filename = input.filename;
     let mime_type = input.mime_type;
     let bytes = input
@@ -1216,7 +1276,10 @@ async fn extract_bytes_input(input: ExtractInput, config: &ExtractionConfig, ind
     let (bytes, mime_type) = resolve_owned_bytes_mime(bytes, mime_type, filename.clone(), config).await?;
     let mut cfg = config.clone();
     cfg.source_name.clone_from(&filename);
-    let mut result = Box::pin(extract_bytes(&bytes, &mime_type, &cfg)).await?;
+    let mut result = Box::pin(crate::core::extractor::extract_bytes_with_layout_pages(
+        &bytes, &mime_type, &cfg, pages,
+    ))
+    .await?;
     annotate_source(
         &mut result,
         "bytes",

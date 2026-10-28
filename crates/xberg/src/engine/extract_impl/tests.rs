@@ -843,3 +843,57 @@ fn resolve_batch_input_config_carries_the_recognition_limit_through_a_file_overr
         "the recognition limit survives the override merge and the budget rewrite"
     );
 }
+
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+#[test]
+fn should_enable_explicit_layout_pages_from_default_native_settings_gh2255() {
+    let config = ExtractionConfig::default();
+    let input = ExtractInput::from_bytes(b"pdf input".to_vec(), "application/pdf", None);
+    assert!(!config.use_layout_for_markdown);
+    assert!(config.layout.is_none());
+    let resolved = resolve_explicit_layout_page_config(&input, &config).unwrap();
+    assert!(resolved.use_layout_for_markdown);
+    assert!(resolved.layout.is_some());
+    assert!(resolved.resolved_layout_config().is_some());
+    assert!(!resolved.use_cache);
+    assert!(!config.use_layout_for_markdown);
+    assert!(config.layout.is_none());
+}
+
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+#[test]
+fn should_activate_explicit_layout_while_preserving_configured_model_options_gh2255() {
+    let config = ExtractionConfig {
+        layout: Some(crate::core::config::layout::LayoutDetectionConfig {
+            confidence_threshold: Some(0.75),
+            table_model: crate::core::config::layout::TableModel::Disabled,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let input = ExtractInput::from_bytes(b"pdf input".to_vec(), "application/pdf", None);
+    assert!(!config.use_layout_for_markdown);
+    let resolved = resolve_explicit_layout_page_config(&input, &config).unwrap();
+    let layout = resolved.layout.as_ref().unwrap();
+    assert!(resolved.use_layout_for_markdown);
+    assert_eq!(layout.confidence_threshold, Some(0.75));
+    assert_eq!(layout.table_model, crate::core::config::layout::TableModel::Disabled);
+}
+
+#[cfg(all(feature = "pdf", feature = "layout-detection"))]
+#[test]
+fn should_enable_explicit_layout_after_per_input_model_overrides_gh2255() {
+    let config = ExtractionConfig::default();
+    let mut input = ExtractInput::from_bytes(b"pdf input".to_vec(), "application/pdf", None);
+    input.config = Some(crate::core::config::FileExtractionConfig {
+        layout: Some(crate::core::config::layout::LayoutDetectionConfig {
+            confidence_threshold: Some(0.6),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let resolved = resolve_explicit_layout_page_config(&input, &config).unwrap();
+    assert!(resolved.use_layout_for_markdown);
+    assert_eq!(resolved.layout.as_ref().unwrap().confidence_threshold, Some(0.6));
+    assert!(!resolved.use_cache);
+}

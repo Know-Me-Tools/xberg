@@ -371,7 +371,9 @@ pub(crate) fn register_default_extractors() -> Result<()> {
         registry.register_internal(Arc::new(DocbookExtractor::new()))?;
     }
 
-    #[cfg(feature = "pdf")]
+    #[cfg(all(feature = "pdf", feature = "layout-detection"))]
+    registry.register_internal_with_layout_pages(Arc::new(PdfExtractor::new()))?;
+    #[cfg(all(feature = "pdf", not(feature = "layout-detection")))]
     registry.register_internal(Arc::new(PdfExtractor::new()))?;
 
     #[cfg(any(feature = "excel", feature = "excel-wasm"))]

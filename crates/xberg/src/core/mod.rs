@@ -41,6 +41,7 @@ pub(crate) mod formats;
 #[cfg(feature = "image-encode")]
 pub(crate) mod image_encode;
 pub(crate) mod io;
+pub(crate) mod layout_pages;
 pub mod mime;
 pub(crate) mod path_resolver;
 pub mod pipeline;

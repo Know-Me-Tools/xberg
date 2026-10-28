@@ -531,7 +531,7 @@ enum AllPagesFailedPolicy {
 // union-of-consumers `cfg` here is what drifted and failed the 1.3.0 publish (GH#1951).
 #[allow(dead_code)]
 enum MixedLayoutInputs<'a> {
-    Resolve,
+    Resolve(Option<&'a crate::core::layout_pages::LayoutPageSelection>),
     Prepared(Option<&'a PreparedLayoutInputs>),
 }
 
@@ -559,10 +559,8 @@ struct MixedOcrPageSelection<'a> {
     single_block: &'a [u32],
 }
 
-#[cfg(all(test, any(feature = "ocr", feature = "ocr-pipeline"), feature = "pdf"))]
-// ~keep Test-support wrapper: only the `feature = "ocr"` test module calls it, so it is dead
-// on an `ocr-pipeline`-only test leg. See the GH#1951 rationale on `MixedLayoutInputs`.
-#[allow(dead_code)]
+#[cfg(all(test, feature = "ocr", feature = "pdf"))]
+// ~keep Test-only compatibility wrapper for the classical OCR regression suite.
 pub(crate) async fn extract_mixed_ocr_native(
     native_text: &str,
     boundaries: &[crate::types::PageBoundary],
@@ -584,7 +582,7 @@ pub(crate) async fn extract_mixed_ocr_native(
     .map(|run| run.output)
 }
 
-#[cfg(all(any(feature = "ocr", feature = "ocr-pipeline"), feature = "pdf"))]
+#[cfg(all(test, feature = "ocr", feature = "pdf"))]
 pub(crate) async fn extract_mixed_ocr_native_with_single_block_pages(
     native_text: &str,
     boundaries: &[crate::types::PageBoundary],
@@ -594,6 +592,28 @@ pub(crate) async fn extract_mixed_ocr_native_with_single_block_pages(
     config: &ExtractionConfig,
     _path: Option<&std::path::Path>,
 ) -> crate::Result<MixedOcrRun> {
+    extract_mixed_ocr_native_with_layout_pages(
+        native_text,
+        boundaries,
+        (ocr_page_numbers, single_block_page_numbers),
+        content,
+        config,
+        None,
+    )
+    .await
+}
+
+#[cfg(all(any(feature = "ocr", feature = "ocr-pipeline"), feature = "pdf"))]
+pub(crate) async fn extract_mixed_ocr_native_with_layout_pages(
+    native_text: &str,
+    boundaries: &[crate::types::PageBoundary],
+    selected_pages: (&[u32], &[u32]),
+    content: &[u8],
+    config: &ExtractionConfig,
+    layout_pages: Option<&crate::core::layout_pages::LayoutPageSelection>,
+) -> crate::Result<MixedOcrRun> {
+    let (ocr_page_numbers, single_block_page_numbers) = selected_pages;
+    let _ = &layout_pages;
     extract_mixed_ocr_native_with_layout_inputs(
         native_text,
         boundaries,
@@ -609,7 +629,7 @@ pub(crate) async fn extract_mixed_ocr_native_with_single_block_pages(
             AllPagesFailedPolicy::PreserveNative
         },
         #[cfg(feature = "layout-detection")]
-        MixedLayoutInputs::Resolve,
+        MixedLayoutInputs::Resolve(layout_pages),
     )
     .await
     .map_err(crate::XbergError::from)
@@ -681,12 +701,17 @@ async fn extract_mixed_ocr_native_with_layout_inputs(
                 crate::core::config::concurrency::resolve_thread_budget(config.concurrency.as_ref());
             let default_security_limits = crate::extractors::security::SecurityLimits::default();
             let security_limits = config.security_limits.as_ref().unwrap_or(&default_security_limits);
-            match super::super::layout_runner::run_layout_for_ocr(
+            let selected_layout_pages = match layout_inputs {
+                MixedLayoutInputs::Resolve(pages) => pages,
+                MixedLayoutInputs::Prepared(_) => None,
+            };
+            match super::super::layout_runner::run_layout_for_ocr_with_pages(
                 content,
                 layout_config.as_ref(),
                 layout_thread_budget,
                 security_limits,
                 config.images.as_ref(),
+                selected_layout_pages,
             )
             .await
             {
@@ -737,7 +762,7 @@ async fn extract_mixed_ocr_native_with_layout_inputs(
     #[cfg(feature = "layout-detection")]
     let layout_inputs_for_mixed = match layout_inputs {
         MixedLayoutInputs::Prepared(inputs) => inputs,
-        MixedLayoutInputs::Resolve => resolved_layout_inputs.as_ref(),
+        MixedLayoutInputs::Resolve(_) => resolved_layout_inputs.as_ref(),
     };
     #[cfg(feature = "layout-detection")]
     let layout_detections_for_mixed = layout_inputs_for_mixed.map(|(_, detections)| detections.as_slice());

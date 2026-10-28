@@ -91,6 +91,10 @@ pub(crate) enum GateReason {
     SignalsUnavailable,
     /// Plain single-column text: the model has nothing to find.
     PlainText,
+    /// Explicit request selection overrides automatic heuristics. ~keep
+    ExplicitSelection,
+    /// The caller explicitly excluded this page. ~keep
+    ExplicitExclusion,
 }
 
 impl GateReason {
@@ -106,6 +110,8 @@ impl GateReason {
             Self::FormWidgets => "form_widgets",
             Self::SignalsUnavailable => "signals_unavailable",
             Self::PlainText => "plain_text",
+            Self::ExplicitSelection => "explicit_selection",
+            Self::ExplicitExclusion => "explicit_exclusion",
         }
     }
 }

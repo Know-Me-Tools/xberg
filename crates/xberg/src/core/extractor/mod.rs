@@ -11,7 +11,7 @@ mod helpers;
 mod lenient;
 
 #[allow(unused_imports)]
-pub(crate) use bytes::extract_bytes;
+pub(crate) use bytes::{extract_bytes, extract_bytes_with_layout_pages};
 #[allow(unused_imports)]
 pub(crate) use file::extract_file;
 
