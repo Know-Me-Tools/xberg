@@ -185,7 +185,7 @@ impl ModelBenchmarkReport {
         validate_model_identities(&self.models[0], &self.models[1])?;
         let mut seen = BTreeSet::new();
         let mut render_hashes = BTreeMap::new();
-        for row in &self.rows {
+        for (ordinal, row) in self.rows.iter().enumerate() {
             self.validate_row(row)?;
             if !seen.insert((&row.document, row.page, row.iteration)) {
                 return Err(Error::Benchmark("duplicate detector page/iteration row".to_string()));
@@ -195,6 +195,9 @@ impl ModelBenchmarkReport {
                 && previous != &row.render_sha256
             {
                 return Err(Error::Benchmark("page render changed between iterations".to_string()));
+            }
+            if row.a_first != ordinal.is_multiple_of(2) {
+                return Err(Error::Benchmark("detector paired execution order mismatch".to_string()));
             }
         }
         let actual = self
