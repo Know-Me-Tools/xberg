@@ -1,5 +1,6 @@
 //! Recover cell scripts from original typography before the table word fusion discards it. ~keep
 
+use super::super::span_geometry::page_advance_midpoint;
 use super::{NativeDocument, is_script_run_of, sort_spans_in_reading_order};
 use crate::rendering::table_scripts::CellScriptAnnotation;
 use crate::types::{AnnotationKind, ProcessingWarning, TextAnnotation};
@@ -28,9 +29,9 @@ pub(super) fn page_spans(doc: &NativeDocument, page: usize, warnings: &mut Vec<P
                 .spans
                 .into_iter()
                 .map(with_effective_baseline)
-                .filter(|span| span.bbox.y.is_finite() && span.font_size.is_finite())
+                .filter(|span| page_advance_midpoint(span).1.is_finite() && span.font_size.is_finite())
                 .collect();
-            spans.sort_by(|a, b| a.bbox.y.total_cmp(&b.bbox.y));
+            spans.sort_by(|a, b| page_advance_midpoint(a).1.total_cmp(&page_advance_midpoint(b).1));
             let margin = spans.iter().map(|span| span.font_size).fold(0.0f32, f32::max)
                 * crate::script_run::SCRIPT_RUN_MAX_BASELINE_FONT_FACTOR;
             PageSpans { spans, margin }
@@ -88,15 +89,14 @@ fn cell_annotations(cell: &TableCell, text: &str, spans: &PageSpans) -> Vec<Text
     let Some(bounds) = cell.bbox else { return Vec::new() };
     let start = spans
         .spans
-        .partition_point(|span| span.bbox.y < bounds.y - spans.margin);
+        .partition_point(|span| page_advance_midpoint(span).1 < bounds.y - spans.margin);
     let end = spans
         .spans
-        .partition_point(|span| span.bbox.y <= bounds.y + bounds.height + spans.margin);
+        .partition_point(|span| page_advance_midpoint(span).1 <= bounds.y + bounds.height + spans.margin);
     let selected: Vec<_> = spans.spans[start..end]
         .iter()
         .filter(|span| {
-            let x = span.bbox.x + span.bbox.width * 0.5;
-            let y = span.bbox.y;
+            let (x, y) = page_advance_midpoint(span);
             let margin = span.font_size * crate::script_run::SCRIPT_RUN_MAX_BASELINE_FONT_FACTOR;
             x >= bounds.x
                 && x <= bounds.x + bounds.width
@@ -164,3 +164,7 @@ fn script_kind(spans: &[&TextSpan], index: usize) -> Option<AnnotationKind> {
             })
         })
 }
+
+#[cfg(test)]
+#[path = "script_tests.rs"]
+mod tests;
