@@ -125,3 +125,39 @@ stub_auto_cargo() {
 	xberg_assert_status 1
 	xberg_assert_output_contains 'expected one passing regression test with none ignored'
 }
+
+stub_mime_cargo() {
+	xberg_stub cargo \
+		'printf "%s\n" "$*" >>"$XBERG_TRACE"' \
+		'expected=11; case "$*" in *core::extractor::bytes*) expected=4; case "$*" in *tower-service*) expected=6 ;; esac ;; esac' \
+		'case " $* " in *" --list "*) for ((i=0;i<${LIST_COUNT:-$expected};i++)); do printf "regression_%s: test\n" "$i"; done ;;' \
+		'*) printf "test result: ok. %s passed; 0 failed; 0 ignored;\n" "${RUN_COUNT:-$expected}" ;; esac'
+}
+
+@test "MIME verification should collect and execute both feature graphs with all 32 regressions" {
+	stub_mime_cargo
+	run bash "$REPOSITORY_ROOT/scripts/ci/rust/run-mime-tests.sh"
+	xberg_assert_status 0
+	xberg_assert_output_contains 'configurations expected 2, observed 2; tests expected 32, passed 32'
+	[ "$(wc -l <"$XBERG_TRACE" | tr -d '[:space:]')" -eq 8 ]
+	[ "$(grep -c -- '--features tokio-runtime,tower-service' "$XBERG_TRACE")" -eq 4 ]
+	[ "$(grep -c -- '--list' "$XBERG_TRACE")" -eq 4 ]
+}
+
+@test "MIME verification should reject an empty collected group before running it" {
+	stub_mime_cargo
+	export LIST_COUNT=0
+	run bash "$REPOSITORY_ROOT/scripts/ci/rust/run-mime-tests.sh"
+	xberg_assert_status 1
+	xberg_assert_output_contains 'expected 4 tests, listed 0'
+	[ "$(wc -l <"$XBERG_TRACE" | tr -d '[:space:]')" -eq 1 ]
+}
+
+@test "MIME verification should reject a collected group that executes zero regressions" {
+	stub_mime_cargo
+	export RUN_COUNT=0
+	run bash "$REPOSITORY_ROOT/scripts/ci/rust/run-mime-tests.sh"
+	xberg_assert_status 1
+	xberg_assert_output_contains 'expected 4 passing tests with none ignored'
+	[ "$(wc -l <"$XBERG_TRACE" | tr -d '[:space:]')" -eq 2 ]
+}
