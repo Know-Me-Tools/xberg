@@ -3,6 +3,7 @@ use std::io::Cursor;
 use image::{ImageFormat, Rgb, RgbImage};
 use tempfile::TempDir;
 
+use super::super::input::{PreparedInput, read_document};
 use super::*;
 
 fn raster(format: ImageFormat) -> Vec<u8> {
@@ -175,9 +176,75 @@ fn should_reject_decoded_rasters_over_the_existing_security_budget() {
 #[test]
 fn should_reject_unsupported_input_types_without_dropping_their_document() {
     let temp = tempfile::tempdir().unwrap();
-    let documents = [document(&temp, "vector", "svg", b"<svg/>")];
+    for kind in ["svg", "tif", "tiff", "gif"] {
+        let documents = [document(&temp, kind, kind, b"unsupported input")];
+        assert_eq!(
+            load_documents(&cohort(&temp, &documents)).unwrap_err().to_string(),
+            "Configuration error: detector cohort supports only PDF, PNG and JPEG fixtures"
+        );
+    }
+}
+
+#[test]
+fn should_bound_encoded_raster_reads_by_the_existing_security_budget() {
+    let temp = tempfile::tempdir().unwrap();
+    let document = document(&temp, "oversized-encoded", "png", b"PNG");
+    let limit = xberg::extractors::security::SecurityLimits::default().max_content_size as u64;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&document.document_path)
+        .unwrap()
+        .set_len(limit + 1)
+        .unwrap();
     assert_eq!(
-        load_documents(&cohort(&temp, &documents)).unwrap_err().to_string(),
-        "Configuration error: detector cohort supports only PDF, PNG and JPEG fixtures"
+        plan_documents(&[document], &Default::default())
+            .unwrap_err()
+            .to_string(),
+        "Benchmark error: detector raster exceeds security_limits.max_content_size"
+    );
+}
+
+#[test]
+fn should_preserve_original_raster_bytes_dimensions_and_hashes_at_every_dpi() {
+    let temp = tempfile::tempdir().unwrap();
+    for (kind, format) in [("png", ImageFormat::Png), ("jpeg", ImageFormat::Jpeg)] {
+        let bytes = raster(format);
+        let document = document(&temp, kind, kind, &bytes);
+        let actual = read_document(&document).unwrap();
+        let input = PreparedInput::open(&actual, kind).unwrap();
+        assert_eq!(input.page_count(), 1);
+        for dpi in [1, 600] {
+            let page = input.page(0, dpi).unwrap();
+            assert_eq!((page.width, page.height), (7, 11));
+            assert_eq!(page.bytes.as_ref(), bytes.as_slice());
+            assert_eq!(hash_bytes(&page.bytes), hash_bytes(&bytes));
+        }
+        assert_eq!(
+            input.page(1, 150).err().unwrap().to_string(),
+            "Benchmark error: detector page index exceeds prepared input"
+        );
+    }
+}
+
+#[test]
+fn should_check_both_detector_dimensions_against_the_decoded_input() {
+    let bytes = raster(ImageFormat::Png);
+    let input = PreparedInput::open(&bytes, "png").unwrap();
+    let page = input.page(0, 150).unwrap();
+    let measurement = DetectorMeasurement::from_detection(
+        DetectionResult {
+            page_width: 7,
+            page_height: 11,
+            detections: Vec::new(),
+        },
+        1.0,
+    )
+    .unwrap();
+    let mut measurements = [measurement.clone(), measurement];
+    page.validate_measurements(&measurements).unwrap();
+    measurements[1].page_height = 12;
+    assert_eq!(
+        page.validate_measurements(&measurements).unwrap_err().to_string(),
+        "Benchmark error: detector result dimensions do not match input pixels"
     );
 }
