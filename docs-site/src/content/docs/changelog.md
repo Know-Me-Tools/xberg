@@ -93,8 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **(pdf): Cache Type 3 font-mapping provenance during text extraction.**
   Repeated glyphs retain their fallback markers without rescanning the font for every character. (#2307)
-- **(doc): Preserve superscript and subscript annotations in footnotes and comments.**
-  Markdown, Djot and HTML retain the annotations through story decoding and whitespace normalization. (#2275)
+- **(doc): Preserve direct and piece-level superscript and subscript formatting.**
+  Compact and complex Word piece properties retain their logical character positions, including reused source bytes.
+  Footnotes and comments keep annotations in Markdown, Djot and HTML through decoding and whitespace normalization. (#2275)
 
 - **(pptx): Preserve slide headings and table grids in plain document structures.**
   Tables retain literal pipe characters and remain available in extraction results. (#2302)
