@@ -301,7 +301,9 @@ async fn should_preserve_inherited_style_scripts_in_footnote_stories_gh2275() {
         Some((6, &[0, 4])),
     );
     let parsed = super::super::extract_doc_text(&bytes).expect("valid styled footnote DOC");
-    assert_eq!(parsed.content, "Main");
+    assert_eq!(parsed.content, "Main\n\nFootnotes\n\n109");
+    assert_eq!(parsed.paragraphs.len(), 1);
+    assert_eq!(parsed.paragraphs[0].content, "Main");
     assert_eq!(parsed.subdocuments.len(), 1);
     assert_eq!(parsed.subdocuments[0].text, "109");
     assert_eq!(parsed.subdocuments[0].annotations, vec![builder::superscript(0, 3)]);
