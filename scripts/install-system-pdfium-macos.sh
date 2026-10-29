@@ -252,7 +252,7 @@ print_summary() {
   echo
 }
 
-main() {
+main() (
   log_info "PDFium System Installation Script for macOS"
   log_info "============================================"
   echo
@@ -279,6 +279,6 @@ main() {
   verify_installation "$PREFIX" "$PDFIUM_VERSION"
 
   print_summary "$PREFIX" "$PDFIUM_VERSION" "$arch"
-}
+)
 
 main "$@"

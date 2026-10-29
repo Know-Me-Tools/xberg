@@ -114,6 +114,7 @@ prepare_macos_archive() {
 	grep -Fxq 'Version: 7678' "$PREFIX/lib/pkgconfig/pdfium.pc"
 	grep -Fq 'chromium/7678/pdfium-mac-arm64.tgz' "$XBERG_TRACE"
 	[ "$(find "$PREFIX" -type f | wc -l | tr -d '[:space:]')" -eq 3 ]
+	[ ! -e "$TMPDIR/download" ]
 }
 
 @test "macOS PDFium system installer should allow an initially unset pkg-config search path" {
