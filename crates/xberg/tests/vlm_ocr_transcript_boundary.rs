@@ -83,7 +83,7 @@ async fn should_preserve_every_repeated_group_and_the_exact_provider_image() {
     let server = MockServer::start().await;
     let transcript = format!(
         "Page header\n\n{}\n\nPage footer\n",
-        vec![SENTENCE; GROUP_COUNT].join("\n\n")
+        [SENTENCE; GROUP_COUNT].join("\n\n")
     );
     serve_transcript(&server, &transcript).await;
     let image = page_image();
@@ -102,7 +102,7 @@ async fn should_preserve_every_repeated_group_and_the_exact_provider_image() {
 #[tokio::test]
 async fn should_keep_a_provider_omission_visible_instead_of_inventing_a_repeated_group() {
     let server = MockServer::start().await;
-    let transcript = vec![SENTENCE; GROUP_COUNT - 1].join("\n\n");
+    let transcript = [SENTENCE; GROUP_COUNT - 1].join("\n\n");
     serve_transcript(&server, &transcript).await;
     let document = VlmOcrBackend
         .process_image(&page_image(), &ocr_config(&server))

@@ -43,7 +43,7 @@ fn word(value: u16, output: &mut Vec<u8>) {
 fn upx(properties: &[u8], output: &mut Vec<u8>) {
     word(properties.len() as u16, output);
     output.extend_from_slice(properties);
-    if properties.len() % 2 != 0 {
+    if !properties.len().is_multiple_of(2) {
         output.push(0);
     }
 }
