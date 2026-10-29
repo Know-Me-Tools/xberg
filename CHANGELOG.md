@@ -89,6 +89,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **(mobile): Restore default Dart and Swift builds for iOS devices and simulators.**
+- **(doc): Retain inherited superscript and subscript character styles while honoring direct formatting.** (#2275)
+- **(pdf): Preserve superscript and subscript annotations in detected tables, including rotated text.** (#2275)
+- **(packaging): Reject failed macOS dependency inspections and support Node vendoring with Bash 3.2.**
+
 - **(pdf): Cache Type 3 font-mapping provenance during text extraction.**
   Repeated glyphs retain their fallback markers without rescanning the font for every character. (#2307)
 - **(doc): Preserve direct and piece-level superscript and subscript formatting.**
