@@ -63,7 +63,7 @@ if [[ -d "${TARGET_DIR}" ]]; then
   echo "Contents of ${TARGET_DIR}:"
   shopt -s nullglob
   files=("${TARGET_DIR}"/*xberg* "${TARGET_DIR}"/*.dll "${TARGET_DIR}"/*.so "${TARGET_DIR}"/*.dylib)
-  if [[ ${#files[@]} -gt 0 ]]; then
+  if [[ -n "${files[0]+present}" ]]; then
     ls -la "${files[@]}"
   else
     echo "No xberg binaries found"
@@ -76,15 +76,13 @@ fi
 if [[ ! -f "${TARGET_DIR}/${EXT_FILE}" ]]; then
   echo "::error::Extension file not found: ${TARGET_DIR}/${EXT_FILE}" >&2
   echo "Attempting to find alternative file names..."
-  for ext in .dll .so .dylib; do
-    for prefix in libxberg_php xberg_php; do
-      candidate="${TARGET_DIR}/${prefix}${ext}"
-      if [[ -f "$candidate" ]]; then
-        echo "::notice::Found candidate: $candidate"
-        EXT_FILE="${prefix}${ext}"
-        break 2
-      fi
-    done
+  for prefix in libxberg_php xberg_php; do
+    candidate="${TARGET_DIR}/${prefix}.${EXT_SUFFIX}"
+    if [[ -f "$candidate" ]]; then
+      echo "::notice::Found candidate: $candidate"
+      EXT_FILE="${prefix}.${EXT_SUFFIX}"
+      break
+    fi
   done
 
   if [[ ! -f "${TARGET_DIR}/${EXT_FILE}" ]]; then
