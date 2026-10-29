@@ -111,9 +111,9 @@ tasks:
       - |
         cd crates/xberg-node
         pnpm install
-        CARGO_BUILD_JOBS=1 pnpm exec napi build --output-dir . --release --platform
+        CARGO_BUILD_JOBS=1 pnpm exec napi build --no-js --output-dir . --release --platform
         mkdir -p ../../dist/node
-        cp index.js index.d.ts package.json ./*.node ../../dist/node/
+        cp index.js index.mjs binding.cjs index.d.ts package.json ./*.node ../../dist/node/
 
   ci:build:java-binding:
     cmds:
