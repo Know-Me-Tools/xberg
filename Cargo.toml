@@ -20,7 +20,12 @@ members = [
     "packages/swift/rust",
     "tools/benchmark-harness",
 ]
-exclude = ["e2e/rust", "packages/elixir/native/xberg_nif", "packages/ruby/ext/xberg_rb"]
+exclude = [
+    "e2e/rust",
+    "packages/elixir/native/xberg_nif",
+    "packages/ruby/ext/xberg_rb",
+    "vendored/sysinfo",
+]
 default-members = ["crates/xberg", "crates/xberg-cli"]
 resolver = "2"
 
@@ -185,6 +190,13 @@ xberg-native-pdf = { path = "./crates/xberg-native-pdf", version = "1.4.0" }
 #
 # The native PDF engine needs no entry: it is a workspace member at crates/xberg-native-pdf
 # and resolves by path (see the note above that dependency).
+
+# Backport only the ZIP 9 migration onto Candle's published 0.11.0 source, until
+# https://github.com/huggingface/candle/pull/4041 reaches a registry release. ~keep
+candle-core = { git = "https://github.com/Goldziher/candle", rev = "cb8d101e04a217182dfafc28562bf6690c912ddf" }
+# Xet 1.7.1 still requires sysinfo 0.39; keep its iOS compatibility fix local
+# until that dependency chain accepts a published version with the fix. ~keep
+sysinfo = { path = "vendored/sysinfo" }
 
 # The five entries below are self-patches of our own workspace members, which are already
 # declared as `path = ..., version = ...` deps -- so path resolution wins locally with or

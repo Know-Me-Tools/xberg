@@ -1132,7 +1132,7 @@ dependencies = [
  "log",
  "quick-xml 0.42.0",
  "serde",
- "zip 9.1.3",
+ "zip",
 ]
 
 [[package]]
@@ -1147,13 +1147,12 @@ dependencies = [
 [[package]]
 name = "candle-core"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ecb245093b0f791b89d3420c3df9c6d49c60ab63ba54db896bf8a3baf486706"
+source = "git+https://github.com/Goldziher/candle?rev=cb8d101e04a217182dfafc28562bf6690c912ddf#cb8d101e04a217182dfafc28562bf6690c912ddf"
 dependencies = [
  "accelerate-src",
  "byteorder",
  "candle-kernels",
- "candle-metal-kernels",
+ "candle-metal-kernels 0.11.0 (git+https://github.com/Goldziher/candle?rev=cb8d101e04a217182dfafc28562bf6690c912ddf)",
  "candle-ug",
  "cudarc 0.19.10",
  "float8",
@@ -1175,14 +1174,13 @@ dependencies = [
  "tokenizers 0.22.2",
  "yoke 0.8.4",
  "zerocopy",
- "zip 8.6.0",
+ "zip",
 ]
 
 [[package]]
 name = "candle-kernels"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67450168a281bbb195a14cc85cf164c7a12023a54a03409a3324f476346e0789"
+source = "git+https://github.com/Goldziher/candle?rev=cb8d101e04a217182dfafc28562bf6690c912ddf#cb8d101e04a217182dfafc28562bf6690c912ddf"
 dependencies = [
  "cudaforge",
 ]
@@ -1204,6 +1202,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "candle-metal-kernels"
+version = "0.11.0"
+source = "git+https://github.com/Goldziher/candle?rev=cb8d101e04a217182dfafc28562bf6690c912ddf#cb8d101e04a217182dfafc28562bf6690c912ddf"
+dependencies = [
+ "block2",
+ "half",
+ "objc2",
+ "objc2-foundation",
+ "objc2-metal",
+ "once_cell",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "candle-nn"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1211,7 +1224,7 @@ checksum = "eaa10b6ccc365b33210ce404fbf45e60d3e0bdac1004463cf1052e6ee1c1739a"
 dependencies = [
  "accelerate-src",
  "candle-core",
- "candle-metal-kernels",
+ "candle-metal-kernels 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "half",
  "intel-mkl-src",
  "libc",
@@ -1247,8 +1260,7 @@ dependencies = [
 [[package]]
 name = "candle-ug"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "257411c33abf7d898a31ac20d80813dfe96ff09e23a73039e22ab293aea9b871"
+source = "git+https://github.com/Goldziher/candle?rev=cb8d101e04a217182dfafc28562bf6690c912ddf#cb8d101e04a217182dfafc28562bf6690c912ddf"
 dependencies = [
  "ug",
  "ug-cuda",
@@ -1618,7 +1630,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2540,7 +2552,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.3",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2755,7 +2767,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2811,7 +2823,7 @@ dependencies = [
  "skeptic",
  "thiserror 2.0.21",
  "ureq 3.5.0",
- "zip 9.1.3",
+ "zip",
 ]
 
 [[package]]
@@ -5989,7 +6001,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7216,7 +7228,7 @@ dependencies = [
  "once_cell",
  "socket2 0.5.10",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7889,7 +7901,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7948,7 +7960,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9171,8 +9183,6 @@ dependencies = [
 [[package]]
 name = "sysinfo"
 version = "0.39.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2071df9448915b71c4fe6d25deaf1c22f12bd234f01540b77312bb8e41361e6"
 dependencies = [
  "libc",
  "memchr",
@@ -9268,10 +9278,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10283,12 +10293,6 @@ checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
 
 [[package]]
 name = "typed-path"
-version = "0.12.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54ec2755506471f54baf5e4bb5499d8e510cc1caf271270e778a736bd2d7336c"
-
-[[package]]
-name = "typed-path"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
@@ -10425,7 +10429,7 @@ dependencies = [
  "thiserror 2.0.21",
  "unicode-normalization",
  "unparser-shared",
- "zip 9.1.3",
+ "zip",
 ]
 
 [[package]]
@@ -11075,7 +11079,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11589,7 +11593,7 @@ dependencies = [
  "xberg-tesseract",
  "yaml_serde",
  "zeroize",
- "zip 9.1.3",
+ "zip",
 ]
 
 [[package]]
@@ -11892,7 +11896,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "vcpkg",
- "zip 9.1.3",
+ "zip",
 ]
 
 [[package]]
@@ -12232,18 +12236,6 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "8.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
-dependencies = [
- "crc32fast",
- "indexmap 2.14.2",
- "memchr",
- "typed-path 0.12.4",
-]
-
-[[package]]
-name = "zip"
 version = "9.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1156b39d142a34b999c2310a50455e0cb3760bf7efad0122f796d813bee26ccb"
@@ -12264,7 +12256,7 @@ dependencies = [
  "ppmd-rust",
  "sha1",
  "time",
- "typed-path 0.13.0",
+ "typed-path",
  "windows-sys 0.61.2",
  "zeroize",
  "zopfli",
