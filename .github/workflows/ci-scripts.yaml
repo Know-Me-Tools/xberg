@@ -43,6 +43,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install Task
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          install-args: task
+
       - name: Install Bats
         uses: xberg-io/actions/install-bats@v1
         with:
