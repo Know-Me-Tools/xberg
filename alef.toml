@@ -2516,6 +2516,7 @@ features = [
   "stopwords",
 ]
 exclude_functions = [
+  "extract_with_layout_pages",
   "calculate_quality_score",
   "count_tokens",
   "embed_texts",
@@ -2770,7 +2771,6 @@ features = [
   "ocr",
   "paddle-ocr",
   "paddle-ocr-types",
-  "layout-detection",
   "layout-types",
   "embeddings",
   "embedding-presets",
