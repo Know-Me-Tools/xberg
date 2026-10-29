@@ -8,6 +8,7 @@ setup() {
 	touch "$XBERG_HEIF_PREFIX/lib/libheif.dylib"
 	xberg_stub_exit curl 42
 	xberg_stub_exit sleep 0
+	xberg_stub sysctl 'printf "4\n"'
 }
 
 @test "macos_heif should_rebuild_a_prefix_without_a_version_receipt" {
@@ -69,7 +70,7 @@ setup() {
 	xberg_stub curl 'while [ "$1" != "-o" ]; do shift; done; printf abc >"$2"'
 	xberg_stub tar 'touch "$XBERG_WORK/tar-was-called"'
 	xberg_stub cmake 'printf "cmake\n" >>"$XBERG_WORK/cmake-calls"'
-	run bash -euo pipefail -c 'source "$1"; source "$2"; WORK="$3"; JOBS=1; CMAKE_COMMON=(); build_dep fake 1 https://example.invalid/archive ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' \
+	run bash -euo pipefail -c 'source "$1"; source "$2"; WORK="$3"; JOBS=1; CMAKE_COMMON=(-Dfixture=true); build_dep fake 1 https://example.invalid/archive ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' \
 		_ "$REPO_ROOT/scripts/lib/retry.sh" "$XBERG_WORK/build-dep.sh" "$XBERG_WORK"
 	xberg_assert_status 0
 	[ -e "$XBERG_WORK/tar-was-called" ]
@@ -90,7 +91,7 @@ setup() {
 	xberg_stub curl 'while [ "$1" != "-o" ]; do shift; done; printf abc >"$2"'
 	xberg_stub_exit tar 0
 	xberg_stub cmake 'printf "%s\n" "$*" >>"$XBERG_WORK/cmake-arguments"'
-	run env CMAKE_BUILD_PARALLEL_LEVEL=1 bash -euo pipefail -c 'source "$1"; source "$2"; source "$3"; WORK="$4"; CMAKE_COMMON=(); build_dep fake 1 https://example.invalid/archive ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' \
+	run env CMAKE_BUILD_PARALLEL_LEVEL=1 bash -euo pipefail -c 'source "$1"; source "$2"; source "$3"; WORK="$4"; CMAKE_COMMON=(-Dfixture=true); build_dep fake 1 https://example.invalid/archive ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' \
 		_ "$REPO_ROOT/scripts/lib/retry.sh" "$XBERG_WORK/jobs.sh" "$XBERG_WORK/build-dep.sh" "$XBERG_WORK"
 	xberg_assert_status 0
 	[ "$(grep -c -- '--build .* -j 1$' "$XBERG_WORK/cmake-arguments")" -eq 1 ]
