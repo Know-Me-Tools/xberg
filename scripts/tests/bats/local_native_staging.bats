@@ -13,13 +13,20 @@ setup() {
 assert_staging() {
 	local system="$1" arch="$2" filename="$3" csharp="$4" go="$5"
 	export STAGING_SYSTEM="$system" STAGING_ARCH="$arch"
-	printf 'native fixture\n' >"$XBERG_WORK/target/release/$filename"
+	local csharp_file="$XBERG_WORK/packages/csharp/Xberg/runtimes/$csharp/native/$filename"
+	local go_file="$XBERG_WORK/packages/go/.lib/$go/$filename"
+	local payload="$system $arch $filename"
+	rm -f "$csharp_file" "$go_file"
+	[ ! -e "$csharp_file" ]
+	[ ! -e "$go_file" ]
+	printf '%s csharp\n' "$payload" >"$XBERG_WORK/target/release/$filename"
 	run bash "$XBERG_WORK/scripts/stage_csharp_native_local.sh"
 	xberg_assert_status 0
-	xberg_assert_file "$XBERG_WORK/packages/csharp/Xberg/runtimes/$csharp/native/$filename" 'native fixture'
+	xberg_assert_file "$csharp_file" "$payload csharp"
+	printf '%s go\n' "$payload" >"$XBERG_WORK/target/release/$filename"
 	run bash "$XBERG_WORK/scripts/stage_go_native_local.sh"
 	xberg_assert_status 0
-	xberg_assert_file "$XBERG_WORK/packages/go/.lib/$go/$filename" 'native fixture'
+	xberg_assert_file "$go_file" "$payload go"
 }
 
 @test "local native staging should preserve Linux x64 artifacts in both package layouts" {
