@@ -18,22 +18,6 @@ Future<ExtractionResult> extract({
   required ExtractionConfig config,
 }) => RustLib.instance.api.crateExtract(input: input, config: config);
 
-/// Extract one PDF bytes input with layout inference restricted to explicit 1-based pages.
-///
-/// This call enables layout on the native PDF route even when ordinary extraction leaves it disabled.
-/// Selected pages override the automatic layout gate; an empty list skips layout inference.
-/// Invalid pages are ignored with processing warnings. Both extraction caches are bypassed.
-/// This additive entry point leaves existing extraction configuration structs unchanged.
-Future<ExtractionResult> extractWithLayoutPages({
-  required ExtractInput input,
-  required ExtractionConfig config,
-  required Int64List pages,
-}) => RustLib.instance.api.crateExtractWithLayoutPages(
-  input: input,
-  config: config,
-  pages: pages,
-);
-
 /// Extract one bytes input and redact a JSON array or JSON Lines payload from an external inspection engine.
 ///
 /// The payload is parsed in Rust so vendor aliases and nested fields remain intact across language bindings.
