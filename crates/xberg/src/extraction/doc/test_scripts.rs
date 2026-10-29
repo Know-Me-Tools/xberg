@@ -333,3 +333,6 @@ async fn assert_subdocument_script_output(bytes: &[u8], prefix: &str, config: &E
     assert!(!plain.results[0].content.contains(['^', '~']));
     assert!(plain.results[0].content.contains(&format!("{prefix}109/l")));
 }
+
+#[path = "test_style_scripts.rs"]
+mod style_scripts;
