@@ -2456,9 +2456,16 @@ exclude_functions = [
 pubspec_name = "xberg"
 lib_name = "xberg"
 style = "frb"
-# `cfg(not(android/ios/windows))` target dep uses `features = ["full"]` which
-# get them through the `cfg(not(android/ios/windows))` `features = ["full"]` dep.
-excluded_default_features = ["heic", "embeddings", "reranker", "sparse-embeddings", "late-interaction"]
+# Wrapper defaults must not re-enable the ORT feature on mobile. Desktop core
+# capabilities remain selected by the explicit desktop dependency override below. ~keep
+excluded_default_features = [
+  "heic",
+  "embeddings",
+  "reranker",
+  "sparse-embeddings",
+  "late-interaction",
+  "layout-detection",
+]
 features = [
   "pdf",
   "excel",
@@ -2546,6 +2553,59 @@ default_features = false
 [[crates.dart.target_dep_overrides]]
 cfg = 'all(target_os = "macos", target_arch = "x86_64")'
 features = ["macos-intel-target", "simd-utf8"]
+default_features = false
+
+
+# Preserve the existing desktop core feature edge independently of wrapper defaults,
+# including builds using --no-default-features. Mobile overrides remain ORT-free. ~keep
+[[crates.dart.target_dep_overrides]]
+cfg = 'not(any(target_os = "android", target_os = "ios", target_os = "windows", all(target_os = "macos", target_arch = "x86_64")))'
+features = [
+  "pdf",
+  "excel",
+  "office",
+  "hwp",
+  "hwpx",
+  "iwork",
+  "email",
+  "html",
+  "xml",
+  "archives",
+  "mdx",
+  "svg",
+  "language-detection",
+  "chunking",
+  "chunking-tokenizers",
+  "quality",
+  "keywords",
+  "diff",
+  "api",
+  "api-types",
+  "mcp",
+  "ocr",
+  "paddle-ocr",
+  "paddle-ocr-types",
+  "layout-detection",
+  "layout-types",
+  "embedding-presets",
+  "reranker-presets",
+  "sparse-embedding-presets",
+  "late-interaction-presets",
+  "transcription-types",
+  "tree-sitter",
+  "liter-llm",
+  "tokio-runtime",
+  "ner-llm",
+  "ner-onnx",
+  "redaction",
+  "summarization",
+  "classification",
+  "captioning",
+  "qr-codes",
+  "auto-rotate-types",
+  "stopwords",
+  "simd-utf8",
+]
 default_features = false
 
 [crates.kotlin_android]
@@ -2669,8 +2729,9 @@ default_features = false
 [crates.swift]
 module_name = "Xberg"
 package_name = "Xberg"
-# `cfg(not(ios/android/windows))` target dep uses `features = ["full"]` which
-excluded_default_features = ["heic"]
+# Mobile uses tract; preset types stay default while native inference flags remain opt-in.
+# The desktop FFI dependency below retains the full native inference surface. ~keep
+excluded_default_features = ["heic", "layout-detection", "reranker", "late-interaction"]
 # The swift shim also links `xberg-ffi` directly. Emit that dependency with
 # `default-features = false` + `full-no-heic` so heic (whose `libheif-sys`
 # build.rs cannot cross-compile) is dropped on every cross-compiled swift

@@ -18,6 +18,9 @@ on:
       - "packages/kotlin-android/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "alef.toml"
+      - "scripts/ci/check-mobile-features.py"
+      - "scripts/ci/test_check_mobile_features.py"
       - ".github/workflows/ci-mobile.yaml"
   workflow_dispatch:
 
@@ -73,6 +76,10 @@ jobs:
           target: ${{ matrix.target }}
           cache-key-prefix: ci-mobile-ios-${{ matrix.target }}
           use-sccache: "true"
+      - name: Verify ORT-free mobile feature graphs
+        run: |
+          python3 -m unittest discover -s scripts/ci -p test_check_mobile_features.py
+          python3 scripts/ci/check-mobile-features.py --target ${{ matrix.target }}
       - name: cargo check xberg-dart
         run: cargo check --locked -p xberg-dart --target ${{ matrix.target }}
       - name: cargo check xberg-swift
