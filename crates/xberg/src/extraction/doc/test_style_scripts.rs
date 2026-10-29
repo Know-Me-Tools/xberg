@@ -320,11 +320,7 @@ async fn should_preserve_inherited_style_scripts_in_footnote_stories_gh2275() {
     .unwrap();
     assert!(output.errors.is_empty(), "{:?}", output.errors);
     assert_eq!(output.results.len(), 1);
-    assert!(
-        output.results[0].content.contains(": ^109^"),
-        "{}",
-        output.results[0].content
-    );
+    assert_eq!(output.results[0].content.trim_end(), "Main\n\n[^1]:\n    ^109^");
 }
 
 #[test]
