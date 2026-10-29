@@ -1,6 +1,9 @@
 use super::*;
 use xberg::layout::{BBox, DetectionResult, LayoutClass, LayoutDetection};
 
+#[path = "input_tests.rs"]
+mod inputs;
+
 fn identity(detector: Detector, digest: char) -> ModelIdentity {
     ModelIdentity {
         detector,

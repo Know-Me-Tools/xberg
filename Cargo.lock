@@ -722,6 +722,7 @@ dependencies = [
  "dirs 7.0.0",
  "dotenvy",
  "futures",
+ "image 0.25.10",
  "inferno",
  "jsonschema",
  "libc",
